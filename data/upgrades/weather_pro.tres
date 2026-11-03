@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="UpgradeData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/upgrade_data.gd" id="1_60105"]
+
+[resource]
+script = ExtResource("1_60105")
+id = &"weather_pro"
+display_name = "WeatherWise Pro App"
+category = 5
+price = 90
+description = "3-day forecast with snowfall amounts and timing."
+stat = &"forecast_days"
+value = 3.0

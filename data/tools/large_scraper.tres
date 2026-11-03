@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="ToolData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/tool_data.gd" id="1_hui63"]
+
+[resource]
+script = ExtResource("1_hui63")
+id = &"large_scraper"
+display_name = "Large Snow Scraper"
+kind = 3
+tier = 5
+price = 265
+description = "A 1.2 m steel blade on wheels: halfway between a shovel and a pusher. Throws a decent load, pushes very hard. R angles the blade."
+width = 1.0
+reach = 0.3
+capacity = 0.08
+fill_rate = 0.16
+bite = 0.2
+sweep_reach = 1.9
+throw_distance = 3.4
+scrape_floor = 0.0
+push_width = 1.2
+push_strength = 0.95
+engaged_speed_mult = 0.88
+angle_adjustable = true
+throw_angle_deg = 38.0
+primary_color = Color(0.9, 0.75, 0.1, 1)
+particle_amount = 22
+loop_sound = &"push_scrape"

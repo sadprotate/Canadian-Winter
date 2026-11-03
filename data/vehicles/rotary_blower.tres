@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="VehicleData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/vehicle_data.gd" id="1_ut8qi"]
+
+[resource]
+script = ExtResource("1_ut8qi")
+id = &"rotary_blower"
+display_name = "Large Rotary Snowblower"
+kind = 7
+price = 90000
+description = "Huge rotary blower. Eats snowbanks and throws them 25 m."
+max_speed = 6.5
+turn_rate = 0.9
+wheelbase = 4.0
+length = 7.5
+width = 2.8
+height = 3.4
+clearance = 0.8
+traction = 0.95
+has_blower = true
+blower_width = 2.7
+blower_rate = 2.4
+blower_throw = 25.0
+body_color = Color(0.9, 0.6, 0.08, 1)
+engine_sound = &"engine_diesel"
+engine_pitch = 0.65

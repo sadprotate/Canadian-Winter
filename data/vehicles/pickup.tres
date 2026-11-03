@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="VehicleData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/vehicle_data.gd" id="1_0ccjk"]
+
+[resource]
+script = ExtResource("1_0ccjk")
+id = &"pickup"
+display_name = "Pickup Truck"
+description = "Your four-wheel-drive pickup. Gets stuck in deep snow."
+max_speed = 15.0
+clearance = 0.3
+traction = 0.55
+body_color = Color(0.43, 0.45, 0.48, 1)

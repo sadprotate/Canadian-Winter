@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="ToolData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/tool_data.gd" id="1_q8h5p"]
+
+[resource]
+script = ExtResource("1_q8h5p")
+id = &"electric_shovel"
+display_name = "Electric Snow Shovel"
+kind = 5
+tier = 7
+price = 480
+description = "Battery power shovel. Hold left mouse to chew through snow and toss it ahead automatically; right mouse pushes."
+width = 0.32
+reach = 0.35
+throw_distance = 5.0
+scrape_floor = 0.004
+rate = 0.05
+push_width = 0.34
+push_strength = 0.08
+engaged_speed_mult = 0.7
+throw_angle_deg = 38.0
+primary_color = Color(0.15, 0.7, 0.35, 1)
+particle_amount = 20
+loop_sound = &"electric_motor"

@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="ToolData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/tool_data.gd" id="1_1djy6"]
+
+[resource]
+script = ExtResource("1_1djy6")
+id = &"snow_sleigh"
+display_name = "Snow Sleigh"
+kind = 4
+tier = 6
+price = 320
+description = "Big scoop on runners. Loads a huge amount but barely throws — it just tips the load out in front of you. The strongest hand pusher."
+width = 0.8
+capacity = 0.4
+fill_rate = 0.32
+bite = 0.36
+sweep_reach = 1.6
+cycle_time = 0.6
+throw_distance = 1.0
+scrape_floor = 0.006
+push_width = 0.8
+push_strength = 1.4
+engaged_speed_mult = 0.8
+throw_angle_deg = 28.0
+primary_color = Color(0.1, 0.35, 0.75, 1)
+particle_amount = 16
+loop_sound = &"push_scrape"
+action_sound = &"snow_land"

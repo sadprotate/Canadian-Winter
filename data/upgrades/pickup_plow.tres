@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="UpgradeData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/upgrade_data.gd" id="1_etb72"]
+
+[resource]
+script = ExtResource("1_etb72")
+id = &"pickup_plow"
+display_name = "Pickup Front Plow Installation"
+category = 2
+price = 3400
+description = "Permanent 2.4 m angling plow for your pickup. Drive the pickup to the store lot to have it installed."
+stat = &"pickup_plow"
+requires_pickup = true

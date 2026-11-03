@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="VehicleData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/vehicle_data.gd" id="1_wcvgp"]
+
+[resource]
+script = ExtResource("1_wcvgp")
+id = &"pickup_plow"
+display_name = "Pickup Truck with Front Plow"
+kind = 1
+price = 3400
+description = "Your pickup fitted with a permanent 2.4 m angling plow."
+length = 6.0
+width = 2.4
+clearance = 0.34
+traction = 0.62
+has_plow = true
+blade_capacity = 2.8
+body_color = Color(0.43, 0.45, 0.48, 1)

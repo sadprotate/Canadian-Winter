@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="VehicleData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/vehicle_data.gd" id="1_dbw6t"]
+
+[resource]
+script = ExtResource("1_dbw6t")
+id = &"tractor_blade"
+display_name = "Tractor with Snow Blade"
+kind = 3
+price = 14000
+description = "Compact tractor with a heavy 2.4 m blade and heated cab."
+max_speed = 8.5
+turn_rate = 1.6
+wheelbase = 2.0
+length = 4.2
+width = 2.4
+height = 2.6
+clearance = 0.5
+traction = 0.85
+has_plow = true
+blade_capacity = 4.5
+body_color = Color(0.8, 0.12, 0.1, 1)
+engine_sound = &"engine_diesel"

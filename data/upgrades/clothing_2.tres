@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="UpgradeData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/upgrade_data.gd" id="1_4tnch"]
+
+[resource]
+script = ExtResource("1_4tnch")
+id = &"clothing_2"
+display_name = "Arctic Parka & Mitts"
+category = 3
+price = 420
+description = "You lose warmth another 25% slower (Survival)."
+stat = &"cold_protection"
+value = 0.75
+requires = &"clothing_1"

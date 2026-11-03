@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="ToolData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/tool_data.gd" id="1_6kmld"]
+
+[resource]
+script = ExtResource("1_6kmld")
+id = &"large_blower"
+display_name = "Large Walk-Behind Snowblower"
+kind = 6
+tier = 9
+price = 1690
+description = "Two-stage blower with a wide intake and long throw."
+width = 0.78
+reach = 0.4
+throw_distance = 12.5
+scrape_floor = 0.006
+rate = 0.14
+engaged_speed_mult = 0.4
+primary_color = Color(0.95, 0.55, 0.05, 1)
+uses_slot = false
+particle_amount = 60
+loop_sound = &"blower_large"

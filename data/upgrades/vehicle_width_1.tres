@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="UpgradeData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/upgrade_data.gd" id="1_8pfiu"]
+
+[resource]
+script = ExtResource("1_8pfiu")
+id = &"vehicle_width_1"
+display_name = "Blade Wing Extensions"
+category = 2
+price = 950
+description = "+15% vehicle plow width."
+stat = &"vehicle_blade_width"
+value = 1.15

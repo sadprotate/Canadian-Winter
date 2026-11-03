@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="ToolData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/tool_data.gd" id="1_o8s1c"]
+
+[resource]
+script = ExtResource("1_o8s1c")
+id = &"snow_scraper"
+display_name = "Snow Scraper"
+kind = 3
+tier = 4
+price = 145
+description = "Steel-edged blade that pushes hard and scrapes to bare pavement. R angles the blade left/right to windrow snow aside."
+width = 0.75
+reach = 0.3
+capacity = 0.05
+fill_rate = 0.1
+sweep_reach = 1.8
+throw_distance = 2.8
+scrape_floor = 0.0
+push_width = 0.75
+push_strength = 0.6
+engaged_speed_mult = 0.9
+angle_adjustable = true
+throw_angle_deg = 34.0
+primary_color = Color(0.85, 0.15, 0.12, 1)
+particle_amount = 18
+loop_sound = &"push_scrape"

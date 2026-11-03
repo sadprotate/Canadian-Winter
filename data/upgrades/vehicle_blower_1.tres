@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="UpgradeData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/upgrade_data.gd" id="1_6jwn1"]
+
+[resource]
+script = ExtResource("1_6jwn1")
+id = &"vehicle_blower_1"
+display_name = "Turbo Blower Fan"
+category = 2
+price = 1800
+description = "+30% vehicle blower rate and throw."
+stat = &"vehicle_blower"
+value = 1.3

@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="ToolData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/tool_data.gd" id="1_t1lv3"]
+
+[resource]
+script = ExtResource("1_t1lv3")
+id = &"small_blower"
+display_name = "Small Walk-Behind Snowblower"
+kind = 6
+tier = 8
+price = 790
+description = "Single-stage blower. Grab it with E, hold left mouse to run, Z/C to turn the chute."
+width = 0.56
+reach = 0.35
+throw_distance = 8.0
+scrape_floor = 0.008
+rate = 0.065
+engaged_speed_mult = 0.42
+throw_angle_deg = 40.0
+primary_color = Color(0.85, 0.12, 0.1, 1)
+uses_slot = false
+particle_amount = 40
+loop_sound = &"blower_small"

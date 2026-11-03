@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="VehicleData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/vehicle_data.gd" id="1_letvs"]
+
+[resource]
+script = ExtResource("1_letvs")
+id = &"dump_truck"
+display_name = "Snow Dump Truck"
+kind = 8
+price = 38000
+description = "Haul snow away. Blow or throw snow into the bed, then dump it at the Snow Dump lot (left mouse)."
+max_speed = 13.0
+turn_rate = 1.0
+wheelbase = 4.6
+length = 8.0
+width = 2.6
+height = 3.2
+clearance = 0.42
+traction = 0.8
+dump_capacity = 12.0
+body_color = Color(0.2, 0.3, 0.55, 1)
+engine_sound = &"engine_diesel"
+engine_pitch = 0.8

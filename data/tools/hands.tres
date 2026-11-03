@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="ToolData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/tool_data.gd" id="1_732vr"]
+
+[resource]
+script = ExtResource("1_732vr")
+id = &"hands"
+display_name = "Bare Hands"
+kind = 0
+description = "Cup your hands and sweep them through the snow, then toss it a metre or two. A weak, short push with flat palms. Slow — but every scoop leaves a dent."
+reach = 0.3
+fill_rate = 0.085
+bite = 0.26
+sweep_reach = 1.15
+throw_distance = 1.8
+scrape_floor = 0.006
+push_width = 0.5
+push_strength = 0.035
+engaged_speed_mult = 0.75
+throw_angle_deg = 38.0
+primary_color = Color(0.2, 0.2, 0.24, 1)
+particle_amount = 6
+action_sound = &"hand_dig"

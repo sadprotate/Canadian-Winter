@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="UpgradeData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/upgrade_data.gd" id="1_kii26"]
+
+[resource]
+script = ExtResource("1_kii26")
+id = &"tool_rack"
+display_name = "Garage Tool Rack"
+category = 4
+price = 90
+description = "A wall rack beside your garage that holds 8 tools."
+stat = &"tool_rack"
+requires_pickup = true

@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="UpgradeData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/upgrade_data.gd" id="1_iaplk"]
+
+[resource]
+script = ExtResource("1_iaplk")
+id = &"throw_1"
+display_name = "Ergonomic Handles"
+price = 80
+description = "+25% throw distance for hands and every shovel-type tool."
+stat = &"throw_distance"
+value = 1.25

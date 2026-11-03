@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="BalanceData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/balance_data.gd" id="1_2gprt"]
+
+[resource]
+script = ExtResource("1_2gprt")
+box_completion = 0.9
+storm_onset_cm_h = 1.0
+storm_onset_mean_frac = 0.5
+fc_error_base = 0.06
+fc_error_per_day = 0.22
+fc_timing_h_per_day = 2.5
+fc_temp_error_per_day = 1.6
+radio_surprise_horizon_h = 1.0
+forecast_skill = 1.0
+exposure_curve = PackedVector2Array(-2, 2, -8, 6, -17, 19, -25, 28, -40, 41, -55, 52)

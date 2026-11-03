@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="UpgradeData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/upgrade_data.gd" id="1_rlvqf"]
+
+[resource]
+script = ExtResource("1_rlvqf")
+id = &"weather_radar"
+display_name = "Radar+ Subscription"
+category = 5
+price = 380
+description = "7-day forecast with hourly detail and early storm warnings."
+stat = &"forecast_days"
+value = 7.0
+requires = &"weather_pro"

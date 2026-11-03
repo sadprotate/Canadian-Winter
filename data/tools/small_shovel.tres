@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="ToolData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/tool_data.gd" id="1_reati"]
+
+[resource]
+script = ExtResource("1_reati")
+id = &"small_shovel"
+display_name = "Small Snow Shovel"
+tier = 1
+price = 25
+description = "A short plastic shovel: the all-rounder. Fills fast, throws well, pushes a little."
+width = 0.34
+reach = 0.4
+capacity = 0.05
+fill_rate = 0.13
+bite = 0.26
+sweep_reach = 1.6
+cycle_time = 0.4
+throw_distance = 4.2
+scrape_floor = 0.004
+push_width = 0.36
+push_strength = 0.09
+primary_color = Color(0.95, 0.47, 0.1, 1)
+particle_amount = 10
+action_sound = &"shovel_scoop"

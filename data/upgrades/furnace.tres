@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="UpgradeData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/upgrade_data.gd" id="1_nxxtb"]
+
+[resource]
+script = ExtResource("1_nxxtb")
+id = &"furnace"
+display_name = "High-Efficiency Furnace"
+category = 4
+price = 650
+description = "Your house warms you up 60% faster (Survival)."
+stat = &"house_warm"
+value = 1.6

@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="ToolData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/tool_data.gd" id="1_3bb2l"]
+
+[resource]
+script = ExtResource("1_3bb2l")
+id = &"standard_shovel"
+display_name = "Standard Snow Shovel"
+tier = 2
+price = 35
+description = "Full-size shovel with a metal wear strip. Bigger loads, the longest hand throw."
+width = 0.46
+capacity = 0.065
+fill_rate = 0.16
+bite = 0.28
+sweep_reach = 1.7
+cycle_time = 0.42
+throw_distance = 5.2
+scrape_floor = 0.003
+push_width = 0.48
+push_strength = 0.14
+engaged_speed_mult = 0.86
+throw_angle_deg = 44.0
+primary_color = Color(0.2, 0.45, 0.85, 1)
+particle_amount = 14
+action_sound = &"shovel_scoop"

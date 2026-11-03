@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="ToolData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/tool_data.gd" id="1_g13cc"]
+
+[resource]
+script = ExtResource("1_g13cc")
+id = &"wide_pusher"
+display_name = "Wide Snow Pusher"
+kind = 2
+tier = 3
+price = 79
+description = "A 90 cm push blade. A strong pusher: hold right mouse and walk. It can throw, but only a short, clumsy toss."
+width = 0.9
+reach = 0.3
+capacity = 0.045
+fill_rate = 0.09
+sweep_reach = 1.8
+throw_distance = 2.2
+scrape_floor = 0.003
+push_width = 0.9
+push_strength = 0.5
+engaged_speed_mult = 0.92
+throw_angle_deg = 32.0
+primary_color = Color(0.15, 0.55, 0.3, 1)
+particle_amount = 16
+loop_sound = &"push_scrape"

@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="VehicleData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/vehicle_data.gd" id="1_u0h5s"]
+
+[resource]
+script = ExtResource("1_u0h5s")
+id = &"grader"
+display_name = "Motor Grader"
+kind = 5
+price = 48000
+description = "Municipal-style grader with a 3.7 m mid-mounted blade."
+max_speed = 11.0
+turn_rate = 0.9
+wheelbase = 6.0
+length = 8.5
+width = 2.6
+height = 3.2
+clearance = 0.55
+traction = 0.9
+has_plow = true
+blade_width = 3.7
+blade_capacity = 9.0
+blade_max_angle_deg = 35.0
+blade_floor = 0.01
+body_color = Color(0.95, 0.72, 0.1, 1)
+engine_sound = &"engine_diesel"
+engine_pitch = 0.8

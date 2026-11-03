@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="UpgradeData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/upgrade_data.gd" id="1_psmlf"]
+
+[resource]
+script = ExtResource("1_psmlf")
+id = &"blower_intake_1"
+display_name = "Blower Impeller Upgrade"
+category = 1
+price = 420
+description = "+30% walk-behind blower intake rate."
+stat = &"blower_rate"
+value = 1.3

@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="VehicleData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/vehicle_data.gd" id="1_42p7w"]
+
+[resource]
+script = ExtResource("1_42p7w")
+id = &"plow_truck"
+display_name = "Large Snowplow Truck"
+kind = 6
+price = 65000
+description = "Tandem plow truck with a 3.4 m angling plow."
+max_speed = 15.0
+turn_rate = 1.0
+wheelbase = 4.8
+length = 8.0
+width = 2.6
+height = 3.3
+clearance = 0.48
+traction = 0.85
+has_plow = true
+blade_width = 3.4
+blade_capacity = 8.0
+body_color = Color(0.95, 0.45, 0.08, 1)
+engine_sound = &"engine_diesel"
+engine_pitch = 0.75

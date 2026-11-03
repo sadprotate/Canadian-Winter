@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="UpgradeData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/upgrade_data.gd" id="1_5kl0c"]
+
+[resource]
+script = ExtResource("1_5kl0c")
+id = &"shovel_capacity_1"
+display_name = "Reinforced Shovel Blades"
+price = 60
+description = "+25% load capacity and fill speed for your hands and every shovel, pusher, scraper and sleigh."
+stat = &"shovel_capacity"
+value = 1.25
