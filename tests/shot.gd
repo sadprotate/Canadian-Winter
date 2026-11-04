@@ -55,6 +55,13 @@ extends Node
 ##   --ui=settings [--settings_tab=n] [--settings_scroll=px]  the settings screen as opened from
 ##                            the pause menu, on tab n (0 Audio … 4 Controls, the default),
 ##                            scrolled down px
+##   --ui=photo               (§4) the framed photo by the front door, large on screen (waits for
+##                            the capture first)
+##   --door_line=frames       (§4) the opening: the player in the hall facing the front door opens
+##                            it (Interact, real input); wait this many frames (the line waits for
+##                            the morning subtitle to finish); with --hour < 8 on day 0
+##   --gerry_tips=k           (§4) take Gerry's job through his dialogue ($55) standing at the foot
+##                            of his walk, then move his snow tips on to line k (0-3)
 
 var args := {}
 var game: Node = null
@@ -358,6 +365,10 @@ func _setup_after_spawn() -> void:
 				await get_tree().process_frame
 			w.neighbor_dialogue(w.neighbor)
 			await _wait(int(args["gerry_invite"]))
+	if args.has("door_line"):
+		await _door_line_shot(w)
+	if args.has("gerry_tips"):
+		await _gerry_tips_shot(w)
 	if args.has("snow_all"):
 		Snow.set_rect(Rect2(0, 0, Layout.MAP_W, Layout.MAP_D), float(args["snow_all"]))
 	if args.has("expose_shovel") or args.has("shovel_h"):
@@ -472,6 +483,13 @@ func _open_ui(which: String) -> void:
 			w.radio_forecast()
 		"sleep":
 			w.open_sleep()
+		"photo":
+			var ph = w.interior.get("photo")
+			for i in range(240):
+				if ph == null or ph.captured or DisplayServer.get_name() == "headless":
+					break
+				await get_tree().process_frame
+			w.open_photo()
 		"settings":
 			w._open_pause()
 			var sm := SettingsMenu.new()
@@ -699,3 +717,64 @@ func _grid() -> void:
 					img.save_png(out)
 					print("saved ", out)
 	tc.pose_override = ""
+
+
+## --door_line=frames (polish 5 §4): stand in the hall facing the front door, open it with
+## Interact, and wait while the thought comes up on the HUD.
+func _door_line_shot(w: Node) -> void:
+	Game.force_input = true
+	var L := HouseBuilder.lot_transform(Layout.player_lot)
+	var sb: float = Layout.player_lot["setback"]
+	var at := L * Vector3(-1.5, Layout.PORCH_H, sb + 1.6)
+	w.player.teleport(at + Vector3(0, 0.05, 0))
+	var door: Vector3 = L * Vector3(-1.5, Layout.PORCH_H + 1.2, sb)
+	var d: Vector3 = door - (at + Vector3(0, 1.6, 0))
+	w.player.set_yaw(atan2(-d.x, -d.z))
+	w.player.pitch = atan2(d.y, Vector2(d.x, d.z).length())
+	w.player.head.rotation.x = w.player.pitch
+	Clock.running = true
+	await _wait(4)
+	var ev := InputEventAction.new()
+	ev.action = "interact"
+	ev.pressed = true
+	Input.parse_input_event(ev)
+	await _wait(2)
+	var up := InputEventAction.new()
+	up.action = "interact"
+	up.pressed = false
+	Input.parse_input_event(up)
+	await _wait(int(args["door_line"]))
+	print("door open %s, speech: %s" % [w.player_door.open, w.hud.speech_text.text])
+
+
+## --gerry_tips=k (polish 5 §4): Gerry's job agreed through his dialogue, then his snow tips on the
+## HUD moved on to line k, the player at the foot of his walk looking up at him.
+func _gerry_tips_shot(w: Node) -> void:
+	await _wait(150)      # past the fade-in and the start-up controls reminder
+	Game.flags["mail_read"] = true
+	Game.set_stage(Game.Stage.LETTER_READ)
+	var g: Node3D = w.neighbor
+	var out := -Vector2(Layout.neighbor_lot["inward"]).normalized()
+	var at := Vector2(g.global_position.x, g.global_position.z) + out * 3.2
+	w.player.teleport(Vector3(at.x, Snow.surface_height(at.x, at.y) + 0.05, at.y))
+	var to := Vector2(g.global_position.x, g.global_position.z) - at
+	w.player.set_yaw(atan2(-to.x, -to.y))
+	w.neighbor_dialogue(g)
+	await _wait(2)
+	for i in range(30):
+		if w.modal == null:
+			break
+		var pressed := false
+		for b in w.modal.find_children("*", "Button", true, false):
+			if (b as Button).text.contains("$55") or (b as Button).text.contains("Continue"):
+				(b as Button).pressed.emit()
+				pressed = true
+				break
+		if not pressed:
+			break
+		await _wait(2)
+	for k in range(int(args["gerry_tips"])):
+		w._talk_next()
+	await _wait(3)
+	print("stage %d, speech: %s" % [Game.stage(), w.hud.speech_text.text])
+

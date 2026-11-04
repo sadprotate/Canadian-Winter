@@ -1700,3 +1700,453 @@ func test_s3_money_plant() -> void:
 		runner.check(Saves.load_game(mode) and Game.money == m1 and Game.stats.get("money_earned", 0) == earned0, "§3 %s: the money survives save → load ($%d)" % [mode, Game.money])
 		Saves.delete_save(mode)
 	await _unload()
+
+
+# =============================================================================
+# §4 The opening and Gerry
+# =============================================================================
+
+## A new game (stage START) at 7:30 on Dec 1 — the opening, with the morning's subtitle.
+func _s4_world(mode: String, hour := 7.5) -> void:
+	await _unload()
+	Game.force_input = true
+	Game.new_game(mode, 2024)
+	Clock.reset(Clock.at(0, hour))
+	await _spawn_world()
+
+
+## The player in the hall, facing the front door from inside.
+func _s4_face_door() -> void:
+	var lot := Layout.player_lot
+	var sb: float = lot["setback"]
+	_s3_stand(_s3_h(lot, -1.5, Layout.PORCH_H, sb + 1.6), _s3_h(lot, -1.5, Layout.PORCH_H + 1.1, sb))
+	await _frames(4)
+
+
+func _s4_press(action: String) -> void:
+	var ev := InputEventAction.new()
+	ev.action = action
+	ev.pressed = true
+	Input.parse_input_event(ev)
+	await _frames(2)
+	var up := InputEventAction.new()
+	up.action = action
+	up.pressed = false
+	Input.parse_input_event(up)
+	await _frames(1)
+
+
+## Open (or close) the front door with Interact, as the player does.
+func _s4_use_door() -> void:
+	await _s4_face_door()
+	await _s4_press("interact")
+	await _frames(15)      # past the press cap's frame window
+
+
+## Frames until the speech box says `text` (or `limit` frames).
+func _s4_wait_for_line(text: String, limit: int) -> int:
+	for i in range(limit):
+		if world.hud.speech_box.visible and world.hud.speech_text.text == text:
+			return i
+		await _tree().physics_frame
+	return -1
+
+
+## Frames until the speech box is empty (or `limit` frames).
+func _s4_wait_quiet(limit: int) -> int:
+	for i in range(limit):
+		if not world.hud.speech_box.visible:
+			return i
+		await _tree().physics_frame
+	return -1
+
+
+# --- §4 The door line ---------------------------------------------------------------------------
+
+## The first time the front door is opened from inside, during the opening and with no shovel, the
+## thought shows once in the HUD speech box — after the morning subtitle, timed by its length, no
+## modal, the player free to move — and never again; not with a shovel in hand; not on fixtures past
+## the opening. Both modes.
+func test_s4_door_line() -> void:
+	var line: String = world_line()
+	for mode in ["fun", "survival"]:
+		await _s4_world(mode)
+		var pl: Player = world.player
+		await _s4_use_door()
+		runner.check(world.player_door.open and pl.in_player_house, "§4 %s: the front door opened from inside" % mode)
+		# The morning's subtitle comes first: never two lines at once.
+		var both := false
+		var sub_first := false
+		var shown := -1
+		for i in range(900):
+			if world.hud.speech_box.visible and world.hud.subtitle_box.visible:
+				both = true
+			if world.hud.subtitle_box.visible and world.hud.subtitle_l.text.begins_with("December 1"):
+				sub_first = true
+			if world.hud.speech_box.visible and world.hud.speech_text.text == line:
+				shown = i
+				break
+			await _tree().physics_frame
+		runner.check(shown >= 0 and sub_first and not both, "§4 %s: the door line shows on the HUD after the morning subtitle, never with it (after %d frames)" % [mode, shown])
+		runner.check(world.hud.speech_name.text == "You" and world.modal == null and pl.state != "frozen", "§4 %s: a thought — \"You\", no modal, the player not stopped" % mode)
+		var t: float = world._talk_t
+		var want: float = world.line_seconds(line)
+		runner.check(t <= want and t > want - 0.2 and want >= 4.0 and want <= 14.0, "§4 %s: timed by its length (%.1f s)" % [mode, want])
+		var p0 := pl.global_position
+		await _hold("move_back", 40)
+		runner.check(pl.global_position.distance_to(p0) > 0.3 and world.hud.speech_text.text == line, "§4 %s: the player walks while it shows (%.2f m)" % [mode, pl.global_position.distance_to(p0)])
+		var gone := await _s4_wait_quiet(int(t * 60.0) + 30)
+		runner.check(gone >= 0, "§4 %s: it goes by itself" % mode)
+		# Close the door, open it again: once only.
+		await _s4_use_door()
+		await _s4_use_door()
+		var again := await _s4_wait_for_line(line, 500)
+		runner.check(world.player_door.open and again < 0, "§4 %s: opening the door again says nothing" % mode)
+		# With the shovel picked up: never.
+		await _s4_world(mode)
+		Game.add_tool("small_shovel")
+		await _s4_use_door()
+		runner.check(world.player_door.open and await _s4_wait_for_line(line, 500) < 0, "§4 %s: not once a shovel has been picked up" % mode)
+	# Fixtures past the opening (Gerry's job taken; the tutorial done): never.
+	for path in ["res://tests/fixtures/polish4/fun_2_mid_trail.json", "res://tests/fixtures/polish4/survival_3_trail_done.json",
+			"res://tests/fixtures/polish5/fun_1_contracts.json", "res://tests/fixtures/polish5/survival_4_midwinter.json"]:
+		var ok: bool = await _load_save_file(path)
+		runner.check(ok, "§4 %s loads" % path.get_file())
+		if not ok:
+			continue
+		await _spawn_world()
+		await _s4_use_door()
+		runner.check(world.player_door.open and await _s4_wait_for_line(line, 500) < 0, "§4 %s (past the opening): no door line" % path.trim_prefix("res://tests/fixtures/"))
+	await _unload()
+
+
+## The door line as the game has it.
+func world_line() -> String:
+	return (load("res://scripts/game/game_root.gd") as Script).get_script_constant_map()["DOOR_LINE"]
+
+
+# --- §4 Gerry: the two ways to move snow ---------------------------------------------------------
+
+## Take Gerry's job through his dialogue ($55), standing in front of him.
+func _s4_take_job() -> void:
+	Game.flags["mail_read"] = true
+	Game.set_stage(Game.Stage.LETTER_READ)
+	var g: Neighbor = world.neighbor
+	var out := -Vector2(Layout.neighbor_lot["inward"]).normalized()
+	var at := Vector2(g.global_position.x, g.global_position.z) + out * 2.2
+	_s3_stand(Vector3(at.x, Snow.surface_height(at.x, at.y), at.y), g.global_position + Vector3(0, 1.2, 0))
+	await _frames(4)
+	await _s4_press("interact")
+	await _frames(1)
+	var guard := 0
+	while world.modal_kind == "dialogue" and guard < 20:
+		var pressed := false
+		for b in world.modal.find_children("*", "Button", true, false):
+			if (b as Button).text.contains("$55") or (b as Button).text.contains("Continue"):
+				(b as Button).pressed.emit()
+				pressed = true
+				break
+		if not pressed:
+			break
+		await _frames(1)
+		guard += 1
+
+
+## Read Gerry's lines as they come (Interact moves on), up to `n` lines.
+func _s4_read_lines(n: int) -> Array:
+	var out := []
+	var last := ""
+	for k in range(n * 8):
+		if not world.is_gerry_talking():
+			break
+		var t: String = world.hud.speech_text.text
+		if t != last:
+			out.append(t)
+			last = t
+			if out.size() >= n:
+				break
+		await _s4_press("interact")
+		await _frames(12)
+	return out
+
+
+## When Gerry gives you his trail he adds the two ways to move snow, with the keys from the input
+## map; on the HUD (timed, Interact moves on, the player walking throughout); talking to him again
+## during the job repeats it; rebound keys show; the tips end with the job.
+func test_s4_gerry_snow_tips() -> void:
+	var saved: Variant = _s2_backup()
+	Settings.restore_default_controls()
+	for mode in ["fun", "survival"]:
+		await _s4_world(mode, 11.0)
+		Clock.running = true
+		var pl: Player = world.player
+		await _s4_take_job()
+		runner.check(Game.stage() == Game.Stage.NEIGHBOR_TALKED and world.modal == null, "§4 %s: Gerry's job agreed" % mode)
+		var first: String = world.hud.speech_text.text
+		runner.check(world.is_gerry_talking() and world.hud.speech_box.visible and first == "Now, two ways to move snow.", "§4 %s: then on the HUD: \"%s\"" % [mode, first])
+		var t: float = world._talk_t
+		var want: float = world.line_seconds(first)
+		runner.check(t <= want and t > want - 0.2 and want >= 4.0 and want <= 14.0, "§4 %s: each line timed by its length (%.1f s)" % [mode, want])
+		# The player walks while he talks; the line moves on by itself.
+		var p0 := pl.global_position
+		await _hold("move_back", int(t * 60.0) + 20)
+		runner.check(pl.global_position.distance_to(p0) > 1.0 and pl.state != "frozen" and world.modal == null, "§4 %s: the player can move throughout (%.1f m)" % [mode, pl.global_position.distance_to(p0)])
+		var second: String = world.hud.speech_text.text
+		runner.check(second != first and world.is_gerry_talking(), "§4 %s: the next line comes by itself (%s)" % [mode, second])
+		runner.check(second.contains("[%s]" % Settings.action_label("primary")) and second.contains("fill") and second.contains("throw"), "§4 %s: scoop and throw, with the bound key (%s)" % [mode, second])
+		# Interact moves him on (looking at him).
+		await _s4_take_job_stand()
+		var rest := await _s4_read_lines(3)
+		var third: String = rest[1] if rest.size() > 1 else ""
+		var fourth: String = rest[2] if rest.size() > 2 else ""
+		runner.check(third.contains("[%s]" % Settings.action_label("secondary")) and third.contains("push"), "§4 %s: pushing, with the bound key (%s)" % [mode, third])
+		runner.check(fourth.contains("blue line") and fourth.contains("sidewalk") and fourth.contains("door"), "§4 %s: and where: %s" % [mode, fourth])
+		await _frames(int(world.line_seconds(fourth) * 60.0) + 30)
+		runner.check(not world.is_gerry_talking() and not world.hud.speech_box.visible, "§4 %s: then he's done" % mode)
+		# Talking to him again during the job repeats the tip (no modal).
+		await _s4_press("interact")
+		await _frames(2)
+		runner.check(world.modal == null and world.hud.speech_text.text == first, "§4 %s: talking to him again repeats the tip (%s)" % [mode, world.hud.speech_text.text])
+		# Rebound keys: the lines show the new ones.
+		var k := InputEventKey.new()
+		k.physical_keycode = KEY_J
+		var m := InputEventMouseButton.new()
+		m.button_index = MOUSE_BUTTON_MIDDLE
+		runner.check(Settings.rebind("primary", k) == "" and Settings.rebind("secondary", m) == "", "§4 %s: scoop rebound to J, push to the middle button" % mode)
+		world.neighbor_dialogue(world.neighbor)
+		await _frames(1)
+		var lines := await _s4_read_lines(4)
+		var all := "\n".join(lines)
+		runner.check(lines.size() == 4 and all.contains("Hold [J]") and all.contains("hold [Middle Mouse]") and not all.contains("Left Mouse") and not all.contains("Right Mouse"), "§4 %s: with rebound keys he says [J] and [Middle Mouse] (%s)" % [mode, all.replace("\n", " | ")])
+		Settings.restore_default_controls()
+		# The tips end with the job: Gerry's sequence goes on as before.
+		world.neighbor_dialogue(world.neighbor)
+		await _frames(1)
+		runner.check(world.is_gerry_talking(), "§4 %s: (talking again)" % mode)
+		for c in Contracts.active:
+			if c.get("tutorial", false) and c["status"] == "active":
+				for z in c["zones"]:
+					for ra in z["rects"]:
+						Snow.set_rect(Contracts.a_to_rect(ra), 0.004)
+					Contracts.measure_zone(c, z)
+		await _frames(2)
+		runner.check(Game.stage() == Game.Stage.TRAIL_DONE and not world.is_gerry_talking() and not world.hud.speech_box.visible, "§4 %s: the trail done, the tips stop" % mode)
+		Clock.running = false
+	_s2_restore(saved)
+	await _unload()
+
+
+## Stand in front of Gerry again (he's on his porch during the job), looking at him.
+func _s4_take_job_stand() -> void:
+	var g: Neighbor = world.neighbor
+	var out := -Vector2(Layout.neighbor_lot["inward"]).normalized()
+	var at := Vector2(g.global_position.x, g.global_position.z) + out * 2.2
+	_s3_stand(Vector3(at.x, Snow.surface_height(at.x, at.y), at.y), g.global_position + Vector3(0, 1.2, 0))
+	await _frames(4)
+
+
+# --- §4 Gerry's last line: the keys --------------------------------------------------------------
+
+## Gerry inside by his fire with the player, the trail done: his explanation starts.
+func _s4_gerry_inside(mode: String, keys_found: bool) -> void:
+	await _s4_world(mode, 11.0)
+	Clock.running = true
+	Game.flags["truck_keys"] = keys_found
+	Game.flags["mail_read"] = true
+	Game.set_stage(Game.Stage.LETTER_READ)
+	Contracts.create_tutorial_contract(50)
+	Game.set_stage(Game.Stage.NEIGHBOR_TALKED)
+	for c in Contracts.active:
+		if c.get("tutorial", false) and c["status"] == "active":
+			for z in c["zones"]:
+				for ra in z["rects"]:
+					Snow.set_rect(Contracts.a_to_rect(ra), 0.004)
+				Contracts.measure_zone(c, z)
+	await _frames(2)
+	var g: Neighbor = world.neighbor
+	g.invited = true
+	g._path.clear()
+	g._set_pos(g.fire_spot())
+	g.mode = "inside"
+	var inside := Neighbor._h(-3.0, 3.6)
+	_s3_stand(inside, g.global_position + Vector3(0, 1.2, 0))
+	await _frames(4)
+
+
+## Every line of the explanation, Interact moving it on, to the end.
+func _s4_explanation() -> Array:
+	var out := []
+	var last := ""
+	for k in range(200):
+		if not world.is_gerry_talking():
+			break
+		var t: String = world.hud.speech_text.text
+		if t != last:
+			out.append(t)
+			last = t
+		world._talk_next()
+		await _frames(2)
+	return out
+
+
+## After his heat and computer lines Gerry's last line sends you to your truck keys under the tree
+## on your front lawn — skipped once they're found, said again when you talk to him before then.
+func test_s4_gerry_keys_line() -> void:
+	var keys_text: String = HelpText.keys_line()["text"]
+	for mode in ["fun", "survival"]:
+		await _s4_gerry_inside(mode, false)
+		runner.check(world.player.in_neighbor_house and world._talk_started and world.is_gerry_talking(), "§4 %s: by the fire, Gerry talks you through the business" % mode)
+		var lines := await _s4_explanation()
+		var i_keys := lines.find(keys_text)
+		var i_comp := -1
+		var i_heat := -1
+		for k in range(lines.size()):
+			if str(lines[k]).contains("computer"):
+				i_comp = k
+			if str(lines[k]).contains("heat") or str(lines[k]).contains("warm"):
+				i_heat = maxi(i_heat, k)
+		runner.check(i_keys == lines.size() - 1 and i_keys > i_comp and i_comp >= 0 and i_keys > i_heat, "§4 %s: the keys line comes last, after the heat and computer lines (%d of %d; heat %d, computer %d)" % [mode, i_keys + 1, lines.size(), i_heat, i_comp])
+		runner.check(keys_text.contains("tree") and keys_text.contains("front lawn") and keys_text.contains("keys"), "§4 %s: \"%s\"" % [mode, keys_text])
+		runner.check(Game.stage() == Game.Stage.COMPLETE and Game.computer_unlocked(), "§4 %s: the tutorial completes as before" % mode)
+		# Talking to him again before the keys are found: the line again (each time).
+		for n in range(2):
+			world.neighbor_dialogue(world.neighbor)
+			await _frames(1)
+			runner.check(world.hud.speech_text.text == keys_text and world.modal == null, "§4 %s: talking to him again (%d) repeats it" % [mode, n + 1])
+			await _s4_explanation()
+		# Found: he doesn't say it again.
+		Game.flags["truck_keys"] = true
+		world.neighbor_dialogue(world.neighbor)
+		await _frames(1)
+		runner.check(world.hud.speech_text.text != keys_text and world.hud.speech_text.text.contains("Off you go"), "§4 %s: once they're found he just sees you off (%s)" % [mode, world.hud.speech_text.text])
+		await _s4_explanation()
+		# Keys already found before the explanation: no keys line.
+		await _s4_gerry_inside(mode, true)
+		var lines2 := await _s4_explanation()
+		runner.check(not lines2.has(keys_text) and lines2.size() == lines.size() - 1 and str(lines2[lines2.size() - 1]).contains("That's about it"), "§4 %s: keys already found: no keys line (%d lines, last: %s)" % [mode, lines2.size(), str(lines2[lines2.size() - 1]).left(40)])
+		runner.check(Game.stage() == Game.Stage.COMPLETE, "§4 %s: …and the tutorial still completes" % mode)
+		Clock.running = false
+	await _unload()
+
+
+## The truck keys are buried beside the tree on the player's front lawn (the layout's own trees).
+func test_s4_keys_beside_the_front_lawn_tree() -> void:
+	await _s4_world("fun", 11.0)
+	var lot := Layout.player_lot
+	var sb: float = lot["setback"]
+	var hi := Layout.house_info(lot)
+	var kp: Array = Game.flags["keys_pos"]
+	var keys := Vector2(kp[0], kp[1])
+	var origin := Vector2(lot["center_x"], lot["front_z"])
+	var lawn_trees := []
+	for p in world.refs["tree_points"]:
+		var pp: Vector2 = p
+		var v := (pp - origin).dot(lot["inward"])
+		if (lot["rect"] as Rect2).has_point(pp) and v > 0.0 and v < sb:
+			lawn_trees.append(pp)
+	var nearest := INF
+	for p in lawn_trees:
+		nearest = minf(nearest, (p as Vector2).distance_to(keys))
+	var kv := (keys - origin).dot(lot["inward"])
+	runner.check(not lawn_trees.is_empty(), "§4 a tree stands on the player's front lawn (%d)" % lawn_trees.size())
+	runner.check((lot["rect"] as Rect2).has_point(keys) and kv > 0.0 and kv < sb and not (hi["walkway"] as Rect2).has_point(keys) and not (hi["driveway"] as Rect2).has_point(keys), "§4 the keys are in the front lawn (%.1f m in from the sidewalk)" % kv)
+	runner.check(nearest < 2.5, "§4 the keys lie within a couple of metres of that tree (%.2f m)" % nearest)
+	await _unload()
+
+
+# --- §4 The photo --------------------------------------------------------------------------------
+
+## The photo is a hint: the small shovel (the game's own model) stands where it lies buried, at the
+## same side and end of the truck; the character faces the camera; both are in the picture and the
+## shovel isn't hidden. The print reads the right way round on the (mirrored) wall. The capture
+## draws only after a frame has gone by. "[E] Look at the photo" shows it large, no text; E and Esc
+## close it.
+func test_s4_photo_hint_and_view() -> void:
+	await _s4_world("fun", 12.0)
+	Clock.running = false
+	# The scene.
+	var vp := SubViewport.new()
+	vp.own_world_3d = true
+	vp.size = FramedPhoto.PHOTO
+	vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	runner.add_child(vp)
+	FramedPhoto.build_scene(vp)
+	await _frames(2)
+	var sh: MeshInstance3D = vp.find_child("Shovel", true, false)
+	var cam: Camera3D = vp.find_child("Camera", true, false)
+	var ch: Node3D = vp.find_child("Character", true, false)
+	var truck: Node3D = vp.find_child("Truck", true, false)
+	runner.check(sh != null and cam != null and ch != null and truck != null and truck.transform == Transform3D.IDENTITY, "§4 the photo scene: the truck, the character, the shovel, the camera")
+	if sh != null and cam != null and ch != null:
+		runner.check(sh.mesh == ToolModels.mesh_for("small_shovel"), "§4 the shovel in the photo is the small shovel's own model")
+		# Where it lies buried, in the truck's frame (the game's truck and shovel start spots).
+		var ts: Dictionary = Game.truck_start()
+		var sp: Vector2 = Game.shovel_spot()
+		var want := Basis(Vector3.UP, float(ts["yaw"])).inverse() * (Vector3(sp.x, 0, sp.y) - (ts["pos"] as Vector3))
+		var mound := Game.shovel_spot() + Vector2(0.05, -0.15).rotated(-0.6)
+		var want_m := Basis(Vector3.UP, float(ts["yaw"])).inverse() * (Vector3(mound.x, 0, mound.y) - (ts["pos"] as Vector3))
+		var blade := sh.transform * ToolModels.tip("small_shovel")
+		runner.check(Vector2(blade.x - want.x, blade.z - want.z).length() < 0.05, "§4 it stands where it lies buried: (%.2f, %.2f) in the truck's frame, want (%.2f, %.2f)" % [blade.x, blade.z, want.x, want.z])
+		runner.check(signf(blade.x) == signf(want_m.x) and signf(blade.z) == signf(want_m.z) and absf(want.x) > 1.0, "§4 …the same side (%s) and end (%s) of the truck as the oblong pile" % ["driver's" if want_m.x < 0.0 else "passenger", "front" if want_m.z < 0.0 else "back"])
+		var shaft := (sh.transform.basis * ToolModels.tip("small_shovel")).normalized()
+		runner.check(shaft.dot(Vector3.DOWN) > cos(deg_to_rad(10.0)), "§4 …standing upright (%.0f° off vertical)" % rad_to_deg(acos(clampf(shaft.dot(Vector3.DOWN), -1.0, 1.0))))
+		var low := INF
+		var aabb: AABB = sh.mesh.get_aabb()
+		for k in range(8):
+			low = minf(low, (sh.transform * aabb.get_endpoint(k)).y)
+		runner.check(low < 0.0 and low > -0.1, "§4 …planted in the snow (%.2f m)" % low)
+		var to_cam := cam.global_position - ch.global_position
+		var facing := -ch.global_transform.basis.z
+		runner.check(Vector2(facing.x, facing.z).normalized().dot(Vector2(to_cam.x, to_cam.z).normalized()) > 0.95, "§4 the character faces the camera")
+		runner.check(Vector2(ch.position.x, ch.position.z).distance_to(Vector2(blade.x, blade.z)) < 3.0 and absf(ch.position.x) < 2.5, "§4 …beside the truck, near the shovel")
+		var fr := Rect2(Vector2.ZERO, Vector2(FramedPhoto.PHOTO))
+		var s_top := cam.unproject_position(sh.global_position)
+		var s_bot := cam.unproject_position(sh.global_transform * ToolModels.tip("small_shovel"))
+		var c_mid := cam.unproject_position(ch.global_position + Vector3(0, 0.9, 0))
+		runner.check(fr.has_point(s_top) and fr.has_point(s_bot) and fr.has_point(c_mid) and not cam.is_position_behind(sh.global_position), "§4 the shovel and the character are in the picture")
+		runner.check(absf(s_top.x - c_mid.x) > 80.0 and absf(s_bot.x - c_mid.x) > 80.0, "§4 the shovel isn't hidden behind the character (%.0f px apart)" % minf(absf(s_top.x - c_mid.x), absf(s_bot.x - c_mid.x)))
+	vp.queue_free()
+	await _frames(2)
+	# The print on the wall: flipped back on a mirrored house transform.
+	var ph: FramedPhoto = world.interior["photo"]
+	var mirrored := ph.global_transform.basis.determinant() < 0.0
+	runner.check(mirrored and ph._print_mat.uv1_scale.x == -1.0 and ph._print_mat.uv1_offset.x == 1.0, "§4 the player's house is mirrored and the print is flipped back (it hung mirror-reversed)")
+	# The capture: drawing off while the scene is put in place, on once a frame has gone by.
+	ph._capture()
+	var cvp: SubViewport = null
+	for c in ph.get_children():
+		if c is SubViewport:
+			cvp = c
+	runner.check(cvp != null and cvp.render_target_update_mode == SubViewport.UPDATE_DISABLED, "§4 the photo is built with drawing off")
+	await _tree().process_frame
+	await _tree().process_frame
+	runner.check(not is_instance_valid(cvp) or cvp.render_target_update_mode != SubViewport.UPDATE_DISABLED, "§4 …and drawn once a frame has gone by")
+	for i in range(10):
+		await _tree().process_frame
+	runner.check(ph.texture != null and not ph.captured, "§4 headless: the placeholder print stays")
+	# Look at it.
+	var pl: Player = world.player
+	var n := ph.global_transform.basis.z.normalized()
+	var at := ph.global_position + n * 1.5
+	_s3_stand(Vector3(at.x, Layout.PORCH_H, at.z), ph.global_position)
+	await _frames(4)
+	var want_p := "[%s] Look at the photo" % Settings.action_label("interact")
+	runner.check(pl.focus_prompt == want_p, "§4 from 1.5 m: \"%s\" (%s)" % [want_p, pl.focus_prompt])
+	await _s4_press("interact")
+	await _frames(2)
+	var big: Control = world.modal
+	var tr: TextureRect = big.find_child("Print", true, false) if big else null
+	runner.check(world.modal_kind == "photo" and tr != null and tr.texture == ph.texture and tr.size.x >= 1100.0, "§4 Interact shows the photo large on screen (%s)" % (str(tr.size) if tr else "none"))
+	runner.check(big != null and _s2_texts(big).strip_edges() == "", "§4 …with no text")
+	await _frames(15)
+	await _s4_press("interact")
+	await _frames(2)
+	runner.check(world.modal == null and pl.state != "frozen", "§4 Interact puts it down")
+	await _frames(15)
+	await _s4_press("interact")
+	await _frames(2)
+	runner.check(world.modal_kind == "photo", "§4 (looking again)")
+	await _s4_press("pause")
+	await _frames(2)
+	runner.check(world.modal == null and not _tree().paused, "§4 Esc puts it down too")
+	await _unload()

@@ -22,6 +22,24 @@ static func explanation(survival: bool) -> Array:
 	return out
 
 
+## Polish 5 §4: when Gerry gives you his trail he adds the two ways to move snow, with the keys
+## read from the input map; talking to him again during the job repeats it. Spoken on the HUD.
+static func snow_tips() -> Array:
+	var out := []
+	for t in ["Now, two ways to move snow.",
+			"Hold [%s] and sweep through the snow to fill your shovel, then let go to throw it. That gets it up over the banks." % Settings.action_label("primary"),
+			"Or hold [%s] and walk to push it ahead of you. Quick on a long flat walk, but it piles up in front of you." % Settings.action_label("secondary"),
+			"Clear my walk inside the blue line, from the sidewalk up to my door."]:
+		out.append({"speaker": "Gerry", "text": t, "tip": true})
+	return out
+
+
+## Polish 5 §4: Gerry's last line, after the heat and the computer — skipped (and not repeated when
+## you talk to him again) once the truck keys are found.
+static func keys_line() -> Dictionary:
+	return {"speaker": "Gerry", "text": "Oh, by the way: before the storm I saw something shining under the tree on your front lawn. Your truck keys, maybe?", "unless_flag": "truck_keys"}
+
+
 static func lines(survival: bool) -> Array:
 	var out := []
 	for e in explanation(survival):

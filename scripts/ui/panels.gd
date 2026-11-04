@@ -17,6 +17,31 @@ static func _dim(parent: Control, alpha := 0.45) -> Control:
 	return root
 
 
+## Polish 5 §4: the framed photo by the front door, large on screen in its mat and frame, no text.
+## Interact or Esc closes it (game_root handles the keys).
+static func photo(parent: Control, tex: Texture2D) -> Control:
+	var root := _dim(parent, 0.7)
+	var center := CenterContainer.new()
+	UIKit.full_rect(center)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(center)
+	var frame := PanelContainer.new()
+	frame.name = "Photo"
+	var st := UIKit.sb(Color(0.93, 0.91, 0.86), 3, 12, Color(0.42, 0.27, 0.16), 30)
+	st.content_margin_top = 30
+	st.content_margin_bottom = 30
+	frame.add_theme_stylebox_override("panel", st)
+	center.add_child(frame)
+	var pr := TextureRect.new()
+	pr.name = "Print"
+	pr.texture = tex
+	pr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	pr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	pr.custom_minimum_size = Vector2(1200, 800)
+	frame.add_child(pr)
+	return root
+
+
 static func letter(parent: Control, title: String, body: String, on_close: Callable) -> Control:
 	var root := _dim(parent, 0.4)
 	var p := UIKit.center_panel(root, Vector2(820, 760))

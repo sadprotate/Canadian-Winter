@@ -55,6 +55,7 @@ func _ready() -> void:
 	objects.name = "Objects"
 	add_child(objects)
 	_build_interiors()
+	_build_photo_look()
 	_set_snow_hide(true)
 	_build_doors()
 	_build_mailbox()
@@ -100,7 +101,10 @@ func _ready() -> void:
 	AudioMgr.set_ambience_enabled(true)
 	_fade_in()
 	if Game.stage() == Game.Stage.START and Clock.day_index() == 0 and Clock.minutes < Clock.at(0, 8.0):
-		get_tree().create_timer(1.5).timeout.connect(func(): subtitle("December 1. The storm is over... and everything is buried.", 5.0))
+		_morning_line_due = true     # polish 5 §4: the door line waits for it
+		get_tree().create_timer(1.5).timeout.connect(func():
+			_morning_line_due = false
+			subtitle("December 1. The storm is over... and everything is buried.", 5.0))
 	if Clock.has_ended():
 		call_deferred("_on_winter_end")
 
@@ -127,6 +131,19 @@ func _build_interiors() -> void:
 	interior = InteriorBuilder.build_player(self, root, Layout.player_lot)
 	fireplace_pos = interior["fireplace_pos"]
 	neighbor_interior = InteriorBuilder.build_neighbor(root, Layout.neighbor_lot)
+
+
+## Polish 5 §4: "[E] Look at the photo" on the picture by the front door — the shovel in it is a
+## hint, too small to make out on the wall. The box lies flat over the frame, within 3.5 cm of the
+## wall, so nothing stands in front of the picture.
+func _build_photo_look() -> void:
+	var ph: FramedPhoto = interior.get("photo")
+	if ph == null:
+		return
+	var n := ph.global_transform.basis.z.normalized()
+	var sz := FramedPhoto.outer_size()
+	Interactable.make(self, ph.global_position + n * 0.0175, Vector3(sz.x, sz.y, 0.035),
+		func(_p): return "[E] Look at the photo", func(_p): open_photo(), atan2(n.x, n.z))
 
 
 ## No ground-snow mesh is drawn inside the two houses with interiors (see snow_ground.gdshader).
@@ -334,6 +351,8 @@ func _spawn_neighbor() -> void:
 
 ## The trail is done: Gerry comes down it to meet you by his mailbox (polish 3 §4).
 func _on_stage_changed(s: int) -> void:
+	if s == Game.Stage.TRAIL_DONE:
+		_end_talk_if("tip")    # polish 5 §4: the job is done, the snow tips with it
 	if s == Game.Stage.TRAIL_DONE and neighbor and is_instance_valid(neighbor):
 		neighbor.come_down()
 
@@ -374,6 +393,7 @@ func _ui_root() -> Control:
 
 
 func subtitle(text: String, seconds := 3.0) -> void:
+	_end_talk_if("thought")      # polish 5 §4: never the door line and another line at once
 	hud.subtitle(text, seconds)
 
 
@@ -419,6 +439,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		_talk_next()
 		return
+	if modal_kind == "photo" and event.is_action_pressed("interact"):
+		# Polish 5 §4: Interact (or Esc, below) puts the photo down again.
+		get_viewport().set_input_as_handled()
+		close_modal()
+		return
 	if event.is_action_pressed("debug") and Settings.debug_enabled():
 		if modal_kind == "debug":
 			close_modal()
@@ -434,7 +459,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		if modal_kind == "pause":
 			close_modal()
-		elif modal_kind in ["computer", "map", "tv", "debug", "letter"]:
+		elif modal_kind in ["computer", "map", "tv", "debug", "letter", "photo"]:
 			close_modal()
 		elif modal == null:
 			_open_pause()
@@ -581,6 +606,15 @@ func open_tv() -> void:
 	open_modal(root, "tv")
 
 
+## Polish 5 §4: the photo by the front door, large on screen, no text; Interact or Esc closes it.
+func open_photo() -> void:
+	var ph: FramedPhoto = interior.get("photo")
+	if ph == null or modal != null:
+		return
+	open_modal(Panels.photo(hud, ph.texture), "photo")
+	AudioMgr.play("paper", -10.0)
+
+
 func radio_forecast() -> void:
 	AudioMgr.play("radio_jingle", -6.0)
 	# Polish 4 §1: the next three game hours, from the forecast model (the grader line as before).
@@ -588,6 +622,7 @@ func radio_forecast() -> void:
 
 
 func open_mailbox() -> void:
+	_end_talk_if("thought")      # polish 5 §4: the letter takes over from the door line
 	AudioMgr.play("mailbox", -4.0)
 	var title := ""
 	var body := ""
@@ -640,11 +675,14 @@ func neighbor_dialogue(n: Neighbor) -> void:
 				var pay := int(Game.flags.get("tutorial_pay", 45))
 				Contracts.create_tutorial_contract(pay)
 				Game.set_stage(Game.Stage.NEIGHBOR_TALKED)
-				Notify.push("Contract accepted: Gerry's path — %s. Clear the outlined path from his steps down to his mailbox." % UIKit.money(pay), Notify.GOOD))
+				Notify.push("Contract accepted: Gerry's path — %s. Clear the outlined path from his steps down to his mailbox." % UIKit.money(pay), Notify.GOOD)
+				# Polish 5 §4: then, on the HUD (you keep walking), the two ways to move snow.
+				say_gerry(HelpText.snow_tips()))
 		open_modal(root, "dialogue")
 	elif st == Game.Stage.NEIGHBOR_TALKED:
-		var r2 := Panels.dialogue(hud, [{"speaker": "Gerry", "text": "Just the path from my steps down to the mailbox — it's marked out for you. You're doing great!"}], func(_i): return [], close_modal)
-		open_modal(r2, "dialogue")
+		# Polish 5 §4: talking to him again during the job repeats the tip (on the HUD, with the
+		# keys bound now).
+		say_gerry(HelpText.snow_tips())
 	elif st == Game.Stage.TRAIL_DONE:
 		# Polish 3 §4: Gerry's lines from here on are spoken on the HUD; you keep walking.
 		if not n.invited:
@@ -653,7 +691,10 @@ func neighbor_dialogue(n: Neighbor) -> void:
 		elif not _talk_started:
 			say_gerry([{"speaker": "Gerry", "text": "Come on in — it's warm by the fire!"}])
 	elif st >= Game.Stage.COMPLETE and not is_gerry_talking():
-		say_gerry([{"speaker": "Gerry", "text": "Off you go now — and good luck with the business!"}])
+		if not Game.flags.get("truck_keys", false):
+			say_gerry([HelpText.keys_line()])     # polish 5 §4: until the keys are found
+		else:
+			say_gerry([{"speaker": "Gerry", "text": "Off you go now — and good luck with the business!"}])
 
 
 # --- Gerry's lines on the HUD (non-blocking: the player keeps control) ----------------------
@@ -685,6 +726,9 @@ static func line_seconds(text: String) -> float:
 
 func _talk_next() -> void:
 	_talk_i += 1
+	# Polish 5 §4: a line with "unless_flag" is skipped once that Game flag is set (the keys line).
+	while _talk_i < _talk.size() and _skip_line(_talk[_talk_i]):
+		_talk_i += 1
 	if _talk_i >= _talk.size():
 		_talk.clear()
 		hud.say("", "")
@@ -695,13 +739,75 @@ func _talk_next() -> void:
 		return
 	var ln: Dictionary = _talk[_talk_i]
 	_talk_t = line_seconds(str(ln.get("text", "")))
-	hud.say(str(ln.get("speaker", "")), str(ln.get("text", "")), _talk_i < _talk.size() - 1)
-	AudioMgr.play(AudioMgr.variant("neighbor_talk", 3), -6.0)
+	var more := false
+	for k in range(_talk_i + 1, _talk.size()):
+		more = more or not _skip_line(_talk[k])
+	hud.say(str(ln.get("speaker", "")), str(ln.get("text", "")), more)
+	if not ln.get("thought", false):     # the player's own thought (polish 5 §4) has no voice
+		AudioMgr.play(AudioMgr.variant("neighbor_talk", 3), -6.0)
 	if _talk_on_line.is_valid():
 		_talk_on_line.call(ln)
 
 
+static func _skip_line(ln: Dictionary) -> bool:
+	return ln.has("unless_flag") and bool(Game.flags.get(str(ln["unless_flag"]), false))
+
+
+## Polish 5 §4: stop what's being said if its current line is marked `key` ("thought": the door
+## line; "tip": Gerry's snow tips once the trail is done). Nothing else runs after it.
+func _end_talk_if(key: String) -> void:
+	if _talk.is_empty() or _talk_i < 0 or _talk_i >= _talk.size():
+		return
+	if not bool((_talk[_talk_i] as Dictionary).get(key, false)):
+		return
+	_talk.clear()
+	_talk_done = Callable()
+	_talk_on_line = Callable()
+	hud.say("", "")
+
+
+# --- Polish 5 §4: the door line --------------------------------------------------------------
+
+const DOOR_LINE := "Wow, that's a lot of snow. Better find my shovel."
+var _door_was_open := false
+var _door_line_due := false       # the door was opened: say it once the screen is free
+var _door_line_done := false      # the first opening from inside has happened (this session)
+var _morning_line_due := false    # the opening's "December 1…" subtitle is still to come
+
+
+## A shovel in your hands, slots or on the rack (the one buried outside doesn't count).
+static func has_shovel() -> bool:
+	var held: Array = Game.slots + [Game.carried] + Game.rack
+	for id in held:
+		var t: ToolData = Catalog.tool(StringName(str(id))) if str(id) != "" else null
+		if t != null and t.kind == ToolData.Kind.SHOVEL:
+			return true
+	return false
+
+
+## The first time the player opens the front door from inside, during the opening (before the
+## letter) and with no shovel, they think the line once, on the HUD: timed by its length, no modal,
+## never stopped. Derived from the stage and the tools held; nothing is saved. It waits while
+## another line is up (the morning's subtitle), and gives way to the letter and Gerry's cry.
+func _update_door_line() -> void:
+	var is_open := player_door != null and player_door.open
+	if is_open and not _door_was_open and not _door_line_done and player.in_player_house:
+		_door_line_done = true
+		_door_line_due = true
+	_door_was_open = is_open
+	if not _door_line_due:
+		return
+	if Game.stage() != Game.Stage.START or has_shovel():
+		_door_line_due = false
+		return
+	if modal != null or is_gerry_talking() or hud.subtitle_box.visible or _morning_line_due:
+		return
+	_door_line_due = false
+	say_gerry([{"speaker": "You", "text": DOOR_LINE, "thought": true}])
+
+
 func _update_tutorial(delta: float) -> void:
+	_update_door_line()
 	if not _talk.is_empty():
 		_talk_t -= delta
 		if _talk_t <= 0.0:
@@ -718,7 +824,8 @@ func _update_tutorial(delta: float) -> void:
 		# Both inside, Gerry by the fire: he talks you through the business.
 		if not _talk_started and player.in_neighbor_house and neighbor.mode == "inside":
 			_talk_started = true
-			say_gerry(HelpText.explanation(Game.is_survival()), _finish_tutorial, func(ln):
+			# Polish 5 §4: his last line sends you to your truck keys (skipped once they're found).
+			say_gerry(HelpText.explanation(Game.is_survival()) + [HelpText.keys_line()], _finish_tutorial, func(ln):
 				if str(ln["text"]).contains("computer") and neighbor and neighbor.mode == "inside":
 					neighbor.walk(Neighbor.path_fire_to_computer(), "computer"))
 	hud.set_objective(obj)

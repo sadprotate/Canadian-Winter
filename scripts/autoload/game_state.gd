@@ -101,10 +101,8 @@ func new_game(m: String, seed_override := -1) -> void:
 	start_winter(1)
 	# The opening: a buried small shovel beside the truck, keys lost in the front lawn.
 	var lot := Layout.player_lot
-	var sb: float = lot["setback"]
-	var truck := Layout.lot_to_world(lot, Layout.gu(lot, 6.0), sb - 4.4)
-	var face := Layout.lot_to_world(lot, Layout.gu(lot, 6.0), sb) - truck
-	vehicles.append({"uid": uid(), "id": "pickup", "pos": Vector3(truck.x, 0, truck.y), "yaw": atan2(face.x, face.y), "snow": 0.55})
+	var ts := truck_start()
+	vehicles.append({"uid": uid(), "id": "pickup", "pos": ts["pos"], "yaw": ts["yaw"], "snow": 0.55})
 	var sh := shovel_spot()
 	items.append({"uid": uid(), "tool": "small_shovel", "pos": Vector3(sh.x, 0.0, sh.y), "yaw": 0.6, "buried": true})
 	# The snow over the shovel forms a slightly bigger, odd-looking oblong pile (polish §4).
@@ -114,6 +112,16 @@ func new_game(m: String, seed_override := -1) -> void:
 	flags["truck_keys"] = false
 	flags["computer_unlocked"] = false
 	dirty_since_save = true
+
+
+## Where the pickup stands on the first morning: in the driveway, its tailgate to the garage
+## (pos, yaw). Polish 5 §4: the framed photo places the shovel from this and shovel_spot().
+func truck_start() -> Dictionary:
+	var lot := Layout.player_lot
+	var sb: float = lot["setback"]
+	var truck := Layout.lot_to_world(lot, Layout.gu(lot, 6.0), sb - 4.4)
+	var face := Layout.lot_to_world(lot, Layout.gu(lot, 6.0), sb) - truck
+	return {"pos": Vector3(truck.x, 0, truck.y), "yaw": atan2(face.x, face.y)}
 
 
 ## Where the small shovel lies buried: beside the truck, on its far side from the house.
