@@ -4738,7 +4738,8 @@ func test_s10_due_times() -> void:
 	pl.teleport(Vector3(mid.x, Snow.surface_height(mid.x, mid.y) + 0.05, mid.y))
 	await _frames(20)
 	var hud: HUD = world.hud
-	runner.check(hud.alert_l.text.contains(hud_alert) and hud.contract_l.text.contains("Due %s  (1 h left)" % Contracts.due_text(a)), "§10 the HUD: \"%s\" and the box line \"%s\"" % [hud.alert_l.text.split("\n")[0], hud.contract_l.text.replace("\n", " | ")])
+	# §10b: the box line is one line, "Your contract · ‹place› — ‹box› N% · due ‹time›" (was a second line "Due …").
+	runner.check(hud.alert_l.text.contains(hud_alert) and hud.contract_l.text.ends_with(" · due %s" % Contracts.due_text(a)) and not hud.contract_l.text.contains("\n"), "§10 the HUD: \"%s\" and the box line \"%s\"" % [hud.alert_l.text.split("\n")[0], hud.contract_l.text.replace("\n", " | ")])
 	var comp := await _s7_open()
 	comp._open_app(ComputerUI.app_index("contracts"))
 	await _frames(2)
@@ -4989,4 +4990,374 @@ func test_s10_board_live() -> void:
 	Contracts._rival_bid(l, 0, s0 - 5, Clock.minutes + 61.0)
 	var o2 := _s10_notes_since(n0, "Outbid on " + l["address"]).size()
 	runner.check(o1 == 1 and o2 == 2, "§10 with the board closed: \"Outbid on %s\", at most once per listing per game hour (%d, then %d)" % [l["address"], o1, o2])
+	await _unload()
+
+
+# =============================================================================
+# §10 Contracts — §10b: no flags (the jobs' green outlines), the map, the HUD box line; the board
+# updated in place, and street sections need a plow or a blower vehicle
+# =============================================================================
+
+## A colour that reads green / blue (the outlines' money green / the light blue).
+static func _s10b_green(c: Color) -> bool:
+	return c.g > c.r * 2.0 and c.g > c.b * 1.6
+
+
+static func _s10b_blue(c: Color) -> bool:
+	return c.b >= c.g and c.b > c.r * 1.3
+
+
+## Snow on every box of a listing (so the job has something to clear), then the job won outright.
+func _s10b_win(l: Dictionary, depth := 0.2) -> Dictionary:
+	for z in l["zones"]:
+		for id in z["boxes"]:
+			var b := Boxes.get_box(id)
+			for r in b["rects"]:
+				Snow.add_layer_rect(r, depth)
+			Boxes.measure(b, true)
+	l["type"] = "one_time" if l["type"] == "recurring" else l["type"]
+	return Contracts.force_award(int(l["lid"]))
+
+
+func _s10b_lot_listing(number: int, street: String, kind: String) -> Dictionary:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = number * 7 + kind.length()
+	return Contracts._add_lot_listing(Layout.lot_by_address(number, street), Clock.day_index(), rng, kind)
+
+
+func _s10b_stand(p: Vector2) -> void:
+	world.player.teleport(Vector3(p.x, Snow.surface_height(p.x, p.y) + 0.05, p.y))
+
+
+## A box's middle (its first rect's centre).
+static func _s10b_mid(id: String) -> Vector2:
+	return (Boxes.get_box(id)["rects"][0] as Rect2).get_center()
+
+
+## No stakes or flags for any contract: every incomplete box of an active job near the player has the
+## persistent quest-mode outline in money green (laid a few per scan, re-draped at a low rate, streets
+## drawn within 30 m), far ones none; the work outline is green on a job's box (the persistent one gives
+## way, so it isn't drawn twice) and blue on any other; Gerry's trail stays blue; at night the green is
+## dimmed and still green; a finished box loses its outline and flashes.
+func test_s10b_no_flags_green_outlines() -> void:
+	await _unload()
+	Game.force_input = true
+	Game.new_game("fun", 2024)
+	Game.flags["mail_read"] = true
+	Game.set_stage(Game.Stage.LETTER_READ)
+	Contracts.create_tutorial_contract(55)
+	Game.set_stage(Game.Stage.NEIGHBOR_TALKED)   # Gerry's trail on: its blue quest outline
+	Clock.reset(Clock.at(1, 12.0))
+	await _spawn_world()
+	Clock.running = false
+	Weather.force(Weather.C.CLEAR, 48.0)
+	var zm: ZoneMarkers = world.zone_markers
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 3
+	var day := Clock.day_index()
+	# Jobs of every kind around the player's house, and a parking lot far away.
+	var jd := _s10b_win(_s10b_lot_listing(20, Layout.STREET_MAPLE, "driveway"))
+	var jp := _s10b_win(_s10b_lot_listing(12, Layout.STREET_MAPLE, "path"))
+	var jw := _s10b_win(Contracts._add_walk_listing("B_w", day, rng))
+	var jr := _s10b_win(Contracts._add_municipal_listing(Layout.road_segments[0], day, rng))
+	var jf := _s10b_win(Contracts._add_area_listing(Layout.big_areas[2], day, rng))
+	var home := Layout.player_lot
+	var stand := Layout.lot_to_world(home, 0.0, -6.0)    # in the street in front of the house
+	_s10b_stand(stand)
+	zm._t = 0.0
+	await _frames(1)
+	runner.check(zm.outlines.size() == ZoneMarkers.LAY_PER_SCAN, "§10b the outlines are laid a few per scan (%d after one)" % zm.outlines.size())
+	await _frames(240)
+	var pp := Vector2(Game.player_pos.x, Game.player_pos.z)
+	# No stake or flag node for any contract.
+	var stray := []
+	for n in zm.get_children():
+		if not (n is BoxOutline) and n != zm._flash:
+			stray.append(n.name)
+	runner.check(zm._stakes.is_empty() and stray.is_empty() and not ("_stake_mesh" in zm), "§10b no stake or flag node for any contract (stray nodes: %s)" % str(stray))
+	# Every incomplete box of a job near the player: the persistent outline, money green; far: none.
+	var near_ids := []
+	var far_ids := []
+	for c in [jd, jp, jw, jr, jf]:
+		for id in Contracts.contract_boxes(c):
+			if Boxes.is_complete(id):
+				continue
+			if ZoneMarkers._box_dist(Boxes.get_box(id), pp) <= ZoneMarkers.LAY_RADIUS:
+				near_ids.append(id)
+			else:
+				far_ids.append(id)
+	var bad := []
+	for id in near_ids:
+		var ol: BoxOutline = zm.outlines.get(id)
+		if ol == null or not ol.visible or not ol.job or ol.alpha < 0.9 or not _s10b_green(ol.line_color()) or ol.box_id != id:
+			bad.append(id)
+	runner.check(near_ids.size() >= 6 and bad.is_empty() and far_ids.all(func(id): return not zm.outlines.has(id)) and zm.outlines.size() == near_ids.size(),
+		"§10b every incomplete job box near the player is outlined in money green (%d: %s; wrong %s), the far ones aren't (%s)" % [near_ids.size(), str(near_ids), str(bad), str(far_ids)])
+	var drv_id: String = Contracts.contract_boxes(jd)[0]
+	var road_id: String = Contracts.contract_boxes(jr)[0]
+	# Gerry's trail: the blue quest outline, unchanged.
+	var qo: BoxOutline = world.quest_outline
+	runner.check(qo.visible and qo.box_id == "gerry_trail" and not qo.job and _s10b_blue(qo.line_color()) and not zm.outlines.has("gerry_trail"), "§10b Gerry's trail keeps its blue outline (%s)" % str(qo.line_color()))
+	# Streets are drawn within 30 m of the player, as before.
+	var road_ol: BoxOutline = zm.outlines.get(road_id)
+	var aabb: AABB = road_ol.mesh.get_aabb() if road_ol else AABB()
+	runner.check(road_ol != null and aabb.size.x > 10.0 and aabb.size.x <= BoxOutline.DRAW_RADIUS * 2.0 + 1.0 and (Boxes.get_box(road_id)["rects"][0] as Rect2).size.x > aabb.size.x,
+		"§10b the street's outline is drawn within %d m of the player (%.1f m of its %.0f m)" % [int(BoxOutline.DRAW_RADIUS), aabb.size.x, (Boxes.get_box(road_id)["rects"][0] as Rect2).size.x])
+	# Re-draped at a low rate: often only at the box the player is at (a street or a parking lot as
+	# often as the work outline re-drapes one); elsewhere at most every REDRAPE_FAR_S, once its snow changed.
+	var rates_ok := true
+	for id in zm.outlines.keys():
+		var bx := Boxes.get_box(id)
+		var near := ZoneMarkers._box_dist(bx, pp) <= ZoneMarkers.NEAR_DIST
+		var want := (ZoneMarkers.REDRAPE_NEAR_BIG_S if bool(bx["big"]) else ZoneMarkers.REDRAPE_NEAR_S) if near else ZoneMarkers.REDRAPE_FAR_S
+		var ol: BoxOutline = zm.outlines[id]
+		rates_ok = rates_ok and is_equal_approx(ol.rebuild_s, want) and is_equal_approx(ol.redrape_depth, 0.0 if near else ZoneMarkers.REDRAPE_DEPTH)
+	runner.check(rates_ok and is_equal_approx((zm.outlines[road_id] as BoxOutline).rebuild_s, ZoneMarkers.REDRAPE_NEAR_BIG_S) and is_equal_approx((zm.outlines[drv_id] as BoxOutline).rebuild_s, ZoneMarkers.REDRAPE_FAR_S)
+		and zm.outlines.keys().any(func(id): return is_equal_approx((zm.outlines[id] as BoxOutline).rebuild_s, ZoneMarkers.REDRAPE_NEAR_S)),
+		"§10b re-draped every %.2f s at the box the player is at (%.1f s a street), at most every %.1f s elsewhere and only once its snow changed" % [ZoneMarkers.REDRAPE_NEAR_S, ZoneMarkers.REDRAPE_NEAR_BIG_S, ZoneMarkers.REDRAPE_FAR_S])
+	# Working another box (the player's own driveway): the work outline is blue.
+	var own := Boxes.get_box(Boxes.lot_box(home, "driveway"))
+	for r in own["rects"]:
+		Snow.add_layer_rect(r, 0.2)
+	Boxes.measure(own, true)
+	var bo: BoxOutline = world.box_outline
+	_s10b_stand(_s10b_mid(own["id"]))
+	for i in range(20):
+		Boxes.note_work(_s10b_mid(own["id"]))
+		await _frames(1)
+	runner.check(bo.visible and bo.box_id == own["id"] and not bo.job and _s10b_blue(bo.line_color()), "§10b the work outline on any other box stays blue (%s)" % str(bo.line_color()))
+	# Working a job's box: the work outline is green, and the persistent one gives way to it.
+	_s10b_stand(_s10b_mid(drv_id))
+	for i in range(30):
+		Boxes.note_work(_s10b_mid(drv_id))
+		await _frames(1)
+	var pol: BoxOutline = zm.outlines.get(drv_id)
+	runner.check(bo.visible and bo.box_id == drv_id and bo.job and bo.alpha > 0.95 and _s10b_green(bo.line_color()) and pol != null and pol.alpha < 0.05,
+		"§10b working a job's box: the work outline is money green (%s), the persistent one gives way (alpha %.2f)" % [str(bo.line_color()), pol.alpha if pol else -1.0])
+	await _frames(int((BoxOutline.HOLD_S + BoxOutline.FADE_S + 0.8) * 60.0))
+	runner.check(not bo.visible and pol.visible and pol.alpha > 0.95 and _s10b_green(pol.line_color()), "§10b …when the work stops the persistent green outline is back (alpha %.2f)" % pol.alpha)
+	# At night: dimmed, and still clearly green on the snow.
+	var day_col := pol.line_color()
+	Clock.reset(Clock.at(1, 23.0))
+	await _frames(10)
+	var night_col := pol.line_color()
+	runner.check(world.day_night.night > 0.9 and _s10b_green(night_col) and night_col.g < day_col.g and night_col.a >= 0.8 and _s10b_blue(qo.line_color()),
+		"§10b at night the green is dimmed (%s → %s) and still green; the trail still blue" % [str(day_col), str(night_col)])
+	# A finished box: its outline goes, the completion flash plays.
+	for r in Boxes.get_box(drv_id)["rects"]:
+		Snow.set_rect(r, 0.0)
+	Boxes.measure(Boxes.get_box(drv_id), true)
+	await _frames(2)
+	var gone_now := not is_instance_valid(pol) or not pol.visible
+	await _frames(40)
+	runner.check(jd["status"] == "completed" and gone_now and not zm.outlines.has(drv_id) and zm._flash.visible, "§10b a finished box loses its outline at once (and the flash plays)")
+	await _unload()
+
+
+## The HUD box line: in a box of one of your jobs, one line — "Your contract · ‹address› — ‹box› N% · due
+## ‹time›"; in any other box, and on Gerry's trail, as before.
+func test_s10b_hud_box_line() -> void:
+	await _s3_world()
+	Weather.force(Weather.C.CLEAR, 48.0)
+	var hud: HUD = world.hud
+	var day := Clock.day_index()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4
+	var jd := _s10b_win(_s10b_lot_listing(20, Layout.STREET_MAPLE, "driveway"))
+	var drv := Boxes.get_box(Contracts.contract_boxes(jd)[0])
+	_s10b_stand(_s10b_mid(drv["id"]))
+	await _frames(30)
+	var want := "Your contract · %s — %s %d%% · due %s" % [drv["place"], drv["name"], int(floor(float(drv["progress"]) * 100.0)), Contracts.due_text(jd)]
+	var t := hud.contract_l.text
+	runner.check(hud.contract_panel.visible and t == want and t.begins_with("Your contract · 20 Maple Street — Driveway ") and t.ends_with(" · due 9 p.m. %s" % Clock.weekday(day + 1, Game.year)),
+		"§10b in a box of your job: \"%s\"" % t)
+	runner.check(hud.contract_l.get_line_count() == 1 and is_equal_approx(hud.contract_panel.offset_left, -hud.contract_panel.offset_right) and hud.contract_panel.size.x <= HUD.BOX_LINE_MAX_W + 0.5,
+		"§10b …on one line, the panel centred (%.0f px wide)" % hud.contract_panel.size.x)
+	# Any other box: as before.
+	var own := Boxes.get_box(Boxes.lot_box(Layout.player_lot, "driveway"))
+	_s10b_stand(_s10b_mid(own["id"]))
+	await _frames(30)
+	t = hud.contract_l.text
+	var amount := "clear ✓" if own["complete"] else "%d%%" % int(floor(float(own["progress"]) * 100.0))
+	runner.check(t == "%s — %s   %s" % [own["place"], own["name"], amount] and not t.contains("contract"), "§10b in any other box, as before: \"%s\"" % t)
+	# The longest place, a parking lot: still one line, centred.
+	var ja := _s10b_win(Contracts._add_area_listing(Layout.big_areas[2], day, rng))
+	var lotb := Boxes.get_box(Contracts.contract_boxes(ja)[0])
+	_s10b_stand(_s10b_mid(lotb["id"]))
+	await _frames(30)
+	t = hud.contract_l.text
+	runner.check(t.begins_with("Your contract · %s — Parking lot " % Layout.big_areas[2]["place"]) and t.contains(" · due ") and hud.contract_l.get_line_count() == 1 and is_equal_approx(hud.contract_panel.offset_left, -hud.contract_panel.offset_right),
+		"§10b a parking lot's line, one line, centred: \"%s\"" % t)
+	# A visit waiting for its snowfall to stop; a clear box of a client waiting for snow; Gerry's trail.
+	var jv := _s10b_win(_s10b_lot_listing(24, Layout.STREET_MAPLE, "path"))
+	jv["type"] = "recurring"
+	jv["status"] = "needs_service"
+	jv["due"] = -1.0
+	var pb := Boxes.get_box(Contracts.contract_boxes(jv)[0])
+	runner.check(HUD.box_line(pb, jv).ends_with(" · due 9 p.m. the day after the snow stops"), "§10b a visit waiting for the snow to stop: \"%s\"" % HUD.box_line(pb, jv))
+	jv["status"] = "serviced"
+	var done_b := pb.duplicate()
+	done_b["complete"] = true
+	runner.check(HUD.box_line(done_b, jv) == "Your contract · %s — %s clear ✓" % [pb["place"], pb["name"]], "§10b a client's clear box: \"%s\"" % HUD.box_line(done_b, jv))
+	var tut := Contracts.create_tutorial_contract(55)
+	var tb := Boxes.get_box("gerry_trail")
+	runner.check(HUD.box_line(tb, tut) == "Contract · %s — %s   %d%%" % [tb["place"], tb["name"], int(floor(float(tb["progress"]) * 100.0))], "§10b Gerry's trail as before: \"%s\"" % HUD.box_line(tb, tut))
+	await _unload()
+
+
+## The map: your jobs' boxes in the outlines' money green, a lot's number in green with the day it's
+## due, and a parking lot's, a street's and a sidewalk section's address in green on their boxes — no
+## label over another, at three screen shapes.
+func test_s10b_map_jobs() -> void:
+	await _s3_world()
+	var day := Clock.day_index()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 6
+	var jobs := [_s10b_win(_s10b_lot_listing(20, Layout.STREET_MAPLE, "driveway")), _s10b_win(_s10b_lot_listing(27, Layout.STREET_BIRCH, "path")),
+		_s10b_win(Contracts._add_area_listing(Layout.big_areas[1], day, rng)), _s10b_win(Contracts._add_municipal_listing(Layout.road_segments[0], day, rng)),
+		_s10b_win(Contracts._add_municipal_listing(Layout.road_segments[5], day, rng)), _s10b_win(Contracts._add_walk_listing("C_e", day, rng))]
+	var m := MapUI.new()
+	world.ui.add_child(m)
+	world.open_modal(m, "map")
+	await _frames(2)
+	for vs in [Vector2(1920, 1080), Vector2(1920, 1440), Vector2(2520, 1080)]:
+		var ls: Array = m.labels(vs)
+		var probs := []
+		for c in jobs:
+			var t := str(c["target"])
+			if t.begins_with("lot:"):
+				var nl := ls.filter(func(l): return l["kind"] == "number" and "lot:" + str(l["key"]) == t)
+				var tl := ls.filter(func(l): return l["kind"] == "tag" and "lot:" + str(l["key"]) == t)
+				if nl.size() != 1 or nl[0]["color"] != BoxOutline.JOB_COLOR or tl.size() != 1 or tl[0]["text"] != MapUI.due_tag(c):
+					probs.append("%s: number / due" % c["address"])
+				continue
+			var jl := ls.filter(func(l): return l["kind"] == "job" and l["key"] == t)
+			if jl.size() != 1:
+				probs.append("%s: %d labels" % [c["address"], jl.size()])
+				continue
+			var span := Rect2()
+			var first := true
+			for id in Contracts.contract_boxes(c):
+				for r in Boxes.get_box(id)["rects"]:
+					span = r if first else span.merge(r)
+					first = false
+			var sr := Rect2(m._to_px(span.position), span.size * m.scale_px)
+			var lr: Rect2 = jl[0]["rect"]
+			var want_txt: String = MapUI.job_address(c) + "  ·  " + MapUI.due_tag(c)
+			if jl[0]["text"] != want_txt or jl[0]["color"] != BoxOutline.JOB_COLOR or int(jl[0]["size"]) < 12 or not sr.grow(minf(lr.size.x, lr.size.y) * 2.5).intersects(lr):
+				probs.append("%s: \"%s\" at %s (boxes %s)" % [c["address"], jl[0]["text"], str(lr), str(sr)])
+		var over := []
+		for i in range(ls.size()):
+			for j in range(i + 1, ls.size()):
+				if (ls[i]["rect"] as Rect2).intersects(ls[j]["rect"]):
+					over.append("%s / %s" % [ls[i]["text"], ls[j]["text"]])
+		runner.check(probs.is_empty() and over.is_empty(), "§10b the map at %dx%d: every job's address in green by its boxes (%d labels) %s, none overlapping %s" % [vs.x, vs.y, ls.size(), str(probs), str(over)])
+	var j0b := Boxes.get_box(Contracts.contract_boxes(jobs[0])[0])
+	var look0: Array = MapUI.job_box_look(j0b)
+	var cb := j0b.duplicate()
+	cb["complete"] = true
+	var look1: Array = MapUI.job_box_look(cb)
+	var big_b := Boxes.get_box(Contracts.contract_boxes(jobs[2])[0])
+	var look2: Array = MapUI.job_box_look(big_b)
+	runner.check(not j0b["complete"] and Color(look0[0], 1.0) == BoxOutline.JOB_COLOR and look0[0].a >= 0.85 and look1[1] == BoxOutline.JOB_COLOR
+		and not big_b["complete"] and Color(look2[0], 1.0) == BoxOutline.JOB_COLOR and look2[1] == BoxOutline.JOB_COLOR,
+		"§10b a job's box to clear is filled with the outlines' green (a parking lot or a street lighter, with a green edge); once clear, light green with a green edge")
+	world.close_modal()
+	await _unload()
+
+
+## Street sections need a plow or a blower vehicle as well as the City tier (the old requirement, kept for
+## streets only); sidewalk sections need the reputation only. Shown on the board as a lock line with no
+## bid controls; place_bid refuses it.
+func test_s10b_street_needs_a_vehicle() -> void:
+	await _s3_world()
+	Game.company_name = "Street Co."
+	var day := Clock.day_index()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 8
+	var th: PackedFloat32Array = Catalog.balance.rep_tier_thresholds
+	Contracts.adjust_reputation(th[2] - Game.reputation)
+	var lr := Contracts._add_municipal_listing(Layout.road_segments[1], day, rng)
+	var lw := Contracts._add_walk_listing("D_w", day, rng)
+	var r1 := Contracts.place_bid(int(lr["lid"]), int(lr["budget"]))
+	runner.check(Contracts.tier_index() == 2 and Contracts.equipment_capability() < 3 and Contracts.listing_locked(lr) and Contracts.listing_lock_text(lr) == "Needs a plow or a blower vehicle"
+		and not r1["ok"] and r1["msg"] == "Needs a plow or a blower vehicle." and int(lr["bid"]) == 0, "§10b City tier, hand tools: a street section is locked, no bid (\"%s\")" % r1["msg"])
+	runner.check(not Contracts.listing_locked(lw) and Contracts.place_bid(int(lw["lid"]), int(lw["budget"]))["ok"], "§10b …a sidewalk section needs the reputation only")
+	var comp := await _s7_open()
+	comp._open_app(ComputerUI.app_index("board"))
+	await _frames(2)
+	var card: Node = _s10_card(comp, int(lr["lid"]))
+	var txt := _s2_texts(card) if card else ""
+	runner.check(card != null and txt.contains("Needs a plow or a blower vehicle") and card.find_children("*", "LineEdit", true, false).is_empty() and not txt.contains("Place bid"),
+		"§10b the board: the lock line, no bid controls:\n%s" % txt)
+	# A plow (or a blower) vehicle unlocks it — at the City tier.
+	var ve := {"uid": Game.uid(), "id": "plow_truck", "pos": Vector3(20, 0, 84), "yaw": 0.0, "snow": 0.0}
+	Game.vehicles.append(ve)
+	world.spawn_vehicle_node(ve)
+	comp._rebuild(false)
+	await _frames(2)
+	card = _s10_card(comp, int(lr["lid"]))
+	runner.check(Contracts.equipment_capability() == 3 and not Contracts.listing_locked(lr) and card != null and not card.find_children("*", "LineEdit", true, false).is_empty() and Contracts.place_bid(int(lr["lid"]), int(lr["budget"]))["ok"],
+		"§10b with a plow vehicle: open, bid placed")
+	world.close_modal()
+	await _frames(2)
+	Contracts.adjust_reputation(th[1] + 1.0 - Game.reputation)
+	runner.check(Contracts.listing_lock_text(lr) == "Needs reputation %d" % int(th[2]) and not Contracts.place_bid(int(lr["lid"]), int(lr["budget"]) - 1)["ok"], "§10b …and below City it needs the reputation (\"%s\")" % Contracts.listing_lock_text(lr))
+	await _unload()
+
+
+## The board updates the listings that change in place: placing, changing and withdrawing a bid and a
+## rival's bid don't rebuild the board (§10a rebuilt all its cards on every bid: 20–49 ms frames).
+func test_s10b_board_updates_in_place() -> void:
+	await _s3_world()
+	Game.company_name = "In Place Co."
+	Clock.running = false
+	var comp := await _s7_open()
+	comp._open_app(ComputerUI.app_index("board"))
+	await _frames(2)
+	var open_l: Array = Contracts.listings.filter(func(x): return not Contracts.listing_locked(x) and not bool(x.get("closed", false)))
+	runner.check(open_l.size() >= 2, "§10b the board has listings to bid on (%d)" % open_l.size())
+	var l: Dictionary = open_l[0]
+	var lid := int(l["lid"])
+	for rv in l["rivals"]:
+		rv["bid"] = 0
+	var cards := {}
+	for x in Contracts.listings:
+		cards[int(x["lid"])] = _s10_card(comp, int(x["lid"]))
+	var at := (cards[lid] as Node).get_index()
+	await _s7_press(cards[lid], "Place bid")
+	var same := true
+	for k in cards.keys():
+		if k != lid and _s10_card(comp, k) != cards[k]:
+			same = false
+	var c1: Node = _s10_card(comp, lid)
+	runner.check(int(l["bid"]) > 0 and same and c1 != null and c1.get_index() == at and _s2_texts(c1).contains("Winning") and _s2_texts(c1).contains("Withdraw"),
+		"§10b placing a bid rebuilds only its card, in its place; every other card untouched")
+	var n_children := comp.content.get_child_count()
+	Contracts._rival_bid(l, 0, int(l["bid"]) - 3, Clock.minutes)
+	await _frames(3)
+	var c2: Node = _s10_card(comp, lid)
+	var nb := Contracts.bid_count(l)
+	var low := int(Contracts.bid_status(l)["lowest"])
+	runner.check(c2 == c1 and low == int(l["bid"]) - 3 and _s2_texts(c2).contains("Outbid · lowest bid $%d" % low) and _s2_texts(c2).contains("%d bids" % nb) and comp.content.get_child_count() == n_children,
+		"§10b a rival's bid updates the card in place: \"Outbid · lowest bid $%d\", %d bids" % [low, nb])
+	var sl: HSlider = c2.find_children("*", "HSlider", true, false)[0]
+	sl.value = int(l["bid"]) - 5
+	await _s7_press(c2, "Change bid")
+	runner.check(_s10_card(comp, lid) == c1 and _s2_texts(c1).contains("Winning") and int(l["bid"]) == int(sl.value), "§10b changing the bid: the same card, \"Winning\"")
+	await _frames(int(2.5 * 60.0))
+	same = true
+	for k in cards.keys():
+		if k != lid and _s10_card(comp, k) != cards[k]:
+			same = false
+	runner.check(same and _s10_card(comp, lid) == c1, "§10b the live refresh rebuilds nothing")
+	await _s7_press(c1, "Withdraw")
+	var c3: Node = _s10_card(comp, lid)
+	runner.check(int(l["bid"]) == 0 and c3 != null and c3 != c1 and c3.get_index() == at and _s2_texts(c3).contains("Place bid"), "§10b withdrawing: its card rebuilt in its place")
+	# A new listing: the board is rebuilt with it.
+	var nl := _s10b_lot_listing(31, Layout.STREET_BIRCH, "path")
+	Contracts.changed.emit()
+	await _frames(3)
+	runner.check(_s10_card(comp, int(nl["lid"])) != null, "§10b a new listing: the board is rebuilt with it")
+	world.close_modal()
 	await _unload()

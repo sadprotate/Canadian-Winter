@@ -587,16 +587,26 @@ func test_gerry_trail_is_outlined_without_flags() -> void:
 	world.player.teleport(Vector3((drv["rects"][0] as Rect2).get_center().x, 0.05, (drv["rects"][0] as Rect2).get_center().y))
 	await _frames(20)
 	runner.check(world.box_outline.visible and world.box_outline.box_id == drv["id"] and qo.visible, "Working another box shows its usual outline alongside")
-	# Real contracts keep their stakes.
+	# Real contracts: no stakes either since polish 5 §10 (the contract stakes and flags are now
+	# outlines) — every box of the job is outlined like the trail, in the job's money green, while the
+	# trail stays blue.
 	Contracts._add_lot_listing(Layout.lots[4], 0, RandomNumberGenerator.new())
 	var l: Dictionary = Contracts.listings[Contracts.listings.size() - 1]
 	var rc := Contracts.force_award(int(l["lid"]))
+	# (Outlines are laid near the player: stand at the job.)
+	var rmid := (Boxes.get_box(Contracts.contract_boxes(rc)[0])["rects"][0] as Rect2).get_center()
+	world.player.teleport(Vector3(rmid.x, Snow.surface_height(rmid.x, rmid.y) + 0.05, rmid.y + 6.0))
 	await _frames(40)
 	var rstakes := 0
 	for k in world.zone_markers._stakes.keys():
 		if str(k).begins_with("%d_" % int(rc["id"])):
 			rstakes += 1
-	runner.check(rstakes > 0, "Real contracts still get their stakes (%d)" % rstakes)
+	for n in world.zone_markers.get_children():
+		if n is MeshInstance3D and not (n is BoxOutline) and n != world.zone_markers._flash:
+			rstakes += 1
+	var rboxes := Contracts.contract_boxes(rc)
+	var routlined := rboxes.all(func(id): return world.zone_markers.outlines.has(id) and (world.zone_markers.outlines[id] as BoxOutline).visible and (world.zone_markers.outlines[id] as BoxOutline).job)
+	runner.check(rstakes == 0 and not rboxes.is_empty() and routlined and not qo.job, "Real contracts get no stakes (%d): their boxes are outlined like the trail, in the job's green (the trail stays blue)" % rstakes)
 	# Completion: the outline goes and the usual work outline behaviour returns.
 	_finish_trail()
 	await _frames(5)

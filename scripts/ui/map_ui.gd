@@ -3,6 +3,9 @@ extends Control
 ## Neighborhood map (Part 23): roads, houses, addresses, store, player's home, current position and
 ## active contract properties on a simple grid. No GPS routes, no waypoints. Polish 5 §5: every
 ## house and building number on its lot, the street names, no label over another (labels()).
+## Polish 5 §10: your jobs' boxes in the money green of their outlines on the snow
+## (BoxOutline.JOB_COLOR), with their addresses: a lot's number in green with the day it's due under
+## it, and a green label with the address on the boxes of a parking lot, street or sidewalk job.
 
 signal closed
 
@@ -47,6 +50,8 @@ func _fit(vs: Vector2) -> void:
 # contract there is due under it), the parking lots — so none overlaps another (the test reads this).
 
 const NUMBER_SIZE := 18       # house numbers (px at the 1920 × 1080 canvas)
+const JOB_SIZE := 13          # polish 5 §10: a job's address on its boxes…
+const JOB_PAD := 3.0          # …on a green tag this much larger than the text (px)
 const NAME_SIZE := 14
 const STREET_SIZE := 15
 const DARK := Color(0.1, 0.12, 0.2)
@@ -125,7 +130,7 @@ func labels(vs: Vector2) -> Array:
 	for lot in Layout.lots:
 		var u := Layout.gu(lot, -7.5) if not lot["vacant"] else 0.0
 		var is_c := targets.has("lot:%d" % lot["index"])
-		var num := _label(str(lot["number"]), Vector2.ZERO, NUMBER_SIZE, Color(0.8, 0.3, 0.0) if is_c else DARK, "number", str(lot["index"]), false, true)
+		var num := _label(str(lot["number"]), Vector2.ZERO, NUMBER_SIZE, BoxOutline.JOB_COLOR if is_c else DARK, "number", str(lot["index"]), false, true)
 		# Its top edge just inside the lot's street edge (v = 0.4 m), whichever way the lot faces.
 		var v := 0.4 + (num["rect"] as Rect2).size.y * 0.5 / scale_px
 		_move(num, _to_px(Layout.lot_to_world(lot, u, v)))
@@ -144,14 +149,67 @@ func labels(vs: Vector2) -> Array:
 			var left: float = Contracts.hours_left(tc)
 			if left < INF:
 				tag = due_tag(tc)
-				tag_col = Color(0.85, 0.1, 0.05) if left <= Catalog.balance.contract_warn_hours else Color(0.7, 0.35, 0.0)
+				tag_col = Color(0.85, 0.1, 0.05) if left <= Catalog.balance.contract_warn_hours else BoxOutline.JOB_COLOR
 		if tag != "":
 			# Under the number, towards the house.
 			var tl := _label(tag, Vector2.ZERO, 12, tag_col, "tag", str(lot["index"]), false, true)
 			var vt := v + ((num["rect"] as Rect2).size.y * 0.5 + 1.0 + (tl["rect"] as Rect2).size.y * 0.5) / scale_px
 			_move(tl, _to_px(Layout.lot_to_world(lot, u, vt)))
 			out.append(tl)
+	# Polish 5 §10: a job that isn't on a lot gets its address (and the day it's due) on its boxes.
+	for t in targets.keys():
+		if not str(t).begins_with("lot:"):
+			out.append(_job_label(targets[t], out))
 	return out
+
+
+## The address shown on the map for a job off the lots: a parking lot's street address (its
+## building's name is already on the lot), a street section's or a sidewalk section's name.
+static func job_address(c: Dictionary) -> String:
+	var t := str(c["target"])
+	if t.begins_with("area:"):
+		for a in Layout.big_areas:
+			if "area:" + str(a["id"]) == t and str(a.get("address", "")) != "":
+				return str(a["address"])
+	return str(c["address"])
+
+
+## A job's address label in money green, on (or right by) its boxes: the first of a few places along
+## its boxes, then beside them, that doesn't cover a label already placed. Along a north-south
+## street it reads upwards, like CEDAR LANE.
+func _job_label(c: Dictionary, placed: Array) -> Dictionary:
+	var text := job_address(c)
+	if Contracts.hours_left(c) < INF:
+		text += "  ·  " + due_tag(c)
+	var span := Rect2()
+	var first := true
+	for id in Contracts.contract_boxes(c):
+		for r in Boxes.get_box(id).get("rects", []):
+			span = (r as Rect2) if first else span.merge(r as Rect2)
+			first = false
+	var sr := _rect_px(span)
+	var up := sr.size.y > sr.size.x * 2.0
+	var lbl := _label(text, sr.get_center(), JOB_SIZE, BoxOutline.JOB_COLOR, "job", str(c["target"]), up, false)
+	# Drawn as white text on a money-green tag (readable over the boxes' green, a street or the snow).
+	lbl["pill"] = true
+	lbl["rect"] = (lbl["rect"] as Rect2).grow(JOB_PAD)
+	var lr: Rect2 = lbl["rect"]
+	var map_r := Rect2(origin, Vector2(Layout.MAP_W, Layout.MAP_D) * scale_px)
+	var along := Vector2(0, 1) if up else Vector2(1, 0)
+	var across := Vector2(1, 0) if up else Vector2(0, 1)
+	var long := sr.size.y if up else sr.size.x
+	var step: float = (lr.size.x if up else lr.size.y) + 3.0
+	for k in [0.0, 1.0, -1.0, 2.0, -2.0]:
+		for f in [0.5, 0.35, 0.65, 0.2, 0.8]:
+			var cpos: Vector2 = sr.position + sr.size * 0.5 + along * (f - 0.5) * long + across * k * step
+			var cand := Rect2(cpos - lr.size * 0.5, lr.size)
+			if not map_r.encloses(cand):
+				continue
+			if placed.any(func(o): return (o["rect"] as Rect2).intersects(cand)):
+				continue
+			_move(lbl, cpos)
+			return lbl
+	return lbl
 
 
 func _move(l: Dictionary, center: Vector2) -> void:
@@ -165,13 +223,18 @@ func _draw_label(l: Dictionary) -> void:
 	var ts: Vector2 = l["text_size"]
 	var sz: int = l["size"]
 	var base := Vector2(-ts.x * 0.5, -ts.y * 0.5 + font.get_ascent(sz))
+	var col: Color = l["color"]
+	if l.get("pill", false):
+		# Polish 5 §10: a job's address — white on a tag of its colour.
+		draw_rect(l["rect"], col)
+		col = Color.WHITE
 	if l["up"]:
 		draw_set_transform(l["center"], -PI * 0.5, Vector2.ONE)
 	else:
 		draw_set_transform(l["center"], 0.0, Vector2.ONE)
 	if l["halo"]:
 		draw_string_outline(font, base, l["text"], HORIZONTAL_ALIGNMENT_LEFT, -1, sz, 4, HALO)
-	draw_string(font, base, l["text"], HORIZONTAL_ALIGNMENT_LEFT, -1, sz, l["color"])
+	draw_string(font, base, l["text"], HORIZONTAL_ALIGNMENT_LEFT, -1, sz, col)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
@@ -215,11 +278,6 @@ func _draw() -> void:
 	for b in Layout.buildings:
 		draw_rect(_rect_px(b["rect"]), Color(0.45, 0.4, 0.42))
 	var contract_targets := _contract_targets()
-	for t in contract_targets.keys():
-		for id in Contracts.contract_boxes(contract_targets[t]):
-			var bx := Boxes.get_box(id)
-			for rr in bx.get("rects", []):
-				draw_rect(_rect_px(rr), Color(0.35, 0.85, 0.45, 0.6) if bx["complete"] else Color(1.0, 0.55, 0.15, 0.7))
 	# Your own property's boxes: green when clear, white-ish when snowed in.
 	for bx2 in Boxes.for_owner("lot:%d" % Layout.player_lot["index"]):
 		for rr2 in bx2["rects"]:
@@ -227,13 +285,25 @@ func _draw() -> void:
 	for lot in Layout.lots:
 		var lr: Rect2 = lot["rect"]
 		var is_c := contract_targets.has("lot:%d" % lot["index"])
-		draw_rect(_rect_px(lr), Color(1.0, 0.6, 0.2) if is_c else Color(0.55, 0.6, 0.7, 0.6), false, 2.0 if is_c else 1.0)
+		draw_rect(_rect_px(lr), BoxOutline.JOB_COLOR if is_c else Color(0.55, 0.6, 0.7, 0.6), false, 2.0 if is_c else 1.0)
 		if not lot["vacant"]:
 			var hi := Layout.house_info(lot)
 			var col := Color(0.25, 0.5, 0.9) if lot["is_player"] else Color(0.5, 0.52, 0.58)
 			draw_rect(_rect_px(hi["body"]), col)
 			draw_rect(_rect_px(hi["garage"]), col.darkened(0.15))
 			draw_rect(_rect_px(hi["driveway"]), Color(0.62, 0.64, 0.68))
+	# Polish 5 §10: your jobs' boxes, on top — money green to clear (the outlines' green), light green
+	# with a green edge once clear (a recurring client waiting for snow).
+	for t in contract_targets.keys():
+		for id in Contracts.contract_boxes(contract_targets[t]):
+			var bx := Boxes.get_box(id)
+			if bx.is_empty():
+				continue
+			var look := job_box_look(bx)
+			for rr in bx["rects"]:
+				draw_rect(_rect_px(rr), look[0])
+				if look[1].a > 0.0:
+					draw_rect(_rect_px(rr), look[1], false, 2.0)
 	# Store pad
 	draw_rect(_rect_px(Layout.store_pad), Color(1.0, 0.85, 0.2))
 	# Every name and number (polish 5 §5), on top of the map.
@@ -252,7 +322,7 @@ func _draw() -> void:
 	var ly := map_r.position.y + 90.0   # below the HUD weather panel
 	draw_string(font, Vector2(lx, ly + 10), "NEIGHBOURHOOD MAP", HORIZONTAL_ALIGNMENT_LEFT, -1, 28, Color.WHITE)
 	var entries := [[Color(0.9, 0.15, 0.1), "You are here: " + Layout.describe_point(pp)], [Color(0.25, 0.5, 0.9), "Your home: " + Layout.player_lot["address"]],
-		[Color(1.0, 0.6, 0.2), "Contract areas to clear (green = clear)"], [Color(1.0, 0.85, 0.2), "Store order pickup pad"],
+		[BoxOutline.JOB_COLOR, "Your jobs to clear (light green: clear)"], [Color(1.0, 0.85, 0.2), "Store order pickup pad"],
 		[Color(0.6, 0.66, 0.8), "Municipal snow dump"], [Color(0.32, 0.34, 0.38), "Streets"]]
 	for i in range(entries.size()):
 		var y := ly + 60 + i * 34
@@ -275,9 +345,25 @@ func _draw() -> void:
 		var dt2 := Contracts.due_text(c2)
 		if dt2 != "" and lh < INF:
 			st2 += " — due " + dt2     # polish 5 §10: the due time (was the hours left)
-		draw_string(font, Vector2(lx, list_y + 30 + k * 26), "• %s (%s)" % [c2["address"], st2], HORIZONTAL_ALIGNMENT_LEFT, 440, 17, Color(1.0, 0.6, 0.5) if lh <= Catalog.balance.contract_warn_hours else Color.WHITE)
+		# Polish 5 §10: shrunk to fit the legend's width (longer addresses and due times were cut off).
+		var line2 := "• %s (%s)" % [c2["address"], st2]
+		var lfs := 17
+		while lfs > 13 and font.get_string_size(line2, HORIZONTAL_ALIGNMENT_LEFT, -1, lfs).x > 440.0:
+			lfs -= 1
+		draw_string(font, Vector2(lx, list_y + 30 + k * 26), line2, HORIZONTAL_ALIGNMENT_LEFT, 440, lfs, Color(1.0, 0.6, 0.5) if lh <= Catalog.balance.contract_warn_hours else Color.WHITE)
 		k += 1
 	draw_string(font, Vector2(lx, vs.y - 40), "%s or %s to close" % [Settings.action_label("map"), Settings.action_label("pause")], HORIZONTAL_ALIGNMENT_LEFT, -1, 18, UIKit.MUTED)
+
+
+## Polish 5 §10: how a job's box is drawn — [fill, edge]: money green while it has snow to clear,
+## light green with a green edge once clear (a recurring client waiting for snow).
+static func job_box_look(b: Dictionary) -> Array:
+	if b["complete"]:
+		return [Color(0.35, 0.85, 0.45, 0.6), BoxOutline.JOB_COLOR]
+	if b.get("big", false):
+		# A street or a parking lot: lighter, with a solid green edge, so the names on it still read.
+		return [Color(BoxOutline.JOB_COLOR, 0.45), BoxOutline.JOB_COLOR]
+	return [Color(BoxOutline.JOB_COLOR, 0.9), Color.TRANSPARENT]
 
 
 ## Polish 5 §10: the tag under a house number for a job there: the day it's due (always 9 p.m.;

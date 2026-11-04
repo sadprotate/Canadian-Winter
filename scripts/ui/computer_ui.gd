@@ -48,6 +48,10 @@ var _name_err: Label
 var _refresh_t := 0.0
 var _bid_values: Dictionary = {}
 var bid_edits: Dictionary = {}       # polish 5 §10: lid -> the typed-bid field on the board
+## Polish 5 §10b: the board's cards, lid -> {card, info, status, form}, and what its header and the
+## order of its listings were when it was built ("" when the board isn't what's showing).
+var _board_cards: Dictionary = {}
+var _board_head := ""
 var _battery := 100.0
 
 
@@ -209,11 +213,17 @@ func form_up() -> bool:
 
 
 func _rebuild(reset_scroll: bool) -> void:
+	# Polish 5 §10b: a live update of the board touches only the listings that changed (rebuilding
+	# its 10–14 cards on every bid took 20–49 ms in one frame).
+	if not reset_scroll and _board_head != "" and APP_IDS[current] == "board" and not _renaming and _board_head == _board_head_sig() and _update_board():
+		return
 	var sv := scroll.scroll_vertical
 	UIKit.clear(content)
 	name_edit = null
 	_name_err = null
 	bid_edits = {}
+	_board_cards = {}
+	_board_head = ""
 	title_l.text = APPS[current]
 	var id: String = APP_IDS[current]
 	if id in ["contracts", "board"] and (Game.company_name == "" or _renaming):
@@ -465,6 +475,7 @@ const JOB_NAMES := {"path": "Path job", "driveway": "Driveway job", "parking": "
 
 ## Polish 5 §10: the board — every listing (locked above your tier), live bidding until 9 p.m.
 func _board() -> void:
+	_board_head = _board_head_sig()
 	var who := UIKit.hbox(20)
 	content.add_child(who)
 	who.add_child(UIKit.label("Bidding as %s" % Game.company_name, FS_CARD, Color.WHITE))
@@ -474,6 +485,67 @@ func _board() -> void:
 		_p("No listings right now. New jobs are posted every morning at 6:00.")
 	for l in Contracts.listings:
 		_listing_card(l)
+
+
+## Polish 5 §10b: what decides the board's header and its cards' order (a change rebuilds the board).
+func _board_head_sig() -> String:
+	return "%s|%s|%s" % [Game.company_name, reputation_text(), ",".join(Contracts.listings.map(func(l): return str(l["lid"])))]
+
+
+## What decides a card's controls: its lock line, bidding closed, your bid or none (Place bid /
+## Change bid and Withdraw), the suggested price and its range. Anything else is updated in place.
+func _card_form(l: Dictionary) -> String:
+	return "%s|%s|%s|%d" % [Contracts.listing_lock_text(l), str(bool(l.get("closed", false))), str(int(l.get("bid", 0)) > 0), int(l["budget"])]
+
+
+## The card's second line: client, boxes and area, the snow, when bidding closes, the number of bids.
+func _listing_info(l: Dictionary) -> String:
+	var zn := []
+	var area := 0.0
+	for z in l["zones"]:
+		zn.append(z["name"])
+		area += Contracts.zone_area(z)
+	var snow := float(l.get("now_volume", l["est_volume"]))
+	var nb := Contracts.bid_count(l)
+	return "%s  ·  %s, %d m²  ·  about %.1f m³ of snow  ·  closes %s  ·  %d bid%s" % [l["client"], ", ".join(zn), int(round(area)), snow,
+		Contracts.when_text_rel(float(l["closes"])), nb, "" if nb == 1 else "s"]
+
+
+## Your status on a listing and its colour: "Winning" / "Outbid · lowest bid $X" / "No bid yet".
+static func _status_look(l: Dictionary) -> Array:
+	var st := Contracts.bid_status(l)
+	return [st["text"] if st["text"] != "" else "No bid yet", UIKit.GOOD if st["winning"] else (UIKit.BAD if st["mine"] > 0 else UIKit.MUTED)]
+
+
+## Polish 5 §10b: bring the board's cards up to date without rebuilding it: a card whose controls
+## change is rebuilt alone in its place; otherwise only its status and its second line change. False
+## when a card is missing (the board is rebuilt).
+func _update_board() -> bool:
+	for l in Contracts.listings:
+		if not _board_cards.has(int(l["lid"])):
+			return false
+	for l in Contracts.listings:
+		var lid := int(l["lid"])
+		var e: Dictionary = _board_cards[lid]
+		if e["form"] != _card_form(l):
+			var old: Control = e["card"]
+			var at := old.get_index()
+			_listing_card(l)
+			content.move_child(_board_cards[lid]["card"], at)
+			content.remove_child(old)
+			old.queue_free()
+			continue
+		var info: Label = e["info"]
+		var it := _listing_info(l)
+		if info.text != it:
+			info.text = it
+		var st_l: Label = e["status"]
+		if st_l != null:
+			var look := _status_look(l)
+			if st_l.text != look[0]:
+				st_l.text = look[0]
+				st_l.add_theme_color_override("font_color", look[1])
+	return true
 
 
 func _listing_card(l: Dictionary) -> void:
@@ -490,23 +562,23 @@ func _listing_card(l: Dictionary) -> void:
 	top.add_child(UIKit.label("%s · %s" % [job, "one-time" if l["type"] == "one_time" else "all winter"], FS_BODY, UIKit.ACCENT))
 	top.add_child(UIKit.hspacer())
 	top.add_child(UIKit.label("Suggested " + UIKit.money(l["budget"]) + (" / visit" if l["type"] != "one_time" else ""), FS_CARD, Color(0.7, 1.0, 0.7)))
-	var zn := []
-	var area := 0.0
-	for z in l["zones"]:
-		zn.append(z["name"])
-		area += Contracts.zone_area(z)
-	var snow := float(l.get("now_volume", l["est_volume"]))
-	var nb := Contracts.bid_count(l)
-	v.add_child(UIKit.label("%s  ·  %s, %d m²  ·  about %.1f m³ of snow  ·  closes %s  ·  %d bid%s" % [l["client"], ", ".join(zn), int(round(area)), snow,
-		Contracts.when_text_rel(float(l["closes"])), nb, "" if nb == 1 else "s"], FS_SMALL, UIKit.MUTED))
+	var info := UIKit.label(_listing_info(l), FS_SMALL, UIKit.MUTED)
+	info.name = "Info"
+	v.add_child(info)
 	var lid: int = l["lid"]
+	_board_cards[lid] = {"card": c, "info": info, "status": null, "form": _card_form(l)}
 	if Contracts.listing_locked(l):
-		v.add_child(UIKit.label("Needs reputation %d" % int(Contracts.tier_threshold(Contracts.listing_tier(l))), FS_BODY, UIKit.WARN))
+		# Above your tier ("Needs reputation N"), or a street without a plow or a blower vehicle.
+		var lock := UIKit.label(Contracts.listing_lock_text(l), FS_BODY, UIKit.WARN)
+		lock.name = "Lock"
+		v.add_child(lock)
 		return
 	var st := Contracts.bid_status(l)
-	var st_l := UIKit.label(st["text"] if st["text"] != "" else "No bid yet", FS_BODY, UIKit.GOOD if st["winning"] else (UIKit.BAD if st["mine"] > 0 else UIKit.MUTED))
+	var look := _status_look(l)
+	var st_l := UIKit.label(look[0], FS_BODY, look[1])
 	st_l.name = "Status"
 	st_l.custom_minimum_size.x = 300
+	_board_cards[lid]["status"] = st_l
 	if bool(l.get("closed", false)):
 		var row0 := UIKit.hbox(14)
 		v.add_child(row0)

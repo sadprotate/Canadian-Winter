@@ -165,6 +165,9 @@ func _ready() -> void:
 	var cv := UIKit.vbox(4)
 	contract_panel.add_child(cv)
 	contract_l = UIKit.label("", 19)
+	# Polish 5 §10: one line, as wide as it needs (the panel stays centred, _fit_contract_panel).
+	contract_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	contract_l.custom_minimum_size.x = BOX_LINE_MIN_W - 24.0
 	cv.add_child(contract_l)
 	contract_bar = UIKit.progress(0.0, UIKit.ACCENT, 14)
 	cv.add_child(contract_bar)
@@ -298,6 +301,43 @@ func _on_notify(text: String, kind: int) -> void:
 
 
 const SUBTITLE_MAX_W := 1100.0
+## Polish 5 §10: the box line's panel width (px): at least as before, at most this (longer text wraps).
+const BOX_LINE_MIN_W := 520.0
+const BOX_LINE_MAX_W := 1000.0
+
+
+## The HUD box line for box `b`; `c` is the contract that owns it ({} for none). Polish 5 §10: in a
+## box of one of your jobs it is one line — "Your contract · 31 Birch Avenue — Driveway 73% · due 9
+## p.m. Tue"; in any other box it reads as before ("‹place› — ‹box›   73%", Gerry's trail "Contract ·
+## ‹place› — ‹box›   73%").
+static func box_line(b: Dictionary, c: Dictionary) -> String:
+	var amount := "clear ✓" if b["complete"] else "%d%%" % int(floor(float(b["progress"]) * 100.0))
+	if not c.is_empty() and not c.get("tutorial", false):
+		var line := "Your contract · %s — %s %s" % [b["place"], b["name"], amount]
+		var dt := Contracts.due_text(c)
+		if dt != "":
+			line += " · due " + dt
+		return line
+	var head := "%s — %s" % [b["place"], b["name"]]
+	if not c.is_empty():
+		head = "Contract · " + head
+	return "%s   %s" % [head, amount]
+
+
+## Keep the box line's panel snug around its line (BOX_LINE_MIN_W … BOX_LINE_MAX_W) and centred.
+func _fit_contract_panel() -> void:
+	var font := contract_l.get_theme_font("font")
+	var fs := contract_l.get_theme_font_size("font_size")
+	var tw := BOX_LINE_MAX_W
+	if font:
+		tw = 0.0
+		for ln in contract_l.text.split("\n"):
+			tw = maxf(tw, font.get_string_size(ln, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x)
+	var pad := contract_panel.get_theme_stylebox("panel").get_minimum_size().x
+	var w := clampf(ceilf(tw) + pad + 2.0, BOX_LINE_MIN_W, BOX_LINE_MAX_W)
+	contract_l.custom_minimum_size.x = w - pad
+	contract_panel.offset_left = -w * 0.5
+	contract_panel.offset_right = w * 0.5
 
 
 ## Show a spoken line (speaker, text); empty text hides the box. `more` shows the "next" hint.
@@ -448,18 +488,11 @@ func _process(delta: float) -> void:
 		contract_panel.visible = not b.is_empty()
 		if not b.is_empty():
 			var c := Contracts.contract_for_box(b["id"])
-			var head := "%s — %s" % [b["place"], b["name"]]
-			if not c.is_empty():
-				head = "Contract · " + head
 			var pr := float(b["progress"])
-			var line := "%s   %s" % [head, "clear ✓" if b["complete"] else "%d%%" % int(floor(pr * 100.0))]
-			if not c.is_empty() and not c.get("tutorial", false):
-				# Polish 5 §10: the job's due time (was the snowed-in clock).
-				var dt := Contracts.due_text(c)
-				if dt != "":
-					var left: float = Contracts.hours_left(c)
-					line += "\nDue %s%s" % [dt, "  (%d h left)" % int(ceil(maxf(left, 0.0))) if left < INF else ""]
-			contract_l.text = line
+			var line := box_line(b, c)
+			if line != contract_l.text:
+				contract_l.text = line
+				_fit_contract_panel()
 			contract_bar.value = 1.0 if b["complete"] else pr
 	else:
 		contract_panel.visible = false

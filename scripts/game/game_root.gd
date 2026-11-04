@@ -75,6 +75,10 @@ func _ready() -> void:
 	quest_outline.quest_fn = func() -> String: return "gerry_trail" if Game.stage() == Game.Stage.NEIGHBOR_TALKED else ""
 	add_child(quest_outline)
 	box_outline.skip_fn = quest_outline.quest_fn
+	# Polish 5 §10: a box of one of your jobs is outlined in money green, also while you work it; its
+	# persistent outline (ZoneMarkers) gives way to the work outline on the same box.
+	box_outline.job_fn = func(id: String) -> bool: return ZoneMarkers.is_job_box(id)
+	zone_markers.work_outline = box_outline
 	grader = GraderNPC.new()
 	add_child(grader)
 	Municipal.world_handles_passes = true

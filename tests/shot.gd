@@ -95,7 +95,14 @@ extends Node
 ##                            its cap
 ##   --board_state=1          (§10) with --ui=computer: live bidding on the board — a bid winning, a
 ##                            bid outbid by a rival, a parking lot locked above the tier, the first
-##                            rival bids on every listing (use --tab=2 to open on the board)
+##                            rival bids on every listing (use --tab=2 to open on the board); §10b: a
+##                            street section too (with --rep=85 it shows the vehicle lock)
+##   --jobs=spec,…            (§10b) win these jobs outright right after the world spawns (so their
+##                            outlines are laid during --frames): lot:<index>:<box kind> (driveway,
+##                            path, sidewalk), area:<id> (school_lot, store_lot, church_lot),
+##                            road:<segment id>, walk:<section> (A_w … D_e; this build only); works on
+##                            older builds too (there: stakes, flags and the orange line)
+##   --rep=N                  (§10b) set the reputation (the tier follows) before the jobs / the board
 
 var args := {}
 var game: Node = null
@@ -159,6 +166,8 @@ func _ready() -> void:
 			Contracts.force_award(int(Contracts.listings[0]["lid"]))
 	if args.get("hud", "1") == "0":
 		game.ui.visible = false
+		if game.get("time_layer") != null:
+			game.time_layer.visible = false   # §10b: the fast-forward control too (§9's layer)
 	if args.has("ui"):
 		await _open_ui(str(args["ui"]))
 		await _wait(int(args.get("ui_frames", "6")))
@@ -363,6 +372,12 @@ func _setup_world_state() -> void:
 func _setup_after_spawn() -> void:
 	var w = game
 	var lot := Layout.player_lot
+	if args.has("rep"):
+		Game.reputation = clampf(float(args["rep"]), 0.0, 100.0)   # §10b (quietly: no tier notification)
+		if "tier_noted" in Contracts:
+			Contracts.set("tier_noted", Contracts.call("tier_index"))
+	if args.has("jobs"):
+		_win_jobs(str(args["jobs"]))
 	if args.has("tool"):
 		Game.add_tool(str(args["tool"]))
 	if args.has("slots"):
@@ -698,6 +713,10 @@ func _board_state() -> void:
 	rng.seed = 5
 	if not Contracts.listings.any(func(l): return str(l.get("tier", "")) == "commercial"):
 		Contracts._add_area_listing(Layout.big_areas[2], Clock.day_index(), rng)
+	if not Contracts.listings.any(func(l): return str(l.get("target", "")).begins_with("road:")):
+		# §10b: a street section too (locked by reputation, or at the City tier without a plow or a
+		# blower vehicle).
+		Contracts._add_municipal_listing(Layout.road_segments[1], Clock.day_index(), rng)
 	for l in Contracts.listings:
 		if not (l["rivals"] as Array).is_empty():
 			Contracts._rival_bid(l, 0, int(l["rivals"][0]["open"]), Clock.minutes)
@@ -708,6 +727,41 @@ func _board_state() -> void:
 	if res.size() > 1:
 		Contracts.place_bid(int(res[1]["lid"]), int(res[1]["budget"]) + 6)
 		Contracts._rival_bid(res[1], 0, int(res[1]["budget"]) - 2, Clock.minutes)
+	Notify.clear()
+
+
+## --jobs=spec,… (polish 5 §10b): win these jobs outright, made with the game's own calls (the same on
+## older builds: a lot's listing is made, then given the one box asked for).
+func _win_jobs(spec: String) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 10
+	var day := Clock.day_index()
+	for item in spec.split(","):
+		var p := item.split(":")
+		var n0 := Contracts.listings.size()
+		match p[0]:
+			"lot":
+				var lt: Dictionary = Layout.lots[int(p[1])]
+				Contracts.call("_add_lot_listing", lt, day, rng)
+				if Contracts.listings.size() > n0:
+					var kind := p[2] if p.size() > 2 else "driveway"
+					var l0: Dictionary = Contracts.listings[-1]
+					l0["zones"] = [Contracts._zone({"driveway": "Driveway", "path": "Path to the house", "sidewalk": "Sidewalk"}.get(kind, kind), [Boxes.lot_box(lt, kind)])]
+					l0["type"] = "one_time"
+					l0["job"] = kind
+			"area":
+				for a in Layout.big_areas:
+					if str(a["id"]) == p[1]:
+						Contracts.call("_add_area_listing", a, day, rng)
+			"road":
+				for seg in Layout.road_segments:
+					if str(seg["id"]) == p[1]:
+						Contracts.call("_add_municipal_listing", seg, day, rng)
+			"walk":
+				if Contracts.has_method("_add_walk_listing"):
+					Contracts.call("_add_walk_listing", p[1], day, rng)
+		if Contracts.listings.size() > n0:
+			Contracts.force_award(int(Contracts.listings[-1]["lid"]))
 	Notify.clear()
 
 

@@ -491,9 +491,26 @@ func listing_tier(l: Dictionary) -> int:
 	return TIERS.find(str(l.get("tier", TIERS[target_tier(str(l.get("target", "")))])))
 
 
-## Above the player's tier: shown, but nobody can bid on it from here.
+## Shown, but you can't bid on it: above the player's tier, or (polish 5 §10b) a street section
+## without a plow or a blower vehicle. listing_lock_text says which.
 func listing_locked(l: Dictionary) -> bool:
-	return listing_tier(l) > tier_index()
+	return listing_lock_text(l) != ""
+
+
+## Polish 5 §10b: why you can't bid on a listing — "Needs reputation N" above your tier, "Needs a plow
+## or a blower vehicle" on a street section without one (the old requirement, for streets only: a
+## street is far beyond hand tools in a day; sidewalk sections need the reputation only) — or "".
+func listing_lock_text(l: Dictionary) -> String:
+	if listing_tier(l) > tier_index():
+		return "Needs reputation %d" % int(tier_threshold(listing_tier(l)))
+	if listing_needs_vehicle(l):
+		return "Needs a plow or a blower vehicle"
+	return ""
+
+
+## A street section, and no vehicle with a plow or a blower (equipment_capability() < 3).
+func listing_needs_vehicle(l: Dictionary) -> bool:
+	return str(l.get("target", "")).begins_with("road:") and equipment_capability() < 3
 
 
 ## Progress to the next tier: {name, need (the reputation it starts at), left, frac}; {} at the top.
@@ -969,7 +986,7 @@ func place_bid(lid: int, amount: int) -> Dictionary:
 	if bool(l.get("closed", false)):
 		return {"ok": false, "msg": "Bidding has closed on %s." % l["address"]}
 	if listing_locked(l):
-		return {"ok": false, "msg": "Needs reputation %d." % int(tier_threshold(listing_tier(l)))}
+		return {"ok": false, "msg": listing_lock_text(l) + "."}
 	var fl := bid_floor(l)
 	if amount < fl:
 		return {"ok": false, "msg": "The lowest bid accepted is $%d." % fl}

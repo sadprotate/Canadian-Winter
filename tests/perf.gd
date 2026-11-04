@@ -18,6 +18,11 @@ extends Node
 ## bid on, the rivals bidding through the measured frames (the board redraws on each bid) — at 1×
 ## and at 10×.
 ##   -- --only=board   runs just the world and the live board
+## Polish 5 §10b: the board scenario also changes one of your bids from the board every 40 frames
+## (each placed and changed bid used to rebuild the whole board); and (last) active jobs all around
+## the player — the stakes and orange lines before §10b, the green outlines after: standing among
+## them, working one of their boxes, walking along the street past them, and in a light snowfall.
+##   -- --only=jobs    runs just the world and the jobs scenario
 
 ## Polish 4 §1: the highest hourly snowfall of any major event (seed 2024 and 20 other seeds,
 ## winters 1–5) once storms open with a lead-in (pass 3: 52.2 cm/h). Measured at the game's own
@@ -91,6 +96,10 @@ func _ready() -> void:
 		return
 	if only == "board":
 		await _board_live(pl, p)
+		AudioMgr.quit()
+		return
+	if only == "jobs":
+		await _jobs_live(pl, p)
 		AudioMgr.quit()
 		return
 	# Polish 4: indoors, the desk with the computer screen and the photo by the door in view.
@@ -188,6 +197,7 @@ func _ready() -> void:
 	await _measure("idle outdoors (fresh world)", 120, func(_i): pass)
 	await _fast_forward(pl, p)
 	await _board_live(pl, p)
+	await _jobs_live(pl, p)
 	# AudioMgr.quit: stop every sound before quitting, so nothing is reported leaked at exit
 	# (HANDOFF §13 item 13).
 	AudioMgr.quit()
@@ -227,7 +237,16 @@ func _board_live(pl: Player, p: Vector2) -> void:
 		var bids0 := 0
 		for l in Contracts.listings:
 			bids0 += Contracts.bid_count(l)
-		await _measure("computer: live board (%d×)" % sp, 480, func(_i): pass)
+		# §10b: one of your bids changed from the board every 40 frames, as the Change bid button does.
+		var mine: Array = Contracts.listings.filter(func(x): return int(x.get("bid", 0)) > 0)
+		var comp: ComputerUI = world.modal
+		await _measure("computer: live board (%d×)" % sp, 480, func(i):
+			if int(i) % 40 == 20 and not mine.is_empty():
+				var k := int(float(i) / 40.0)
+				var l: Dictionary = mine[k % mine.size()]
+				if Contracts.listings.has(l) and not bool(l.get("closed", false)):
+					comp._bid_values[int(l["lid"])] = Contracts.bid_floor(l) + 1 + k % 3
+					comp._bid(int(l["lid"])))
 		var bids1 := 0
 		for l in Contracts.listings:
 			bids1 += Contracts.bid_count(l)
@@ -235,6 +254,58 @@ func _board_live(pl: Player, p: Vector2) -> void:
 		Clock.set_speed(1)
 		world.close_modal()
 		await get_tree().process_frame
+
+
+## Polish 5 §10b: active jobs all around the player (two dozen boxes: driveways and paths on the
+## lots near the house, two sidewalk sections, the street, the school's lot), each with snow to clear.
+func _jobs_live(pl: Player, p: Vector2) -> void:
+	pl.teleport(Vector3(p.x, 0.05, p.y), PI)
+	Clock.time_scale = 1.0
+	Clock.set_speed(1)
+	Weather.force(Weather.C.CLEAR, 48.0)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 12
+	var day := Clock.day_index()
+	var ls := []
+	for li in [6, 8, 0, 2, 9, 3, 13, 14]:
+		for kind in ["driveway", "path"]:
+			ls.append(Contracts._add_lot_listing(Layout.lots[li], day, rng, kind))
+	ls.append(Contracts._add_walk_listing("B_e", day, rng))
+	ls.append(Contracts._add_walk_listing("A_e", day, rng))
+	ls.append(Contracts._add_municipal_listing(Layout.road_segments[0], day, rng))
+	ls.append(Contracts._add_area_listing(Layout.big_areas[0], day, rng))
+	var n := 0
+	for l in ls:
+		if l.is_empty():
+			continue
+		for z in l["zones"]:
+			for id in z["boxes"]:
+				var b := Boxes.get_box(id)
+				for r in b["rects"]:
+					Snow.add_layer_rect(r, 0.2)
+				Boxes.measure(b, true)
+				n += 1
+		l["type"] = "one_time" if l["type"] == "recurring" else l["type"]
+		Contracts.force_award(int(l["lid"]))
+	Clock.running = true
+	var street := Vector2(p.x, 84.0)
+	pl.teleport(Vector3(street.x, 0.05, street.y), PI)
+	await _measure("jobs: idle among them", 480, func(_i): pass)
+	var drv: Rect2 = Boxes.get_box(Boxes.lot_box(Layout.lots[8], "driveway"))["rects"][0]
+	pl.teleport(Vector3(drv.get_center().x, Snow.surface_height(drv.get_center().x, drv.get_center().y) + 0.05, drv.get_center().y), PI)
+	await _measure("jobs: working a driveway", 480, func(_i): Boxes.note_work(drv.get_center()))
+	await _measure("jobs: walking past them", 480, func(i):
+		var x := 8.0 + fmod(float(i) * 0.1, 160.0)
+		pl.teleport(Vector3(x, Snow.surface_height(x, 84.0) + 0.05, 84.0), PI))
+	pl.teleport(Vector3(street.x, 0.05, street.y), PI)
+	Weather.force(Weather.C.MODERATE, 4.0, FF_LIGHT_CM_H)
+	await _measure("jobs: light snow (1x)", 480, func(_i): pass)
+	Weather.override_cond = -1
+	var outl := 0
+	var zm = world.get("zone_markers")
+	if zm and zm.get("outlines") != null:
+		outl = (zm.outlines as Dictionary).size()
+	print("  jobs: %d boxes in %d jobs; outlines laid now %d" % [n, Contracts.active.size(), outl])
 
 
 ## Polish 5 §9: fast-forward on foot in the yard. Each condition at 2× and 10× uncapped (what the

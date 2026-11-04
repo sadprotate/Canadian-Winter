@@ -498,6 +498,14 @@ func surface_height(x: float, z: float) -> float:
 	return lerpf(lerpf(h00, h10, tx), lerpf(h01, h11, tx), tz)
 
 
+## Polish 5 §10b: the snow surface height at the centre of cell (cx, cz) — what surface_height reads
+## there — or 0 outside the map. (The box outlines drape on it: a quarter of the reads.)
+func cell_surface(cx: int, cz: int) -> float:
+	if cx < 0 or cz < 0 or cx >= W or cz >= H:
+		return 0.0
+	return _h(cx, cz)
+
+
 func _h(cx: int, cz: int) -> float:
 	var i := cz * W + cx
 	if surf[i] == S_BLOCKED:

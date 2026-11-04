@@ -34,6 +34,7 @@ var _built := false
 # scoop / push / intake that moves snow out of a box bumps work_serial.
 var work_box := ""
 var work_serial := 0
+var _outline_cache: Dictionary = {}   # polish 5 §10b: box id -> [its rects, outline_segments]
 
 
 func _ready() -> void:
@@ -255,32 +256,60 @@ func box_has_point(id: String, p: Vector2) -> bool:
 
 ## The box's outer boundary on the snow grid: the cell edges between cells inside the box (centre
 ## inside one of its rects) and cells outside it — internal edges between its rects drop out.
-## Returns a PackedVector2Array of segment end points (pairs), in world metres.
+## Returns a PackedVector2Array of segment end points (pairs), in world metres. Polish 5 §10b: only
+## each rect's border cells are looked at (every boundary edge lies on one: the same edges as
+## testing every cell, which took tens of ms for a parking lot), and the result is kept per box.
 func outline_segments(id: String) -> PackedVector2Array:
 	var b := get_box(id)
-	var out := PackedVector2Array()
 	if b.is_empty():
-		return out
+		return PackedVector2Array()
+	var hit: Array = _outline_cache.get(id, [])
+	if not hit.is_empty() and hit[0] == b["rects"]:
+		return hit[1]
 	var cs := Snow.CELL
-	var inside := {}
+	var rs: Array[Rect2i] = []
 	for r in b["rects"]:
 		var rr: Rect2 = r
-		for cz in range(roundi(rr.position.y / cs), roundi(rr.end.y / cs)):
-			for cx in range(roundi(rr.position.x / cs), roundi(rr.end.x / cs)):
-				inside[Vector2i(cx, cz)] = true
-	for c in inside.keys():
-		var cc: Vector2i = c
-		var ax := cc.x * cs
-		var az := cc.y * cs
-		if not inside.has(cc + Vector2i(0, -1)):
-			out.append_array([Vector2(ax, az), Vector2(ax + cs, az)])
-		if not inside.has(cc + Vector2i(0, 1)):
-			out.append_array([Vector2(ax, az + cs), Vector2(ax + cs, az + cs)])
-		if not inside.has(cc + Vector2i(-1, 0)):
-			out.append_array([Vector2(ax, az), Vector2(ax, az + cs)])
-		if not inside.has(cc + Vector2i(1, 0)):
-			out.append_array([Vector2(ax + cs, az), Vector2(ax + cs, az + cs)])
+		var x0 := roundi(rr.position.x / cs)
+		var z0 := roundi(rr.position.y / cs)
+		var x1 := roundi(rr.end.x / cs)
+		var z1 := roundi(rr.end.y / cs)
+		if x1 > x0 and z1 > z0:
+			rs.append(Rect2i(x0, z0, x1 - x0, z1 - z0))
+	var out := PackedVector2Array()
+	var seen := {}
+	for ri in rs:
+		for cx in range(ri.position.x, ri.end.x):
+			_outline_edge(Vector2i(cx, ri.position.y), Vector2i(0, -1), rs, seen, out)
+			_outline_edge(Vector2i(cx, ri.end.y - 1), Vector2i(0, 1), rs, seen, out)
+		for cz in range(ri.position.y, ri.end.y):
+			_outline_edge(Vector2i(ri.position.x, cz), Vector2i(-1, 0), rs, seen, out)
+			_outline_edge(Vector2i(ri.end.x - 1, cz), Vector2i(1, 0), rs, seen, out)
+	_outline_cache[id] = [(b["rects"] as Array).duplicate(), out]
 	return out
+
+
+## The edge of cell `c` on side `d`, if the cell on the other side is outside the box (once).
+func _outline_edge(c: Vector2i, d: Vector2i, rs: Array[Rect2i], seen: Dictionary, out: PackedVector2Array) -> void:
+	var n := c + d
+	for r in rs:
+		if r.has_point(n):
+			return
+	var key := Vector4i(c.x, c.y, d.x, d.y)
+	if seen.has(key):
+		return
+	seen[key] = true
+	var cs := Snow.CELL
+	var ax := c.x * cs
+	var az := c.y * cs
+	if d.y < 0:
+		out.append_array([Vector2(ax, az), Vector2(ax + cs, az)])
+	elif d.y > 0:
+		out.append_array([Vector2(ax, az + cs), Vector2(ax + cs, az + cs)])
+	elif d.x < 0:
+		out.append_array([Vector2(ax, az), Vector2(ax, az + cs)])
+	else:
+		out.append_array([Vector2(ax + cs, az), Vector2(ax + cs, az + cs)])
 
 
 static func _dist_to_rect(r: Rect2, p: Vector2) -> float:

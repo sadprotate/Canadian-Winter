@@ -1,37 +1,41 @@
 class_name ZoneMarkers
 extends Node3D
-## Contract zones as physical markers: orange stakes at the corners and a soft glowing outline
-## drawn on the snow surface while the player is nearby (not for Gerry's tutorial trail, which
-## is outlined in blue by BoxOutline). Also plays the small "box complete"
-## moment (polish §7): a chime and a bright outline that flashes around the freshly bared box.
+## Where your jobs are, on the snow. Polish 5 §10: contracts have no stakes or flags (they used to
+## get orange stakes with a flag at every corner and an orange line). Every incomplete box of an
+## active job is outlined the way Gerry's trail is — BoxOutline's quest mode, there all the time — in
+## a dark money green; the work outline turns the same green while you clear it (BoxOutline.job_fn),
+## and this outline gives way to it so the box isn't drawn twice. Gerry's trail and every other box
+## stay blue. For performance only the boxes near the player are laid, one per scan, and they are
+## re-draped on the snow at a low rate (quickly only while the player is at the box; elsewhere only
+## once its snow has changed); streets and parking lots are drawn within BoxOutline.DRAW_RADIUS of
+## the player, as before.
+## Also plays the small "box complete" moment (polish §7): a chime and a bright outline that flashes
+## around the freshly bared box.
 
-var _stakes: Dictionary = {}     # key -> Array[Node3D]
-var _line: MeshInstance3D
-var _im: ImmediateMesh
+const SCAN_S := 0.25           # how often the jobs' boxes are looked at (s)
+const LAY_RADIUS := 50.0       # a box within this of the player (m, to its nearest edge) is outlined…
+const DROP_RADIUS := 60.0      # …and keeps its outline until it is farther than this
+const LAY_PER_SCAN := 1        # outlines laid per scan at most (nearest first)
+const NEAR_DIST := 8.0         # within this of a box its line is re-draped as often as the work outline's
+const REDRAPE_NEAR_S := 0.35
+const REDRAPE_NEAR_BIG_S := 1.2
+const REDRAPE_FAR_S := 1.5     # …farther away, at most this often, and only once its snow has changed
+const REDRAPE_DEPTH := 0.01    # by this much (average depth, m; BoxOutline.redrape_depth)
+
+## Polish 5 §10: contracts have no stakes or flags, so this stays empty (the earlier "no flags on
+## Gerry's trail" checks read it).
+var _stakes: Dictionary = {}
+var outlines: Dictionary = {}   # box id -> BoxOutline (quest mode, money green)
+var work_outline: BoxOutline    # the world's work outline (a job's outline gives way to it)
 var _t := 0.0
+var _laid := 0
 var _flash: MeshInstance3D
 var _flash_im: ImmediateMesh
 var _flash_mat: StandardMaterial3D
 var _flash_t := 0.0
-static var _stake_mesh: Mesh
 
 
 func _ready() -> void:
-	if _stake_mesh == null:
-		var kit := MeshKit.new()
-		kit.cylinder(Mats.wood(Color(0.6, 0.45, 0.3), 0.0), Transform3D(), 0.025, 0.02, 1.6, 6, true)
-		kit.box(Mats.emissive(Color(1.0, 0.45, 0.05), 1.6), Transform3D(Basis(), Vector3(0.09, 1.45, 0)), Vector3(0.18, 0.12, 0.01))
-		_stake_mesh = kit.commit()
-	_im = ImmediateMesh.new()
-	_line = MeshInstance3D.new()
-	_line.mesh = _im
-	_line.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var m := StandardMaterial3D.new()
-	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	m.albedo_color = Color(1.0, 0.55, 0.15, 0.9)
-	m.vertex_color_use_as_albedo = false
-	_line.material_override = m
-	add_child(_line)
 	_flash_im = ImmediateMesh.new()
 	_flash = MeshInstance3D.new()
 	_flash.mesh = _flash_im
@@ -44,6 +48,41 @@ func _ready() -> void:
 	_flash.visible = false
 	add_child(_flash)
 	Boxes.box_completed.connect(_on_box_completed)
+
+
+## A contract whose boxes are outlined: an active job or an open visit, not Gerry's trail.
+static func is_job(c: Dictionary) -> bool:
+	return (c["status"] == "active" or c["status"] == "needs_service") and not c.get("tutorial", false)
+
+
+## True when the box belongs to one of your jobs (is_job) and still has snow to clear.
+static func is_job_box(id: String) -> bool:
+	if Boxes.is_complete(id):
+		return false
+	for c in Contracts.active:
+		if is_job(c) and id in Contracts.contract_boxes(c):
+			return true
+	return false
+
+
+## Every incomplete box of your jobs.
+static func job_boxes() -> Array:
+	var out := []
+	for c in Contracts.active:
+		if not is_job(c):
+			continue
+		for id in Contracts.contract_boxes(c):
+			var b := Boxes.get_box(id)
+			if not b.is_empty() and not b["complete"] and not (id in out):
+				out.append(id)
+	return out
+
+
+static func _box_dist(b: Dictionary, p: Vector2) -> float:
+	var d := INF
+	for r in b["rects"]:
+		d = minf(d, Boxes._dist_to_rect(r as Rect2, p))
+	return d
 
 
 func _on_box_completed(id: String) -> void:
@@ -101,62 +140,54 @@ func _process(delta: float) -> void:
 	_t -= delta
 	if _t > 0.0:
 		return
-	_t = 0.5
-	var want := {}
+	_t = SCAN_S
+	_scan()
+
+
+## Which job boxes are near enough to be outlined: lay the missing ones (nearest first,
+## LAY_PER_SCAN per scan), drop those that are done or far away, and set how often each is re-draped.
+func _scan() -> void:
 	var pp := Vector2(Game.player_pos.x, Game.player_pos.z)
-	_im.clear_surfaces()
-	var drew := false
+	var want := {}
 	for c in Contracts.active:
-		if c["status"] != "active" and c["status"] != "needs_service":
+		if not is_job(c):
 			continue
-		# Gerry's tutorial trail has no stakes or orange line: its objective is the blue
-		# outline (BoxOutline quest mode, polish 3 §4). Real contracts keep their stakes.
-		if c.get("tutorial", false):
-			continue
-		for zi in range(c["zones"].size()):
-			var z: Dictionary = c["zones"][zi]
-			if z["done"]:
+		for id in Contracts.contract_boxes(c):
+			var b := Boxes.get_box(id)
+			if b.is_empty() or b["complete"] or want.has(id):
 				continue
-			for ri in range(z["rects"].size()):
-				var r := Contracts.a_to_rect(z["rects"][ri])
-				var key := "%d_%d_%d" % [c["id"], zi, ri]
-				want[key] = r
-				if r.grow(25.0).has_point(pp):
-					if not drew:
-						_im.surface_begin(Mesh.PRIMITIVE_LINES)
-						drew = true
-					_outline(r)
-	if drew:
-		_im.surface_end()
-	# Stakes
-	for k in _stakes.keys():
-		if not want.has(k):
-			for s in _stakes[k]:
-				(s as Node3D).queue_free()
-			_stakes.erase(k)
-	for k in want.keys():
-		if _stakes.has(k):
-			continue
-		var r2: Rect2 = want[k]
-		var arr := []
-		for p in [r2.position, Vector2(r2.end.x, r2.position.y), r2.end, Vector2(r2.position.x, r2.end.y)]:
-			var s := MeshInstance3D.new()
-			s.mesh = _stake_mesh
-			add_child(s)
-			s.global_position = Vector3(p.x, Snow.ground_at(p.x, p.y), p.y)
-			arr.append(s)
-		_stakes[k] = arr
+			var d := _box_dist(b, pp)
+			if d <= (DROP_RADIUS if outlines.has(id) else LAY_RADIUS):
+				want[id] = d
+	for id in outlines.keys():
+		if not want.has(id):
+			(outlines[id] as BoxOutline).queue_free()
+			outlines.erase(id)
+	var ids := want.keys()
+	ids.sort_custom(func(a, b): return want[a] < want[b])
+	var laid := 0
+	for id in ids:
+		var ol: BoxOutline = outlines.get(id)
+		if ol == null:
+			if laid >= LAY_PER_SCAN:
+				continue
+			ol = _lay(id)
+			laid += 1
+		var near := float(want[id]) <= NEAR_DIST
+		# (A street or a parking lot near the player: as often as the work outline re-drapes one.)
+		ol.rebuild_s = (REDRAPE_NEAR_BIG_S if bool(Boxes.get_box(id).get("big", false)) else REDRAPE_NEAR_S) if near else REDRAPE_FAR_S
+		ol.redrape_depth = 0.0 if near else REDRAPE_DEPTH
 
 
-func _outline(r: Rect2) -> void:
-	var step := 0.5
-	var corners := [r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y), r.position]
-	for i in range(4):
-		var a: Vector2 = corners[i]
-		var b: Vector2 = corners[i + 1]
-		var n := maxi(1, int(a.distance_to(b) / step))
-		for k in range(n):
-			var p0 := a.lerp(b, float(k) / n)
-			var p1 := a.lerp(b, float(k + 1) / n)
-			_im.surface_add_vertex(Vector3(p0.x, Snow.surface_height(p0.x, p0.y) + 0.05, p0.y))
-			_im.surface_add_vertex(Vector3(p1.x, Snow.surface_height(p1.x, p1.y) + 0.05, p1.y))
+func _lay(id: String) -> BoxOutline:
+	var ol := BoxOutline.new()
+	ol.name = "JobOutline_" + id
+	ol.job = true
+	ol.quest_fn = func() -> String: return id
+	ol.defer_to = work_outline
+	# Spread the re-drapes of many outlines over the interval (golden-ratio steps, no randomness).
+	ol.stagger = fmod(_laid * 0.618034, 1.0)
+	_laid += 1
+	add_child(ol)
+	outlines[id] = ol
+	return ol
