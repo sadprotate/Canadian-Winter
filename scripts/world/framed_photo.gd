@@ -124,6 +124,7 @@ func _capture() -> void:
 		_print_mat.albedo_texture = texture
 		captured = true
 	vp.queue_free()
+	@warning_ignore("integer_division")
 	capture_ms = int((Time.get_ticks_usec() - t0) / 1000)
 
 
@@ -166,11 +167,11 @@ static func build_scene(vp: SubViewport) -> void:
 	ground.mesh = gk.commit()
 	root.add_child(ground)
 	for p in [Vector3(-9, 0, 10), Vector3(-4.5, 0, 15), Vector3(2.0, 0, 16), Vector3(-13, 0, 5)]:
-		var tr := MeshInstance3D.new()
-		tr.mesh = Props.evergreen()
-		tr.position = p
-		tr.scale = Vector3.ONE * 1.1
-		root.add_child(tr)
+		var tree := MeshInstance3D.new()
+		tree.mesh = Props.evergreen()
+		tree.position = p
+		tree.scale = Vector3.ONE * 1.1
+		root.add_child(tree)
 	# The pickup (the player's own truck model), parked.
 	var vd: VehicleData = Catalog.vehicle(&"pickup")
 	var info := VehicleModels.build(vd)

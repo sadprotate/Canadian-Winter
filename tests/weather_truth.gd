@@ -50,6 +50,7 @@ static func alerts_dump() -> Dictionary:
 			said.clear()
 			for h in range(Weather.HOURS):
 				Clock.minutes = h * 60.0
+				@warning_ignore("integer_division")
 				Weather.on_hour(h / 24, h % 24)
 			out["%d/%d" % [s, y]] = said.duplicate()
 	Weather.alert_issued.disconnect(grab)

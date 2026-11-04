@@ -64,7 +64,7 @@ func _row(parent: Control, text: String) -> HBoxContainer:
 	return h
 
 
-func _slider(parent: Control, text: String, section: String, key: String, mn: float, mx: float, step: float, fmt := "%d%%", scale := 100.0) -> void:
+func _slider(parent: Control, text: String, section: String, key: String, mn: float, mx: float, step: float, fmt := "%d%%", mult := 100.0) -> void:
 	var h := _row(parent, text)
 	var s := HSlider.new()
 	s.min_value = mn
@@ -73,10 +73,10 @@ func _slider(parent: Control, text: String, section: String, key: String, mn: fl
 	s.custom_minimum_size = Vector2(380, 28)
 	s.value = float(Settings.get_value(section, key))
 	h.add_child(s)
-	var val := UIKit.label(fmt % (s.value * scale), 20, UIKit.MUTED)
+	var val := UIKit.label(fmt % (s.value * mult), 20, UIKit.MUTED)
 	h.add_child(val)
 	s.value_changed.connect(func(x):
-		val.text = fmt % (x * scale)
+		val.text = fmt % (x * mult)
 		Settings.set_value(section, key, x))
 
 

@@ -71,12 +71,12 @@ func _systems_advance(start: float, step: float) -> void:
 	Contracts.on_advance(step)
 
 
-func _systems_hour(day: int, hour: int) -> void:
-	Weather.on_hour(day, hour)
-	Economy.on_hour(day, hour)
-	Municipal.on_hour(day, hour)
-	Boxes.on_hour(day, hour)
-	Contracts.on_hour(day, hour)
+func _systems_hour(day: int, hr: int) -> void:
+	Weather.on_hour(day, hr)
+	Economy.on_hour(day, hr)
+	Municipal.on_hour(day, hr)
+	Boxes.on_hour(day, hr)
+	Contracts.on_hour(day, hr)
 
 
 func _systems_day(day: int) -> void:
@@ -129,8 +129,8 @@ func minute_of_hour() -> int:
 
 
 ## Minutes since midnight of the given winter day.
-static func at(day: int, hour: float) -> float:
-	return day * 1440.0 + hour * 60.0
+static func at(day: int, hr: float) -> float:
+	return day * 1440.0 + hr * 60.0
 
 
 static func month_of(day: int) -> int:

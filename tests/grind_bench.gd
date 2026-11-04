@@ -160,7 +160,9 @@ func _ready() -> void:
 		var v_after := await _walk_speed(walk)
 		print("walking along the path: %.2f m/s before, %.2f m/s after clearing" % [v_before, v_after])
 	print("wading speed before: %.2f m/s" % v_before)
-	get_tree().quit()
+	# AudioMgr.quit: stop every sound before quitting, so nothing is reported leaked at exit
+	# (HANDOFF §13 item 13).
+	AudioMgr.quit()
 
 
 func _vol(rects: Array) -> float:

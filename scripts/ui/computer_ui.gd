@@ -142,8 +142,8 @@ func _h1(t: String) -> void:
 	content.add_child(UIKit.label(t, 34, Color.WHITE))
 
 
-func _p(t: String, color := UIKit.MUTED, size := 19) -> Label:
-	var l := UIKit.label(t, size, color)
+func _p(t: String, color := UIKit.MUTED, font_size := 19) -> Label:
+	var l := UIKit.label(t, font_size, color)
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	l.custom_minimum_size.x = 1200
 	content.add_child(l)
@@ -284,7 +284,7 @@ func _active() -> void:
 
 
 # --- Store -------------------------------------------------------------------------------
-func _store_card(id: String, name: String, price: int, desc: String, stats: String) -> void:
+func _store_card(id: String, title: String, price: int, desc: String, stats: String) -> void:
 	var c := UIKit.card()
 	content.add_child(c)
 	var h := UIKit.hbox(16)
@@ -294,7 +294,7 @@ func _store_card(id: String, name: String, price: int, desc: String, stats: Stri
 	var v := UIKit.vbox(4)
 	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	h.add_child(v)
-	v.add_child(UIKit.label(name, 24, Color.WHITE))
+	v.add_child(UIKit.label(title, 24, Color.WHITE))
 	var d := UIKit.label(desc, 18, UIKit.MUTED)
 	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	d.custom_minimum_size.x = 820

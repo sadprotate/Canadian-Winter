@@ -215,7 +215,6 @@ func test_snow_depth_slows_and_blocks() -> void:
 
 func test_walking_does_not_clear_snow() -> void:
 	await _load_world("fun")
-	var pl: Player = world.player
 	var spot := _lot_pt(-9.0, 6.0)
 	Snow.set_rect(Rect2(spot - Vector2(2, 2), Vector2(4, 8)), 0.25)
 	var vol0 := Snow.volume_in_rect(Rect2(spot - Vector2(2, 2), Vector2(4, 8)))
@@ -386,7 +385,6 @@ func dump_safely(tc: ToolController) -> void:
 
 func test_pusher_stops_at_curb() -> void:
 	await _load_world("fun")
-	var pl: Player = world.player
 	Game.add_tool("wide_pusher")
 	await _frames(2)
 	var hi := Layout.house_info(Layout.lots[9])
@@ -397,7 +395,6 @@ func test_pusher_stops_at_curb() -> void:
 	var start := Vector2(drv.get_center().x, drv.end.y - 1.5)
 	_place(start, 0.0)   # facing north, toward the street
 	await _frames(2)
-	var drv_before := Snow.volume_in_rect(drv)
 	Input.action_press("secondary")
 	Input.action_press("move_forward")
 	await _frames(600)
@@ -905,7 +902,6 @@ func test_settings_rebinding() -> void:
 func test_freezing_death_screen() -> void:
 	await _load_world("survival", 2024, 12.0, 6)
 	Survival.activate()
-	var pl: Player = world.player
 	_place(_lot_pt(-9.0, 4.0), 0.0)
 	await _frames(2)
 	Saves.save_game()
@@ -934,6 +930,9 @@ func test_winter_summary_and_new_year() -> void:
 	await _frames(2)
 	runner.check(world.modal_kind == "summary", "Seasonal summary shown")
 	runner.check(_all_text(world.modal).to_lower().contains("winter 1"), "Summary names the winter survived")
+	# A real click arrives outside the physics step; unpausing between the physics server's query
+	# flush and its step makes the engine print `p_elem->_root` (HANDOFF §13 item 12).
+	await _tree().process_frame
 	var ok := _press(world.modal, "WINTER 2")
 	if not ok:
 		ok = _press(world.modal, "Next")
@@ -969,7 +968,6 @@ func test_audio_files_exist_for_every_sound() -> void:
 
 func test_push_builds_a_mound_conserving_volume() -> void:
 	await _load_world("fun")
-	var pl: Player = world.player
 	var spot := _lot_pt(-9.0, 4.0)
 	var area := Rect2(spot - Vector2(4, 1), Vector2(8, 12))
 	Snow.set_rect(area, 0.2)
@@ -1075,7 +1073,6 @@ func test_bigger_scoops_and_tool_ladder() -> void:
 	runner.check(hands.capacity >= 0.028 and hands.capacity <= 0.032, "A handful is about twice the old 15 L (%.0f L)" % (hands.capacity * 1000.0))
 	runner.check(hands.fill_rate >= 0.065, "Hands fill about twice as fast (%.0f L/s)" % (hands.fill_rate * 1000.0))
 	runner.check(hands.throw_distance <= 2.0, "…but still only toss a metre or two")
-	var ladder := ["small_shovel", "standard_shovel"]
 	runner.check(t.call("small_shovel").capacity > hands.capacity * 1.4 and t.call("standard_shovel").capacity > t.call("small_shovel").capacity * 1.2, "Hands → small shovel → standard shovel: each step carries clearly more")
 	for id in ["small_shovel", "standard_shovel", "wide_pusher", "snow_scraper", "large_scraper", "snow_sleigh"]:
 		var d: ToolData = t.call(id)
@@ -1401,7 +1398,6 @@ func test_wading_speed_hips_and_banks() -> void:
 		_place(Vector2(p.x, 80.5), PI)                    # on the cleared road, facing the bank (north = -z)
 		pl.set_yaw(0.0)
 		await _frames(2)
-		var s0 := pl.global_position
 		await _hold("move_forward", 150)
 		var crossed := pl.global_position.z < 77.0
 		if h < CharacterModel.HIP_HEIGHT:
@@ -1432,7 +1428,6 @@ func test_dig_out_by_hand_after_a_major_event() -> void:
 	var blocked := Vector2(pl.global_position.x, pl.global_position.z).distance_to(start) < 1.6
 	runner.check(blocked, "The storm buries the way out above the hips")
 	# Dig with bare hands: sweep-fill in front, turn, toss aside, step forward; repeat.
-	var tc: ToolController = pl.tools
 	var base := pl.yaw
 	var free := false
 	for k in range(320):
@@ -1589,7 +1584,6 @@ func test_truck_keys_end_to_end() -> void:
 		await _frames(3)
 		runner.check(pl.state == "foot", "%s: out of the truck again" % mode)
 		# Dig it out: clear around the truck and the driveway behind it down to the street.
-		var hi := Layout.house_info(Layout.player_lot)
 		var drv: Rect2 = Boxes.get_box(Boxes.lot_box(Layout.player_lot, "driveway"))["rects"][0]
 		Snow.set_rect(drv, 0.03)
 		Snow.set_rect(Rect2(drv.position.x - 1.0, drv.position.y - 9.0, drv.size.x + 2.0, 9.0), 0.03, true)

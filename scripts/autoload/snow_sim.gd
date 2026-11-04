@@ -356,6 +356,7 @@ func sync_chunk(ci: int) -> void:
 	# Loose snow left alone sinters: the loose share of each cell decays with time.
 	var harden := exp(-dmin / loose_harden_min) if dmin > 0.0 else 1.0
 	var cx := (ci % CW) * CHUNK
+	@warning_ignore("integer_division")
 	var cz := (ci / CW) * CHUNK
 	for z in range(cz, cz + CHUNK):
 		var row := z * W
@@ -411,9 +412,13 @@ const SYNC_MIN_SETTLE := 180.0
 
 
 func _sync_cells(x0: int, z0: int, x1: int, z1: int) -> void:
+	@warning_ignore("integer_division")
 	var c0x := clampi(x0 / CHUNK, 0, CW - 1)
+	@warning_ignore("integer_division")
 	var c1x := clampi(x1 / CHUNK, 0, CW - 1)
+	@warning_ignore("integer_division")
 	var c0z := clampi(z0 / CHUNK, 0, CH - 1)
+	@warning_ignore("integer_division")
 	var c1z := clampi(z1 / CHUNK, 0, CH - 1)
 	for cz in range(c0z, c1z + 1):
 		for cx in range(c0x, c1x + 1):
@@ -424,6 +429,7 @@ func _sync_cells(x0: int, z0: int, x1: int, z1: int) -> void:
 
 ## Snowfall that has fallen on a chunk but is not yet written into its cells.
 func _pending_fall(cx: int, cz: int) -> float:
+	@warning_ignore("integer_division")
 	return fall_total - chunk_fall[(cz / CHUNK) * CW + cx / CHUNK]
 
 
@@ -589,9 +595,13 @@ func mark_dirty(x0: int, z0: int, x1: int, z1: int) -> void:
 	z0 = clampi(z0 - 1, 0, H - 1)
 	x1 = clampi(x1 + 1, 0, W - 1)
 	z1 = clampi(z1 + 1, 0, H - 1)
+	@warning_ignore("integer_division")
 	var c0x := x0 / CHUNK
+	@warning_ignore("integer_division")
 	var c1x := mini(x1 / CHUNK, CW - 1)
+	@warning_ignore("integer_division")
 	var c0z := z0 / CHUNK
+	@warning_ignore("integer_division")
 	var c1z := mini(z1 / CHUNK, CH - 1)
 	for cz in range(c0z, c1z + 1):
 		for cx in range(c0x, c1x + 1):
@@ -619,7 +629,9 @@ func mark_dirty(x0: int, z0: int, x1: int, z1: int) -> void:
 
 
 func _dirty_edge(x: int, z0: int, z1: int) -> void:
+	@warning_ignore("integer_division")
 	var cx := x / CHUNK
+	@warning_ignore("integer_division")
 	for cz in range(z0 / CHUNK, mini(z1 / CHUNK, CH - 1) + 1):
 		var ci := cz * CW + cx
 		var lz0 := clampi(z0 - cz * CHUNK, 0, CHUNK)
@@ -637,7 +649,9 @@ func _dirty_edge(x: int, z0: int, z1: int) -> void:
 
 
 func _dirty_edge_z(z: int, x0: int, x1: int) -> void:
+	@warning_ignore("integer_division")
 	var cz := z / CHUNK
+	@warning_ignore("integer_division")
 	for cx in range(x0 / CHUNK, mini(x1 / CHUNK, CW - 1) + 1):
 		var ci := cz * CW + cx
 		var lx0 := clampi(x0 - cx * CHUNK, 0, CHUNK)
@@ -668,9 +682,13 @@ func is_dirty(ci: int) -> bool:
 
 
 func _queue_relax(x0: int, z0: int, x1: int, z1: int) -> void:
+	@warning_ignore("integer_division")
 	var t0x := clampi((x0 - 2) / TILE, 0, TW - 1)
+	@warning_ignore("integer_division")
 	var t1x := clampi((x1 + 2) / TILE, 0, TW - 1)
+	@warning_ignore("integer_division")
 	var t0z := clampi((z0 - 2) / TILE, 0, TH - 1)
+	@warning_ignore("integer_division")
 	var t1z := clampi((z1 + 2) / TILE, 0, TH - 1)
 	for tz in range(t0z, t1z + 1):
 		for tx in range(t0x, t1x + 1):
@@ -715,6 +733,7 @@ func set_blade_guard(r: Rect2) -> void:
 
 func _guarded(i: int) -> bool:
 	var x := i % W
+	@warning_ignore("integer_division")
 	var z := i / W
 	return x >= guard_x0 and x <= guard_x1 and z >= guard_z0 and z <= guard_z1
 
@@ -731,6 +750,7 @@ func process_relax(max_tiles: int = 48, max_usec: int = 0) -> int:
 		var t: int = _pop_tile()
 		relax_queue.erase(t)
 		var tx := t % TW
+		@warning_ignore("integer_division")
 		var tz := t / TW
 		var moved := _relax_tile(tx, tz)
 		processed += 1
@@ -890,6 +910,7 @@ func _sync_list(cells: PackedInt32Array) -> void:
 	var z1 := 0
 	for i in cells:
 		var x := i % W
+		@warning_ignore("integer_division")
 		var z := i / W
 		x0 = mini(x0, x)
 		z0 = mini(z0, z)
@@ -905,6 +926,7 @@ func _bounds_of(cells: PackedInt32Array) -> Rect2i:
 	var z1 := 0
 	for i in cells:
 		var x := i % W
+		@warning_ignore("integer_division")
 		var z := i / W
 		x0 = mini(x0, x)
 		z0 = mini(z0, z)
@@ -919,14 +941,12 @@ func scoop(origin: Vector2, fwd: Vector2, width: float, length: float, max_vol: 
 	var cells := cells_in_obb(origin, fwd, width, length)
 	_sync_list(cells)
 	var avail := 0.0
-	var cnt := 0
 	for i in cells:
 		if surf[i] == S_BLOCKED:
 			continue
 		var d := depth[i] - floor_d
 		if d > 0.0:
 			avail += d
-			cnt += 1
 	if avail <= 0.0 or max_vol <= 0.0:
 		return {"volume": 0.0, "road_volume": 0.0}
 	var want := max_vol / CELL_AREA   # in depth-units summed over cells
@@ -1231,6 +1251,7 @@ func intake(origin: Vector2, fwd: Vector2, width: float, length: float, max_vol:
 	# Order by distance along fwd (cells are generated row-major; sort a small array).
 	var order := []
 	for i in cells:
+		@warning_ignore("integer_division")
 		var c := Vector2((i % W + 0.5) * CELL, (i / W + 0.5) * CELL) - origin
 		order.append([c.dot(fwd), i])
 	order.sort_custom(func(a, b): return a[0] < b[0])

@@ -443,7 +443,6 @@ func test_shovel_pickup_at_75_percent() -> void:
 
 func test_tool_pickup_fully_exposed_and_after_snowfall() -> void:
 	await _load_world("fun", 2024, 11.0, 1)
-	var pl: Player = world.player
 	var spot := Layout.lot_to_world(Layout.player_lot, Layout.gu(Layout.player_lot, -4.0), 1.0)
 	Snow.set_rect(Rect2(spot - Vector2(3, 3), Vector2(6, 6)), 0.0)
 	world.spawn_tool_item("standard_shovel", Vector3(spot.x, 0.0, spot.y), 0.3)
@@ -652,7 +651,6 @@ func test_gerry_walks_in_and_player_follows() -> void:
 		runner.check(world.is_gerry_talking(), "%s: by the fire, Gerry talks you through the business" % mode)
 		var saw_computer := false
 		var saw_unlocked := false
-		var p_in := pl.global_position
 		guard = 0
 		while world.is_gerry_talking() and guard < 40:
 			var t: String = world.hud.speech_text.text
@@ -1338,6 +1336,9 @@ func test_playthrough_from_the_menu_both_modes() -> void:
 		await _press_event("interact")
 		await _frames(2)
 		runner.check(world.modal_kind == "sleep", "%s: the sleep prompt" % mode)
+		# A real click arrives outside the physics step; unpausing between the physics server's query
+		# flush and its step makes the engine print `p_elem->_root` (HANDOFF §13 item 12).
+		await _tree().process_frame
 		_press_btn(world.modal, "Sleep until 7:00 a.m.")
 		guard = 0
 		while (not Saves.has_save(mode) or Game.dirty_since_save) and guard < 600:

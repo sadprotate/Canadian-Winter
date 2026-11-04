@@ -16,6 +16,7 @@ func _pad_slot(i: int) -> Vector3:
 	var pad := Layout.store_pad
 	var cols := 6
 	var x := pad.position.x + 1.1 + (i % cols) * 2.2
+	@warning_ignore("integer_division")
 	var z := pad.position.y + 1.2 + (i / cols) * 1.6
 	return Vector3(x, 0, z)
 

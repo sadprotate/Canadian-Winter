@@ -475,7 +475,7 @@ func teleport(pos: Vector3, yaw_angle := INF) -> void:
 func _freecam(delta: float) -> void:
 	var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 	var up := (1.0 if Input.is_action_pressed("jump") else 0.0) - (1.0 if Input.is_action_pressed("crouch") else 0.0)
-	var basis := fp_cam.global_transform.basis
-	var v := basis * Vector3(input.x, 0, input.y) + Vector3.UP * up
+	var cam_basis := fp_cam.global_transform.basis
+	var v := cam_basis * Vector3(input.x, 0, input.y) + Vector3.UP * up
 	var spd := 25.0 if Input.is_action_pressed("sprint") else 9.0
 	global_position += v * spd * delta

@@ -111,7 +111,7 @@ func zone_required(z: Dictionary) -> float:
 
 
 ## Update a zone from its boxes. Returns its progress 0..1.
-func measure_zone(c: Dictionary, z: Dictionary, exact := true) -> float:
+func measure_zone(_c: Dictionary, z: Dictionary, exact := true) -> float:
 	var ids: Array = z.get("boxes", [])
 	if ids.is_empty():
 		return 1.0
@@ -189,7 +189,6 @@ func _refresh(c: Dictionary) -> void:
 
 
 func _finish(c: Dictionary) -> void:
-	var b: BalanceData = Catalog.balance
 	var quick := float(c.get("snowed_min", 0.0)) <= 24.0 * 60.0
 	match c["type"]:
 		"one_time":
@@ -382,13 +381,13 @@ func _generate_listings(day: int, initial: bool) -> void:
 	changed.emit()
 
 
-func _zone(name: String, box_ids: Array) -> Dictionary:
+func _zone(zone_name: String, box_ids: Array) -> Dictionary:
 	var ra := []
 	for id in box_ids:
 		var b := Boxes.get_box(id)
 		for r in b.get("rects", []):
 			ra.append(rect_to_a(r))
-	return {"name": name, "boxes": box_ids.duplicate(), "rects": ra, "done": false, "progress": 0.0}
+	return {"name": zone_name, "boxes": box_ids.duplicate(), "rects": ra, "done": false, "progress": 0.0}
 
 
 func _add_lot_listing(lot: Dictionary, day: int, rng: RandomNumberGenerator) -> void:
@@ -435,7 +434,7 @@ func _add_area_listing(a: Dictionary, day: int, rng: RandomNumberGenerator) -> v
 	_next_id += 1
 
 
-func _add_municipal_listing(seg: Dictionary, day: int, rng: RandomNumberGenerator) -> void:
+func _add_municipal_listing(seg: Dictionary, day: int, _rng: RandomNumberGenerator) -> void:
 	var zones := [_zone("Road section", ["road_" + str(seg["id"])])]
 	var est := zone_area(zones[0]) * 0.06
 	var budget := int(_price(est, true) * 1.4)

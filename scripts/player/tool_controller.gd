@@ -281,14 +281,14 @@ static func controls_hint(t: ToolData) -> String:
 	return s
 
 
-func _set_loop(name: String) -> void:
-	if name == "":
+func _set_loop(loop_name: String) -> void:
+	if loop_name == "":
 		loop_player.stop()
 		loop_player.set_meta("name", "")
 		return
-	if loop_player.get_meta("name", "") != name:
-		loop_player.stream = AudioMgr.stream(name)
-		loop_player.set_meta("name", name)
+	if loop_player.get_meta("name", "") != loop_name:
+		loop_player.stream = AudioMgr.stream(loop_name)
+		loop_player.set_meta("name", loop_name)
 		if loop_player.stream:
 			loop_player.play()
 
@@ -425,6 +425,7 @@ func _landing_mesh(l: Dictionary) -> Mesh:
 
 
 static func _cell_center(i: int) -> Vector2:
+	@warning_ignore("integer_division")
 	return Vector2((float(i % Snow.W) + 0.5) * Snow.CELL, (float(i / Snow.W) + 0.5) * Snow.CELL)
 
 
@@ -590,7 +591,7 @@ func _aim_point() -> Vector2:
 	return base + d
 
 
-func _fill(delta: float, pos2: Vector2, fwd: Vector2) -> void:
+func _fill(delta: float, _pos2: Vector2, fwd: Vector2) -> void:
 	var cap := _capacity()
 	if load >= cap - 1e-6:
 		_stroke_valid = false

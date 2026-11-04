@@ -18,11 +18,16 @@ var indoors := false
 var ambience_enabled := false
 var music_enabled := true
 var _gust_timer := 4.0
-var _listener_pos := Vector3.ZERO
+## quit(): real time to wait after stopping every sound, so the audio thread can drop the
+## stopped streams before the engine shuts down (it needs two mix steps, ~25 ms each at most).
+const QUIT_DRAIN_MS := 150
+var _quitting := false
 
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	# Closing the window quits through quit() too (see there).
+	get_tree().auto_accept_quit = false
 	_setup_buses()
 	for i in range(12):
 		var p := AudioStreamPlayer.new()
@@ -60,11 +65,11 @@ func _ready() -> void:
 
 
 func _setup_buses() -> void:
-	for name in ["Music", "Ambience", "Interior", "SFX", "UI"]:
-		if AudioServer.get_bus_index(name) < 0:
+	for bus_name in ["Music", "Ambience", "Interior", "SFX", "UI"]:
+		if AudioServer.get_bus_index(bus_name) < 0:
 			AudioServer.add_bus()
 			var idx := AudioServer.bus_count - 1
-			AudioServer.set_bus_name(idx, name)
+			AudioServer.set_bus_name(idx, bus_name)
 			AudioServer.set_bus_send(idx, "Master")
 	var amb := AudioServer.get_bus_index("Ambience")
 	_lowpass = AudioEffectLowPassFilter.new()
@@ -88,22 +93,22 @@ func apply_volumes() -> void:
 		AudioServer.set_bus_mute(idx, v <= 0.001)
 
 
-func has_sound(name: String) -> bool:
-	return ResourceLoader.exists(DIR + name + ".wav")
+func has_sound(sound: String) -> bool:
+	return ResourceLoader.exists(DIR + sound + ".wav")
 
 
-func stream(name: String) -> AudioStream:
-	if _streams.has(name):
-		return _streams[name]
+func stream(sound: String) -> AudioStream:
+	if _streams.has(sound):
+		return _streams[sound]
 	var s: AudioStream = null
-	if has_sound(name):
-		s = load(DIR + name + ".wav")
-		if s is AudioStreamWAV and name in LOOPS:
+	if has_sound(sound):
+		s = load(DIR + sound + ".wav")
+		if s is AudioStreamWAV and sound in LOOPS:
 			var w: AudioStreamWAV = s
 			w.loop_mode = AudioStreamWAV.LOOP_FORWARD
 			w.loop_begin = 0
 			w.loop_end = int(w.get_length() * w.mix_rate)
-	_streams[name] = s
+	_streams[sound] = s
 	return s
 
 
@@ -113,8 +118,35 @@ func variant(base: String, count: int) -> String:
 	return n if has_sound(n) else base
 
 
-func play(name: String, volume_db := 0.0, pitch := 1.0, bus := "SFX") -> void:
-	var s := stream(name)
+## Quit the game (HANDOFF §13 item 13). A sound still playing when the engine shuts down stays
+## referenced by the audio server's playback list and is reported at exit as "N ObjectDB
+## instances were leaked" / "M resources still in use" (the menu music, the EXIT click: whatever
+## happened to be playing, so the counts varied). So: pause the tree (nothing restarts a sound),
+## stop every player by taking its stream away, give the audio thread a moment to drop them,
+## then quit.
+func quit(code := 0) -> void:
+	if _quitting:
+		return
+	_quitting = true
+	get_tree().paused = true
+	for cls in ["AudioStreamPlayer", "AudioStreamPlayer2D", "AudioStreamPlayer3D"]:
+		for p in get_tree().root.find_children("*", cls, true, false):
+			p.set("stream", null)
+	var t0 := Time.get_ticks_msec()
+	while Time.get_ticks_msec() - t0 < QUIT_DRAIN_MS:
+		await get_tree().process_frame
+	get_tree().quit(code)
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		quit()
+
+
+func play(sound: String, volume_db := 0.0, pitch := 1.0, bus := "SFX") -> void:
+	if _quitting:
+		return
+	var s := stream(sound)
 	if s == null:
 		return
 	for p in _pool2d:
@@ -128,8 +160,10 @@ func play(name: String, volume_db := 0.0, pitch := 1.0, bus := "SFX") -> void:
 			return
 
 
-func play_at(name: String, pos: Vector3, volume_db := 0.0, pitch := 1.0) -> void:
-	var s := stream(name)
+func play_at(sound: String, pos: Vector3, volume_db := 0.0, pitch := 1.0) -> void:
+	if _quitting:
+		return
+	var s := stream(sound)
 	if s == null:
 		return
 	var best: AudioStreamPlayer3D = null
@@ -146,14 +180,14 @@ func play_at(name: String, pos: Vector3, volume_db := 0.0, pitch := 1.0) -> void
 	best.play()
 
 
-func ui(name: String) -> void:
-	play(name, -4.0, 1.0, "UI")
+func ui(sound: String) -> void:
+	play(sound, -4.0, 1.0, "UI")
 
 
 ## Create a managed looping 3D player attached to a node (tools, engines).
-func make_loop(name: String, parent: Node3D, volume_db := 0.0) -> AudioStreamPlayer3D:
+func make_loop(sound: String, parent: Node3D, volume_db := 0.0) -> AudioStreamPlayer3D:
 	var p := AudioStreamPlayer3D.new()
-	p.stream = stream(name)
+	p.stream = stream(sound)
 	p.bus = "SFX"
 	p.unit_size = 7.0
 	p.max_distance = 80.0
@@ -188,7 +222,7 @@ func set_menu_music(on: bool) -> void:
 
 
 func _process(delta: float) -> void:
-	if not ambience_enabled:
+	if not ambience_enabled or _quitting:
 		return
 	var cond := Weather.condition()
 	var paused := get_tree().paused

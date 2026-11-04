@@ -219,6 +219,7 @@ func _apply_window() -> void:
 			var screen := DisplayServer.screen_get_size()
 			size = size.min(screen)
 			DisplayServer.window_set_size(size)
+			@warning_ignore("integer_division")
 			DisplayServer.window_set_position((screen - size) / 2)
 
 

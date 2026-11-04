@@ -105,6 +105,7 @@ func _process(delta: float) -> void:
 func _update_lods(cam_pos: Vector3) -> void:
 	for ci in range(Snow.CW * Snow.CH):
 		var cx := (ci % Snow.CW) * CHUNK * CELL + CHUNK * CELL * 0.5
+		@warning_ignore("integer_division")
 		var cz := (ci / Snow.CW) * CHUNK * CELL + CHUNK * CELL * 0.5
 		var d := Vector2(cx, cz).distance_to(Vector2(cam_pos.x, cam_pos.z)) - CHUNK * CELL * 0.5
 		var want := 1
@@ -126,6 +127,7 @@ func _update_dirty(cam_pos: Vector3) -> void:
 	for ci in range(Snow.CW * Snow.CH):
 		if _lod[ci] != _want_lod[ci] or Snow.is_dirty(ci):
 			var cx := (ci % Snow.CW) * CHUNK * CELL + CHUNK * CELL * 0.5
+			@warning_ignore("integer_division")
 			var cz := (ci / Snow.CW) * CHUNK * CELL + CHUNK * CELL * 0.5
 			cands.append([Vector2(cx, cz).distance_squared_to(Vector2(cam_pos.x, cam_pos.z)), ci])
 	if cands.is_empty():
@@ -151,6 +153,7 @@ func _update_dirty(cam_pos: Vector3) -> void:
 func _indices(step: int) -> PackedInt32Array:
 	if _index_cache.has(step):
 		return _index_cache[step]
+	@warning_ignore("integer_division")
 	var n := CHUNK / step + 1
 	var idx := PackedInt32Array()
 	for vz in range(n - 1):
@@ -211,6 +214,7 @@ func _vertex_height(gx: int, gz: int) -> float:
 
 func _full_build(ci: int) -> void:
 	var step := _lod[ci]
+	@warning_ignore("integer_division")
 	var n := CHUNK / step + 1
 	var verts := PackedVector3Array()
 	var norms := PackedVector3Array()
@@ -227,6 +231,7 @@ func _full_build(ci: int) -> void:
 
 func _partial(ci: int, r: Rect2i) -> void:
 	var step := _lod[ci]
+	@warning_ignore("integer_division")
 	var n := CHUNK / step + 1
 	var vx0 := clampi(int(floor((r.position.x - 1) / float(step))), 0, n - 1)
 	var vz0 := clampi(int(floor((r.position.y - 1) / float(step))), 0, n - 1)
@@ -237,8 +242,10 @@ func _partial(ci: int, r: Rect2i) -> void:
 
 func _recompute(ci: int, vx0: int, vz0: int, vx1: int, vz1: int) -> void:
 	var step := _lod[ci]
+	@warning_ignore("integer_division")
 	var n := CHUNK / step + 1
 	var gx0 := (ci % Snow.CW) * CHUNK
+	@warning_ignore("integer_division")
 	var gz0 := (ci / Snow.CW) * CHUNK
 	var verts: PackedVector3Array = _verts[ci]
 	var norms: PackedVector3Array = _norms[ci]

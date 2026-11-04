@@ -149,7 +149,6 @@ func _process(delta: float) -> void:
 
 
 func _outline(r: Rect2) -> void:
-	var pts := []
 	var step := 0.5
 	var corners := [r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y), r.position]
 	for i in range(4):

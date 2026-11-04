@@ -9,19 +9,19 @@ var night := false
 var tint := Color.WHITE
 
 
-static func weather(cond: int, size := 64.0) -> Icons:
+static func weather(cond: int, px := 64.0) -> Icons:
 	var i := Icons.new()
 	i.kind = "weather"
 	i.code = cond
-	i.custom_minimum_size = Vector2(size, size)
+	i.custom_minimum_size = Vector2(px, px)
 	return i
 
 
-static func tool(id: String, size := 64.0) -> Icons:
+static func tool(id: String, px := 64.0) -> Icons:
 	var i := Icons.new()
 	i.kind = "tool"
 	i.tool_id = id
-	i.custom_minimum_size = Vector2(size, size)
+	i.custom_minimum_size = Vector2(px, px)
 	return i
 
 

@@ -123,12 +123,15 @@ func _ready() -> void:
 	print("3-day time skip: %d ms" % (Time.get_ticks_msec() - ts))
 	var ss := Time.get_ticks_msec()
 	Saves.save_game()
+	@warning_ignore("integer_division")
 	print("Save: %d ms (file %d KB)" % [Time.get_ticks_msec() - ss, FileAccess.get_file_as_bytes(Saves.path_for("fun")).size() / 1024])
 	var ls := Time.get_ticks_msec()
 	Saves.load_game("fun")
 	print("Load: %d ms" % (Time.get_ticks_msec() - ls))
 	Saves.delete_save("fun")
-	get_tree().quit()
+	# AudioMgr.quit: stop every sound before quitting, so nothing is reported leaked at exit
+	# (HANDOFF §13 item 13).
+	AudioMgr.quit()
 
 
 func _measure(label: String, frames: int, step: Callable) -> void:

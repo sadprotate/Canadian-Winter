@@ -140,7 +140,6 @@ func start_winter(y: int) -> void:
 	Contracts.start_winter()
 	Municipal.start_winter()
 	Survival.start_winter()
-	var hi := Layout.house_info(Layout.player_lot)
 	player_pos = bedroom_spawn()
 	player_yaw = 0.0
 	flags["player_inside"] = true
@@ -168,7 +167,7 @@ func bedroom_spawn() -> Vector3:
 # Money / stats
 # -----------------------------------------------------------------------------
 
-func add_money(amount: int, reason := "") -> void:
+func add_money(amount: int, _reason := "") -> void:
 	money += amount
 	if amount > 0:
 		stats_add("money_earned", amount)
@@ -190,9 +189,9 @@ func stats_add(key: String, v) -> void:
 	lifetime[key] = lifetime.get(key, 0) + v
 
 
-func add_equipment_stat(name: String) -> void:
+func add_equipment_stat(stat: String) -> void:
 	var eq: Array = stats.get("equipment", [])
-	eq.append(name)
+	eq.append(stat)
 	stats["equipment"] = eq
 
 

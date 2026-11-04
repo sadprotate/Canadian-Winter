@@ -138,7 +138,7 @@ func _curb_segments(a: float, b: float, horizontal: bool) -> Array:
 
 
 # -----------------------------------------------------------------------------
-func _houses(minimal: bool) -> void:
+func _houses(_minimal: bool) -> void:
 	var houses_node := Node3D.new()
 	houses_node.name = "Houses"
 	root.add_child(houses_node)
@@ -179,7 +179,6 @@ func _vegetation() -> void:
 	var bare := []
 	var tree_points := []
 	for lot in Layout.lots:
-		var r: Rect2 = lot["rect"]
 		var trng := RandomNumberGenerator.new()
 		trng.seed = lot["tree_seed"]
 		var count: int = lot["trees"]
@@ -187,7 +186,6 @@ func _vegetation() -> void:
 			count = 2
 		var hi := Layout.house_info(lot) if not lot["vacant"] else {}
 		for k in range(count):
-			var placed := false
 			for attempt in range(12):
 				var u := trng.randf_range(-12.5, 12.5)
 				var v := trng.randf_range(2.5, 26.0)
@@ -207,7 +205,6 @@ func _vegetation() -> void:
 				else:
 					bare.append(xf)
 				tree_points.append(p)
-				placed = true
 				break
 	# Bare trees on boulevards, evergreens around commercial lots and along the map edges.
 	var x := 10.0
@@ -423,7 +420,7 @@ func _commercial() -> void:
 	kit.box(Mats.prop(Color(0.2, 0.3, 0.55), 0.5), Transform3D(Basis(), Vector3(dr.position.x - 2.0, 2.4, dr.position.y + 2.9)), Vector3(3.0, 1.4, 0.1))
 	for k in range(2):
 		kit.box(Mats.prop(Color(0.25, 0.26, 0.28), 0.5), Transform3D(Basis(), Vector3(dr.position.x - 3.2 + k * 2.4, 0.9, dr.position.y + 2.9)), Vector3(0.1, 1.8, 0.1))
-	var mi := kit.instance(root, "Commercial", true)
+	kit.instance(root, "Commercial", true)
 
 
 func _label(pos: Vector3, text: String, size: int, color: Color, yaw := 0.0) -> Label3D:

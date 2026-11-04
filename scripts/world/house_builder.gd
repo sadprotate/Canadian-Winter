@@ -236,7 +236,7 @@ static func _side_window(kit: MeshKit, L: Transform3D, c: Vector3, size: Vector2
 
 
 ## Hollow body walls for houses with interiors: openings for the door and windows.
-static func _hollow_walls(kit: MeshKit, L: Transform3D, siding: Material, wall_h: float, z0: float, z1: float, lot: Dictionary) -> void:
+static func _hollow_walls(kit: MeshKit, L: Transform3D, siding: Material, wall_h: float, z0: float, z1: float, _lot: Dictionary) -> void:
 	var paint := Mats.std(Color(0.86, 0.8, 0.7), 0.9)
 	var t := WALL_T
 	var fy := Layout.PORCH_H

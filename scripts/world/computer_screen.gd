@@ -101,6 +101,7 @@ func _build_desktop() -> Control:
 	d.size = Vector2(SIZE)
 	# Desktop shortcuts, one per app of the computer UI, in two columns.
 	for i in range(ComputerUI.APPS.size()):
+		@warning_ignore("integer_division")
 		var col := i / 5
 		var row := i % 5
 		var ic := AppIcon.new()
@@ -239,8 +240,8 @@ class AppIcon extends Control:
 			8:  # help: a question mark
 				draw_string(ThemeDB.fallback_font, c + Vector2(-5, 8) * u, "?", HORIZONTAL_ALIGNMENT_LEFT, -1, int(22 * u), Color(0.6, 0.8, 1.0))
 		if not small:
-			var name: String = ComputerUI.APPS[app]
-			draw_string(ThemeDB.fallback_font, Vector2(0, s + 15), name, HORIZONTAL_ALIGNMENT_CENTER, size.x, 10, Color(1, 1, 1, 0.95))
+			var app_name: String = ComputerUI.APPS[app]
+			draw_string(ThemeDB.fallback_font, Vector2(0, s + 15), app_name, HORIZONTAL_ALIGNMENT_CENTER, size.x, 10, Color(1, 1, 1, 0.95))
 
 
 class Padlock extends Control:

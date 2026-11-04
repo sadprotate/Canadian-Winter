@@ -180,6 +180,7 @@ func test_serialize_roundtrip_exact() -> void:
 	var data := Snow.serialize()
 	var copy := Snow.depth.duplicate()  # serialize() snapped the live state to the saved precision
 	var comp: PackedByteArray = data["data"]
+	@warning_ignore("integer_division")
 	runner.info("compressed snow state: %d KB (raw %d KB)" % [comp.size() / 1024, int(data["size"]) / 1024])
 	Snow.reset_for_winter(1)
 	runner.check(Snow.deserialize(data), "Deserialize succeeded")

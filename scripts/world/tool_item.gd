@@ -133,7 +133,7 @@ func interact_prompt(_p: Player) -> String:
 	return "[E] Pick up %s" % Catalog.tool(StringName(tool_id)).display_name
 
 
-func interact(p: Player) -> void:
+func interact(_p: Player) -> void:
 	if not can_pick_up():
 		return
 	if is_crate():

@@ -46,12 +46,12 @@ func build() -> void:
 	Layout.ensure()
 	for lot in Layout.lots:
 		var idx: int = lot["index"]
-		var owner := "lot:%d" % idx
+		var lot_owner := "lot:%d" % idx
 		var hi := Layout.house_info(lot)
 		if not lot["vacant"]:
-			_add("lot%d_driveway" % idx, "driveway", "Driveway", owner, [hi["driveway"]], lot["address"])
-			_add("lot%d_path" % idx, "path", "Path to the house", owner, [hi["walkway"], hi["stairs"], hi["porch"]], lot["address"])
-		_add("lot%d_sidewalk" % idx, "sidewalk", "Sidewalk", owner, [hi["sidewalk"]], lot["address"])
+			_add("lot%d_driveway" % idx, "driveway", "Driveway", lot_owner, [hi["driveway"]], lot["address"])
+			_add("lot%d_path" % idx, "path", "Path to the house", lot_owner, [hi["walkway"], hi["stairs"], hi["porch"]], lot["address"])
+		_add("lot%d_sidewalk" % idx, "sidewalk", "Sidewalk", lot_owner, [hi["sidewalk"]], lot["address"])
 	for a in Layout.big_areas:
 		if a["id"] == "dump_lot":
 			continue
@@ -61,13 +61,13 @@ func build() -> void:
 	_built = true
 
 
-func _add(id: String, kind: String, name: String, owner: String, rects: Array, place: String, dynamic := false) -> Dictionary:
+func _add(id: String, kind: String, box_name: String, owner_id: String, rects: Array, place: String, dynamic := false) -> Dictionary:
 	var area := 0.0
 	var big := false
 	for r in rects:
 		area += (r as Rect2).get_area()
 	big = area > 300.0
-	var b := {"id": id, "kind": kind, "name": name, "owner": owner, "rects": rects, "place": place,
+	var b := {"id": id, "kind": kind, "name": box_name, "owner": owner_id, "rects": rects, "place": place,
 		"area": area, "big": big, "dynamic": dynamic,
 		"complete": false, "peak": 0.0, "vol": 0.0, "progress": 0.0, "since": -1.0}
 	boxes.append(b)
@@ -76,10 +76,10 @@ func _add(id: String, kind: String, name: String, owner: String, rects: Array, p
 
 
 ## A box defined at runtime (e.g. Gerry's trail). Saved with the game.
-func add_dynamic(id: String, kind: String, name: String, owner: String, rects: Array, place: String) -> Dictionary:
+func add_dynamic(id: String, kind: String, box_name: String, owner_id: String, rects: Array, place: String) -> Dictionary:
 	if by_id.has(id):
 		return by_id[id]
-	var b := _add(id, kind, name, owner, rects, place, true)
+	var b := _add(id, kind, box_name, owner_id, rects, place, true)
 	measure(b, true)
 	return b
 
@@ -92,10 +92,10 @@ func lot_box(lot: Dictionary, kind: String) -> String:
 	return "lot%d_%s" % [int(lot["index"]), kind]
 
 
-func for_owner(owner: String) -> Array:
+func for_owner(owner_id: String) -> Array:
 	var out := []
 	for b in boxes:
-		if b["owner"] == owner and not b["dynamic"]:
+		if b["owner"] == owner_id and not b["dynamic"]:
 			out.append(b)
 	return out
 

@@ -25,7 +25,8 @@ extends Node
 ##     HANDOFF §13 item 12; at the polish-5 baseline `p_elem->_root` prints with --emit=physics,
 ##     not with a real click), and waits for the autosave and the fade-in;
 ##  5. Esc (the `pause` action) → EXIT TO MAIN MENU (→ "Exit" if it asks) → the real main menu;
-##  6. presses EXIT: the menu's own `get_tree().quit()` (HANDOFF §13 item 13's leak report).
+##  6. presses EXIT: the menu's own quit (`AudioMgr.quit()` since polish 5 §1: it stops every sound,
+##     waits ~0.15 s of real time for the audio thread, then quits; HANDOFF §13 item 13).
 ## Buttons are clicked with a real mouse click at their centre (InputEventMouseButton); if the
 ## click doesn't reach the button the driver says so and emits `pressed` instead. Looking uses
 ## InputEventMouseMotion; walking and scooping use the input actions. Headless builds can't capture
@@ -70,10 +71,10 @@ func _say(t: String) -> void:
 	print("[run_log] %s" % t)
 
 
-func _step(name: String) -> void:
-	_phase = name
+func _step(step_name: String) -> void:
+	_phase = step_name
 	_phase_t0 = Time.get_ticks_msec()
-	_say("== %s (game %s)" % [name, Clock.format_time(Clock.minutes) if Game.in_game else "-"])
+	_say("== %s (game %s)" % [step_name, Clock.format_time(Clock.minutes) if Game.in_game else "-"])
 
 
 func _fail(why: String) -> void:
@@ -383,9 +384,12 @@ func _run() -> void:
 	# 6. EXIT.
 	_step("EXIT")
 	_release_all()
-	_say("pressing EXIT (the menu's get_tree().quit())")
+	_say("pressing EXIT (the menu's AudioMgr.quit())")
 	if not await _press(menu, "EXIT"):
 		_fail("no EXIT button")
 		return
-	await _frames(30)
-	_fail("still running after EXIT")
+	# The quit comes after a short real-time wait (AudioMgr.QUIT_DRAIN_MS), not within a frame count.
+	var t_exit := Time.get_ticks_msec()
+	while Time.get_ticks_msec() - t_exit < 5000:
+		await get_tree().process_frame
+	_fail("still running 5 s after EXIT")

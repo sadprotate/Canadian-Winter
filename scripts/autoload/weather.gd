@@ -213,7 +213,7 @@ func _fill_hours() -> void:
 		var s := int(st)
 		var e := int(ceil(en))
 		var c: int = ev["cond"]
-		var len := maxf(en - st, 0.5)
+		var span_h := maxf(en - st, 0.5)
 		for h in range(maxi(s - 5, 0), mini(e + 4, HOURS)):
 			if cond[h] < C.CLOUDY:
 				cond[h] = C.CLOUDY
@@ -233,7 +233,7 @@ func _fill_hours() -> void:
 			var a := maxf(float(h), lead_end)
 			var bnd := minf(float(h + 1), en)
 			var frac := maxf(bnd - a, 0.0)
-			var x := ((a + bnd) * 0.5 - st) / len
+			var x := ((a + bnd) * 0.5 - st) / span_h
 			var w := clampf(sin(x * PI) * 1.35, 0.25, 1.15) * frac
 			if w > 0.0:
 				weights[h] = w
@@ -267,7 +267,7 @@ func _fill_hours() -> void:
 			var h: int = hv
 			var r: float = hours[h]
 			rate[h] += r
-			var x2 := (h - st + 0.5) / len
+			var x2 := (h - st + 0.5) / span_h
 			var hc := c
 			var lead := float(h) < lead_end - 0.001
 			if lead:
@@ -386,7 +386,7 @@ func on_advance(start_min: float, step_min: float) -> void:
 		Game.stats_add("snowfall_cm", add_cm)
 
 
-func on_hour(day: int, hour: int) -> void:
+func on_hour(_day: int, hour: int) -> void:
 	var c := condition()
 	if c != _last_cond:
 		_last_cond = c
@@ -452,6 +452,7 @@ func _gen_forecast_noise() -> void:
 	_ev_amt_err.resize(events.size())
 	for i in range(events.size()):
 		_ev_amt_err[i] = rng.randf_range(-1.0, 1.0)
+	@warning_ignore("integer_division")
 	_temp_knots.resize(HOURS / 6 + 2)
 	for i in range(_temp_knots.size()):
 		_temp_knots[i] = rng.randf_range(-1.0, 1.0)
@@ -499,6 +500,7 @@ func _fc_view(i: int, issued: int, lead: float, radio: bool) -> Dictionary:
 
 
 func _temp_noise(h: int) -> float:
+	@warning_ignore("integer_division")
 	var k := h / 6
 	var f := float(h % 6) / 6.0
 	return lerpf(_temp_knots[mini(k, _temp_knots.size() - 1)], _temp_knots[mini(k + 1, _temp_knots.size() - 1)], f)
@@ -509,6 +511,7 @@ func _temp_noise(h: int) -> float:
 func fc_hour(target: int, issued: int, radio := false) -> Dictionary:
 	target = clampi(target, 0, HOURS - 1)
 	var lead := maxf(float(target - issued), 0.0)
+	@warning_ignore("integer_division")
 	var day := target / 24
 	var hod := target % 24
 	var c := C.CLOUDY if (cloudy_day.size() > day and cloudy_day[day] == 1 and hod >= 6 and hod < 20) else C.CLEAR

@@ -134,7 +134,6 @@ static func build(vd: VehicleData) -> Dictionary:
 	# Wheels
 	var tire := Mats.rubber()
 	var hub := Mats.metal(Color(0.5, 0.52, 0.55))
-	var wheel_nodes := []
 	for w in info["wheels"]:
 		var p: Vector3 = w["pos"]
 		var r: float = w["r"]

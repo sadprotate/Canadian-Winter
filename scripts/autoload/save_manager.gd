@@ -40,7 +40,12 @@ func _read(path: String) -> Dictionary:
 		return {}
 	var txt := f.get_as_text()
 	f.close()
-	var parsed = JSON.parse_string(txt)
+	# JSON.parse rather than JSON.parse_string: the same result, but a corrupt file is reported as
+	# no save without the engine printing "Parse JSON failed" (polish 5 §1, a clean log).
+	var json := JSON.new()
+	if json.parse(txt) != OK:
+		return {}
+	var parsed = json.data
 	if not (parsed is Dictionary):
 		return {}
 	var d: Dictionary = parsed

@@ -122,14 +122,14 @@ func buy(item_id: String) -> Dictionary:
 	if not Game.spend(price):
 		return {"ok": false, "msg": "Not enough money."}
 	var kind := item_kind(item_id)
-	var name := Catalog.item_name(StringName(item_id))
-	log_tx("Purchase: %s" % name, -price)
+	var item_label := Catalog.item_name(StringName(item_id))
+	log_tx("Purchase: %s" % item_label, -price)
 	if kind == "upgrade":
 		var u: UpgradeData = Catalog.upgrade(StringName(item_id))
 		if upgrade_is_immediate(u):
 			Game.grant_upgrade(u.id)
-			Notify.push("%s is now active." % name, Notify.GOOD)
-			return {"ok": true, "msg": "%s activated." % name}
+			Notify.push("%s is now active." % item_label, Notify.GOOD)
+			return {"ok": true, "msg": "%s activated." % item_label}
 	var open := store_open()
 	var order := {"id": _next_order, "item": item_id, "kind": kind, "price": price, "placed": Clock.minutes,
 		"ready_at": Clock.minutes if open else next_open_time(), "status": "ready" if open else "pending"}
@@ -138,10 +138,10 @@ func buy(item_id: String) -> Dictionary:
 	orders_changed.emit()
 	Game.dirty_since_save = true
 	if open:
-		Notify.push("Order placed: %s — ready for pickup at Northern Supply Co." % name, Notify.GOOD)
-		return {"ok": true, "msg": "%s is ready for pickup at the store lot." % name}
-	Notify.push("Order placed: %s — ready at 7:00 when the store opens." % name, Notify.INFO)
-	return {"ok": true, "msg": "%s will be ready at 7:00." % name}
+		Notify.push("Order placed: %s — ready for pickup at Northern Supply Co." % item_label, Notify.GOOD)
+		return {"ok": true, "msg": "%s is ready for pickup at the store lot." % item_label}
+	Notify.push("Order placed: %s — ready at 7:00 when the store opens." % item_label, Notify.INFO)
+	return {"ok": true, "msg": "%s will be ready at 7:00." % item_label}
 
 
 func order_status_text(o: Dictionary) -> String:
@@ -173,7 +173,7 @@ func ready_orders() -> Array:
 	return out
 
 
-func on_hour(day: int, hour: int) -> void:
+func on_hour(_day: int, hour: int) -> void:
 	var b: BalanceData = Catalog.balance
 	if hour == b.store_open_hour:
 		var any := false

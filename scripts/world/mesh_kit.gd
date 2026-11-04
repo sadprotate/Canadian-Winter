@@ -164,6 +164,7 @@ func cylinder(mat: Material, xf: Transform3D, r_bottom: float, r_top: float, hei
 
 ## UV sphere (ellipsoid via transform scale) centred at the transform origin.
 func sphere(mat: Material, xf: Transform3D, radius: float, rings := 6, seg := 10, hemi := false) -> void:
+	@warning_ignore("integer_division")
 	var rmax := rings / 2 if hemi else rings
 	for r in range(rmax):
 		var t0 := PI * r / rings

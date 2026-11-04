@@ -74,7 +74,9 @@ func _ready() -> void:
 	if p5:
 		await _verify_all()
 	print("FIXTURES DONE")
-	get_tree().quit(0)
+	# AudioMgr.quit: stop every sound before quitting, so nothing is reported leaked at exit
+	# (HANDOFF §13 item 13).
+	AudioMgr.quit(0)
 
 
 func _frames(n: int) -> void:
@@ -280,7 +282,6 @@ func _park(v: Vehicle, p: Vector2, yaw: float) -> void:
 
 func _p5_setup(point: String) -> void:
 	var lot := Layout.player_lot
-	var hi := Layout.house_info(lot)
 	match point:
 		"1_contracts":
 			await _f1("Complete tutorial")
@@ -404,6 +405,9 @@ func _p5_setup(point: String) -> void:
 				if world.modal_kind == "summary":
 					break
 			# The summary: every recurring contract is ticked for renewal; BEGIN WINTER 2.
+			# A real click arrives outside the physics step; unpausing between the physics server's query
+			# flush and its step makes the engine print `p_elem->_root` (HANDOFF §13 item 12).
+			await get_tree().process_frame
 			for b in (world.modal.find_children("*", "Button", true, false) if world.modal else []):
 				if (b as Button).text.begins_with("BEGIN WINTER"):
 					(b as Button).pressed.emit()

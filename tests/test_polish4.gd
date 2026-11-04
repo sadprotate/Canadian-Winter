@@ -335,6 +335,7 @@ func test_indicator_at_pickup_then_landing_every_tool() -> void:
 		for view in ["fp", "tp"]:
 			for pitch in [-60.0, -45.0, -30.0]:
 				var u := -10.0 + float(spot % 6) * 1.6
+				@warning_ignore("integer_division")
 				var v := 3.0 + float((spot / 6) % 3) * 2.2
 				spot += 1
 				var p2 := Layout.lot_to_world(lot, Layout.gu(lot, u), v)
@@ -798,17 +799,17 @@ func test_forecast_accuracy() -> void:
 					ps = ds
 			# The TV's day cards: a snowy day's total, called 3, 2, 1 and 0 days ahead.
 			for d in range(4, 121):
-				var tr := 0.0
+				var day_total := 0.0
 				for h in range(d * 24, d * 24 + 24):
-					tr += Weather.rate[h]
-				if tr < 1.0:
+					day_total += Weather.rate[h]
+				if day_total < 1.0:
 					continue
 				dn += 1
 				for k in range(4):
 					var fcs := 0.0
 					for h in range(d * 24, d * 24 + 24):
 						fcs += float(Weather.fc_hour(h, d * 24 - 24 * k)["rate"])
-					derr[k] += absf(fcs - tr) / tr
+					derr[k] += absf(fcs - day_total) / day_total
 	var m := {}
 	for L in leads:
 		m[L] = err[L] / maxf(cnt, 1)
@@ -817,8 +818,10 @@ func test_forecast_accuracy() -> void:
 	for k in range(4):
 		derr[k] /= maxf(dn, 1)
 	runner.check(dn > 100 and derr[0] < derr[1] and derr[1] < derr[2] and derr[2] < derr[3], "a day's snow is called better as it gets closer (mean relative error today %.2f, 1 day ahead %.2f, 2 days %.2f, 3 days %.2f; %d snowy days)" % [derr[0], derr[1], derr[2], derr[3], dn])
+	@warning_ignore("integer_division")
 	runner.check(radio_err < tv_err and radio_hit > tv_hit, "the radio's next hour is more right than the TV's three-day call (condition right %d%% vs %d%%, rate off %.2f vs %.2f cm/h)" % [100 * radio_hit / maxi(hits, 1), 100 * tv_hit / maxi(hits, 1), radio_err / maxf(hits, 1), tv_err / maxf(hits, 1)])
 	runner.check(conv_bad.is_empty(), "a forecast event's amount and timing errors only shrink as it approaches (converges)%s" % ("" if conv_bad.is_empty() else " — " + str(conv_bad.slice(0, 3))))
+	@warning_ignore("integer_division")
 	runner.check(revised > cnt / 2, "the forecast is revised every hour (%d of %d snowy hours changed between consecutive issues)" % [revised, cnt])
 	# Skill: scales the error down and the surprise horizon up.
 	var b: BalanceData = Catalog.balance
@@ -1119,7 +1122,6 @@ func test_playthrough_from_the_menu_both_modes() -> void:
 		world = h.world
 		Clock.running = true
 		var pl: Player = world.player
-		var tc: ToolController = pl.tools
 		var lot := Layout.player_lot
 		var hi := Layout.house_info(lot)
 		# 1. The letter, from the moved mailbox (standing at the foot of the walk by the sidewalk).
@@ -1238,9 +1240,9 @@ func test_playthrough_from_the_menu_both_modes() -> void:
 		runner.check(b["complete"], "%s: the path cleared to the 90 %% snap (%d strokes)" % [mode, st["strokes"]])
 		runner.check(st["pick"] > 20 and st["pick_bad"] == 0 and st["land"] > 0 and st["land_bad"] == 0 and st["after_bad"] == 0, "%s: the indicator was on the cut while scooping (%d frames, %d off), at the landing when loaded (%d strokes, %d not), gone after each throw (%d not)" % [mode, st["pick"], st["pick_bad"], st["land"], st["land_bad"], st["after_bad"]])
 		# 6. The TV and the radio.
-		var tr: Dictionary = await _use_tv_and_radio(h)
-		runner.check(tr["tv_open"] and str(tr["tv"]).contains("Forecast updated"), "%s: the TV's forecast, with when it was updated" % mode)
-		runner.check(str(tr["radio"]).begins_with("Radio: ") and str(tr["radio"]).to_lower().contains(Weather.hour_name(Weather.issued_hour() + 1)), "%s: the radio reads the next hours: \"%s\"" % [mode, tr["radio"]])
+		var heard: Dictionary = await _use_tv_and_radio(h)
+		runner.check(heard["tv_open"] and str(heard["tv"]).contains("Forecast updated"), "%s: the TV's forecast, with when it was updated" % mode)
+		runner.check(str(heard["radio"]).begins_with("Radio: ") and str(heard["radio"]).to_lower().contains(Weather.hour_name(Weather.issued_hour() + 1)), "%s: the radio reads the next hours: \"%s\"" % [mode, heard["radio"]])
 		# 7. Wait out the start of the next scheduled storm indoors, listening to the radio.
 		var ev: Dictionary = {}
 		for e in Weather.events:
@@ -1301,6 +1303,9 @@ func test_playthrough_from_the_menu_both_modes() -> void:
 		await h._stand_at(bp + bin.normalized() * 1.5, bed.global_position)
 		await _press_event("interact")
 		await _frames(2)
+		# A real click arrives outside the physics step; unpausing between the physics server's query
+		# flush and its step makes the engine print `p_elem->_root` (HANDOFF §13 item 12).
+		await _tree().process_frame
 		_press_btn(world.modal, "Sleep until 7:00 a.m.")
 		guard = 0
 		while (not Saves.has_save(mode) or Game.dirty_since_save) and guard < 900:

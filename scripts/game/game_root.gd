@@ -865,9 +865,9 @@ func _exit_to_menu() -> void:
 
 func _quit() -> void:
 	if Game.dirty_since_save:
-		Panels.confirm(hud, "Quit to desktop? Progress since your last sleep will be lost.", "Quit", func(): get_tree().quit())
+		Panels.confirm(hud, "Quit to desktop? Progress since your last sleep will be lost.", "Quit", func(): AudioMgr.quit())
 	else:
-		get_tree().quit()
+		AudioMgr.quit()
 
 
 # -----------------------------------------------------------------------------

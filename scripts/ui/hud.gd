@@ -63,17 +63,17 @@ func _ready() -> void:
 	tlv.add_child(date_l)
 	tlv.add_child(time_l)
 	# Top-right: weather
-	var tr := UIKit.panel(UIKit.sb(Color(0.07, 0.09, 0.15, 0.6), 12, 0, Color.TRANSPARENT, 14))
-	tr.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	tr.custom_minimum_size = Vector2(306, 0)
+	var top_right := UIKit.panel(UIKit.sb(Color(0.07, 0.09, 0.15, 0.6), 12, 0, Color.TRANSPARENT, 14))
+	top_right.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	top_right.custom_minimum_size = Vector2(306, 0)
 	# Pinned to the right edge and growing leftward, so "-14 °C (feels -29)" never runs off-screen.
-	tr.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	tr.offset_right = -20.0
-	tr.offset_left = -326.0
-	tr.offset_top = 20.0
-	add_child(tr)
+	top_right.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	top_right.offset_right = -20.0
+	top_right.offset_left = -326.0
+	top_right.offset_top = 20.0
+	add_child(top_right)
 	var trh := UIKit.hbox(12)
-	tr.add_child(trh)
+	top_right.add_child(trh)
 	weather_icon = Icons.weather(0, 64)
 	trh.add_child(weather_icon)
 	var trv := UIKit.vbox(0)
