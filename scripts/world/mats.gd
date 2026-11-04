@@ -142,6 +142,13 @@ static func roof(color: Color) -> StandardMaterial3D:
 	return std(color, 0.9)
 
 
+## Polish 5 §6: tool surfaces (shaders/tool.gdshader): `finish` is one of ToolModels.FIN_* —
+## plastic, aluminium, painted steel, bare steel, wood, fibreglass, rubber — with a little wear;
+## `edge_wear` scuffs the edge a blade scrapes with (UV.y = 0); `axis` runs along the grain.
+static func tool(finish: int, color: Color, rough := 0.5, metallic := 0.0, wear := 0.3, edge_wear := 0.0, axis := Vector3(0, -0.819, -0.574)) -> ShaderMaterial:
+	return shader_mat("tool", {"finish": finish, "albedo": color, "roughness": rough, "metallic": metallic, "wear": wear, "edge_wear": edge_wear, "grain_axis": axis})
+
+
 static func metal(color := Color(0.62, 0.64, 0.68)) -> StandardMaterial3D:
 	return std(color, 0.35, 0.6)
 

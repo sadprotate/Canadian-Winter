@@ -17,11 +17,15 @@ static func weather(cond: int, px := 64.0) -> Icons:
 	return i
 
 
+## Polish 5 §6: one set everywhere (hotbar, store, upgrades, inventory, the rack): the icon rendered
+## from the tool's model (ToolIcons) once it exists, the drawn icon below until then and headless.
 static func tool(id: String, px := 64.0) -> Icons:
 	var i := Icons.new()
 	i.kind = "tool"
 	i.tool_id = id
 	i.custom_minimum_size = Vector2(px, px)
+	i.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	i.add_to_group("tool_icons")
 	return i
 
 
@@ -93,7 +97,36 @@ func _draw_weather(c: Vector2, s: float) -> void:
 			_flake(c + Vector2(0.25, 0.32) * s, 0.06 * s, Color.WHITE)
 
 
+## Polish 5 §6: the same soft light backdrop behind every tool icon (so dark handles read on the
+## game's dark panels).
+static var _backdrop: GradientTexture2D
+
+
+static func backdrop() -> GradientTexture2D:
+	if _backdrop == null:
+		var g := Gradient.new()
+		g.set_color(0, Color(0.8, 0.86, 0.98, 0.2))
+		g.set_color(1, Color(0.8, 0.86, 0.98, 0.0))
+		g.set_offset(0, 0.0)
+		g.set_offset(1, 1.0)
+		_backdrop = GradientTexture2D.new()
+		_backdrop.gradient = g
+		_backdrop.fill = GradientTexture2D.FILL_RADIAL
+		_backdrop.fill_from = Vector2(0.5, 0.5)
+		_backdrop.fill_to = Vector2(1.0, 0.5)
+		_backdrop.width = 64
+		_backdrop.height = 64
+	return _backdrop
+
+
 func _draw_tool(c: Vector2, s: float) -> void:
+	if not tool_id.begins_with("crate:"):
+		draw_texture_rect(backdrop(), Rect2(c - Vector2(s, s) * 0.5, Vector2(s, s)), false)
+		var tex: Texture2D = ToolIcons.texture(tool_id)
+		if tex != null:
+			draw_texture_rect(tex, Rect2(c - Vector2(s, s) * 0.5, Vector2(s, s)), false)
+			return
+	# The drawn icons: headless, and until the rendered set exists.
 	if tool_id == "":
 		# Bare hands: a mitten.
 		var g := Color(0.75, 0.77, 0.82, 0.55)

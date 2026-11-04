@@ -68,6 +68,15 @@ extends Node
 ##   --hud=0                  (§5) hide the HUD and the rest of the game's UI layer
 ##   --award=n                (§5) win the first n listings on the board (as F1's "Win first
 ##                            listing" does), so contracts show on the map
+##   --slots=a,b,c,d          (§6) the four tool slots (tool ids, empty = bare hands), e.g.
+##                            --slots=small_shovel,,wide_pusher, ; --selected=n selects slot n (0-3)
+##   --ui=icons               (§6) every tool's icon at the hotbar's size in its slot panel (dimmed
+##                            as an empty slot in the last row), at the store's and the inventory's
+##                            sizes and large; waits for the rendered set
+##   --comp_scroll=px         (§6) with --ui=computer: scroll the open app down px
+##   --showcase=x,z,yaw       (§6) every tool model in a row on the ground from world (x, z), facing
+##                            yaw: the hand tools standing on their blades as if held, the blowers;
+##                            use with --cam/--look or --views
 
 var args := {}
 var game: Node = null
@@ -130,7 +139,7 @@ func _ready() -> void:
 	if args.get("hud", "1") == "0":
 		game.ui.visible = false
 	if args.has("ui"):
-		_open_ui(str(args["ui"]))
+		await _open_ui(str(args["ui"]))
 		await _wait(int(args.get("ui_frames", "6")))
 	if args.has("views"):
 		await _capture_views()
@@ -324,6 +333,15 @@ func _setup_after_spawn() -> void:
 	var lot := Layout.player_lot
 	if args.has("tool"):
 		Game.add_tool(str(args["tool"]))
+	if args.has("slots"):
+		# Polish 5 §6: fill the hotbar.
+		var sl := str(args["slots"]).split(",")
+		for k in range(4):
+			Game.slots[k] = sl[k] if k < sl.size() else ""
+		Game.selected = clampi(int(args.get("selected", "0")), 0, 3)
+		Game.inventory_changed.emit()
+	if args.has("showcase"):
+		_showcase(w)
 	if args.has("player"):
 		var p := str(args["player"]).split(",")
 		var pp := Layout.lot_to_world(lot, Layout.gu(lot, float(p[0])), float(p[1]))
@@ -480,6 +498,11 @@ func _open_ui(which: String) -> void:
 			if args.has("tab"):
 				var c = w.modal
 				c.call("_open_app", int(args["tab"]))
+			if args.has("comp_scroll"):
+				for i in range(4):
+					await get_tree().process_frame
+				(w.modal as ComputerUI).scroll.scroll_vertical = int(args["comp_scroll"])
+			await _wait_icons()
 		"map":
 			var m := MapUI.new()
 			w.ui.add_child(m)
@@ -501,6 +524,8 @@ func _open_ui(which: String) -> void:
 			w.radio_forecast()
 		"sleep":
 			w.open_sleep()
+		"icons":
+			await _icons_sheet(w)
 		"photo":
 			var ph = w.interior.get("photo")
 			for i in range(240):
@@ -524,6 +549,111 @@ func _scroll_settings(sm: SettingsMenu, px: int) -> void:
 	var sc := sm.tabs.get_current_tab_control() as ScrollContainer
 	if sc:
 		sc.scroll_vertical = px
+
+
+## --ui=icons (polish 5 §6): every icon of the set in the hotbar's slot panel at its size (70 px),
+## the last row dimmed as an empty slot is; then at the store's (72), the inventory's (48) and a large
+## size, on the computer's dark page colour.
+func _icons_sheet(w: Node) -> void:
+	var root := Control.new()
+	root.theme = UIKit.theme()
+	UIKit.full_rect(root)
+	w.ui.add_child(root)
+	var bg := ColorRect.new()
+	bg.color = Color(0.1, 0.12, 0.19)
+	UIKit.full_rect(bg)
+	root.add_child(bg)
+	var v := UIKit.vbox(16)
+	v.position = Vector2(40, 30)
+	root.add_child(v)
+	var list := _icon_ids()
+	for dim in [false, true]:
+		var row := UIKit.hbox(10)
+		v.add_child(row)
+		for id in list:
+			var p := UIKit.panel(UIKit.sb(Color(0.07, 0.09, 0.15, 0.65), 10, 2, Color(1, 1, 1, 0.12), 6))
+			p.custom_minimum_size = Vector2(98, 86)
+			row.add_child(p)
+			var ov := Control.new()
+			p.add_child(ov)
+			var ic := Icons.tool(id, 70)
+			ic.position = Vector2(8, 2)
+			ov.add_child(ic)
+			if dim:
+				ic.modulate.a = 0.35 if id == "" else 1.0
+	for px in [72, 48, 128]:
+		var row2 := UIKit.hbox(14)
+		v.add_child(row2)
+		for id in list:
+			var c := UIKit.card()
+			row2.add_child(c)
+			c.add_child(Icons.tool(id, px))
+	var names := UIKit.label("  ".join(list.map(func(x): return "hands" if x == "" else x)), 16, UIKit.MUTED)
+	v.add_child(names)
+	await _wait_icons()
+
+
+## The rendered icon set's script (polish 5 §6), looked up at run time so this helper also runs on
+## builds from before it (the "before" shots), where it is null.
+func _icon_script() -> Script:
+	var p := "res://scripts/ui/tool_icons.gd"
+	return load(p) if ResourceLoader.exists(p) else null
+
+
+func _icon_ids() -> Array:
+	var ti := _icon_script()
+	if ti:
+		return ti.call("ids")
+	var out := [""]
+	for id in Catalog.TOOL_IDS:
+		if id != &"hands":
+			out.append(String(id))
+	return out
+
+
+## Wait (a few seconds at most) for the rendered tool icons.
+func _wait_icons() -> void:
+	var ti := _icon_script()
+	if ti == null:
+		return
+	ti.call("request")
+	for i in range(600):
+		if ti.get("state") != "rendering":
+			break
+		await get_tree().process_frame
+	print("tool icons: %s, %d ms (stage %d ms, read back and cut %d ms), %d frames drawn, image %s" % [ti.get("state"), ti.get("render_ms"), ti.get("build_ms"), ti.get("cut_ms"), ti.get("render_frames"), ti.get("image_px")])
+	await _wait(3)
+
+
+## --showcase=x,z,yaw (polish 5 §6): every tool's model in a row on the ground.
+func _showcase(w: Node) -> void:
+	var p := str(args["showcase"]).split(",")
+	var at := Vector3(float(p[0]), 0, float(p[1]))
+	var yaw := float(p[2]) if p.size() > 2 else 0.0
+	var b := Basis(Vector3.UP, yaw)
+	var x := 0.0
+	for id in ["small_shovel", "standard_shovel", "wide_pusher", "snow_scraper", "large_scraper", "snow_sleigh", "electric_shovel", "small_blower", "large_blower"]:
+		var t: ToolData = Catalog.tool(StringName(id))
+		var mi := MeshInstance3D.new()
+		mi.mesh = ToolModels.mesh_for(id)
+		w.add_child(mi)
+		var half := maxf(t.width, 0.35) * 0.5 + 0.25
+		x += half
+		var base := at + b * Vector3(x, 0, 0)
+		base.y = Snow.surface_height(base.x, base.z)
+		if t.kind == ToolData.Kind.WALK_BLOWER:
+			mi.global_transform = Transform3D(b, base)
+			if (ToolModels as Script).get_script_method_list().any(func(md): return md["name"] == "chute_mesh"):
+				var ch := MeshInstance3D.new()
+				ch.mesh = (ToolModels as Script).call("chute_mesh", id)
+				mi.add_child(ch)
+				ch.position = Vector3(0, 0.62, -0.25)   # WalkBehind's chute pivot
+				ch.rotation.y = -deg_to_rad(30.0)
+		else:
+			# Standing on its blade as if held: the tip at the ground, the grip up behind.
+			var tp := ToolModels.tip(id)
+			mi.global_transform = Transform3D(b, base - b * tp + Vector3(0, 0.02, 0))
+		x += half
 
 
 ## --views="x,y,z>lx,ly,lz;…" (polish 5 §5): one free camera moved through several views, each

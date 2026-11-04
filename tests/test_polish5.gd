@@ -2461,3 +2461,283 @@ func test_s5_map_shows_every_number() -> void:
 		runner.check("HOME" in tags and "vacant" in tags and tags.any(func(t): return str(t).ends_with("h")), "§5 …with HOME, vacant and a contract's hours under their numbers %s" % str(tags))
 	world.close_modal()
 	await _unload()
+
+
+# =============================================================================
+# §6 Tools: models and icons
+# =============================================================================
+
+const S6_TOOLS := ["small_shovel", "standard_shovel", "wide_pusher", "snow_scraper", "large_scraper", "snow_sleigh", "electric_shovel"]
+const S6_MACHINES := ["small_blower", "large_blower"]
+## The tool profiles before §6 (HANDOFF §7): [width, push width, capacity, fill rate, throw, push
+## strength, intake rate]. The models changed; the profiles didn't.
+const S6_PROFILES := {
+	"hands": [0.4, 0.5, 0.03, 0.085, 1.8, 0.035, 0.0],
+	"small_shovel": [0.34, 0.36, 0.05, 0.13, 4.2, 0.09, 0.0],
+	"standard_shovel": [0.46, 0.48, 0.065, 0.16, 5.2, 0.14, 0.0],
+	"wide_pusher": [0.9, 0.9, 0.045, 0.09, 2.2, 0.5, 0.0],
+	"snow_scraper": [0.75, 0.75, 0.05, 0.1, 2.8, 0.6, 0.0],
+	"large_scraper": [1.0, 1.2, 0.08, 0.16, 3.4, 0.95, 0.0],
+	"snow_sleigh": [0.8, 0.8, 0.4, 0.32, 1.0, 1.4, 0.0],
+	"electric_shovel": [0.32, 0.34, 0.03, 0.05, 5.0, 0.08, 0.05],
+	"small_blower": [0.56, 0.4, 0.03, 0.05, 8.0, 0.1, 0.065],
+	"large_blower": [0.78, 0.4, 0.03, 0.05, 12.5, 0.1, 0.14],
+}
+
+
+## The triangles of a mesh (every surface), as a flat array of vertices (three per triangle).
+static func _s6_tris(m: Mesh) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	for si in range(m.get_surface_count()):
+		var arr := m.surface_get_arrays(si)
+		var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		if arr[Mesh.ARRAY_INDEX] != null and not (arr[Mesh.ARRAY_INDEX] as PackedInt32Array).is_empty():
+			for i in (arr[Mesh.ARRAY_INDEX] as PackedInt32Array):
+				out.append(v[i])
+		else:
+			out.append_array(v)
+	return out
+
+
+## Closest point to p on the triangle abc.
+static func _s6_on_tri(p: Vector3, a: Vector3, b: Vector3, c: Vector3) -> Vector3:
+	var ab := b - a
+	var ac := c - a
+	var ap := p - a
+	var d1 := ab.dot(ap)
+	var d2 := ac.dot(ap)
+	if d1 <= 0.0 and d2 <= 0.0:
+		return a
+	var bp := p - b
+	var d3 := ab.dot(bp)
+	var d4 := ac.dot(bp)
+	if d3 >= 0.0 and d4 <= d3:
+		return b
+	var vc := d1 * d4 - d3 * d2
+	if vc <= 0.0 and d1 >= 0.0 and d3 <= 0.0:
+		return a + ab * (d1 / (d1 - d3))
+	var cp := p - c
+	var d5 := ab.dot(cp)
+	var d6 := ac.dot(cp)
+	if d6 >= 0.0 and d5 <= d6:
+		return c
+	var vb := d5 * d2 - d1 * d6
+	if vb <= 0.0 and d2 >= 0.0 and d6 <= 0.0:
+		return a + ac * (d2 / (d2 - d6))
+	var va := d3 * d6 - d5 * d4
+	if va <= 0.0 and (d4 - d3) >= 0.0 and (d5 - d6) >= 0.0:
+		return b + (c - b) * ((d4 - d3) / ((d4 - d3) + (d5 - d6)))
+	var den := 1.0 / (va + vb + vc)
+	return a + ab * (vb * den) + ac * (vc * den)
+
+
+## How far p is from the mesh's surface (its nearest triangle).
+static func _s6_dist(p: Vector3, tris: PackedVector3Array) -> float:
+	var best := INF
+	for i in range(0, tris.size(), 3):
+		var a := tris[i]
+		var b := tris[i + 1]
+		var c := tris[i + 2]
+		# Skip triangles whose bounds are farther than the best so far.
+		var lo := a.min(b).min(c) - Vector3.ONE * best
+		var hi := a.max(b).max(c) + Vector3.ONE * best
+		if p.x < lo.x or p.y < lo.y or p.z < lo.z or p.x > hi.x or p.y > hi.y or p.z > hi.z:
+			continue
+		best = minf(best, p.distance_to(_s6_on_tri(p, a, b, c)))
+	return best
+
+
+## Blade widths match the tool profiles (the scoop width; between it and the push width where they
+## differ), which are as they were; each blade rests on the snow at the shaft's tip as before; the
+## load still sits on (or, for a pusher or scraper, against) the blade; the blowers' intakes match
+## their widths.
+func test_s6_blades_match_the_profiles() -> void:
+	var bad := []
+	for id in S6_PROFILES.keys():
+		var t: ToolData = Catalog.tool(StringName(id))
+		var p: Array = S6_PROFILES[id]
+		var now := [t.width, t.push_width, t.capacity, t.fill_rate, t.throw_distance, t.push_strength, t.rate]
+		for k in range(p.size()):
+			if not is_equal_approx(float(p[k]), float(now[k])):
+				bad.append("%s value %d: %s -> %s" % [id, k, p[k], now[k]])
+	runner.check(bad.is_empty(), "§6 the tool profiles are unchanged (width, push width, capacity, fill, throw, push strength, intake) %s" % str(bad))
+	var widths := []
+	for id in S6_TOOLS:
+		var t: ToolData = Catalog.tool(StringName(id))
+		var bm := ToolModels.blade_mesh(id)
+		var ab := bm.get_aabb()
+		var span: Vector2 = ToolModels.edge_span.get(id, Vector2.ZERO)
+		var edge_ok := is_equal_approx(span.x, -t.width * 0.5) and is_equal_approx(span.y, t.width * 0.5)
+		var lo := minf(t.width, t.push_width) - 0.015
+		var hi := maxf(t.width, t.push_width) + 0.015
+		var outer_ok := (ab.size.x >= t.width - 0.001 and ab.size.x <= t.width + 0.06) if t.kind == ToolData.Kind.ELECTRIC_SHOVEL else (absf(ab.size.x - t.width) <= 0.015 and ab.size.x >= lo and ab.size.x <= hi)
+		widths.append("%s %.3f (profile %.2f / push %.2f)" % [id, ab.size.x, t.width, t.push_width])
+		runner.check(edge_ok and outer_ok, "§6 %s: the blade is %.3f m wide, its cutting edge %.3f m — the profile's %.2f m (push %.2f m)" % [id, ab.size.x, span.y - span.x, t.width, t.push_width])
+		runner.check(ab.position.y >= -0.03 and ab.position.y <= 0.005, "§6 %s: the blade rests on the snow at the shaft's tip (lowest point %.3f m)" % [id, ab.position.y])
+		# The load: in the scoop for shovels and the sleigh, against the face for pushers/scrapers.
+		var lp := ToolModels.blade_offset(id) - ToolModels.tip(id)
+		var inside := absf(lp.x) < ab.size.x * 0.5 and lp.y > ab.position.y and lp.y < ab.end.y
+		match t.kind:
+			ToolData.Kind.SHOVEL, ToolData.Kind.SLEIGH:
+				inside = inside and lp.z > ab.position.z and lp.z < ab.end.z
+			ToolData.Kind.PUSHER, ToolData.Kind.SCRAPER:
+				inside = inside and lp.z < ab.position.z + 0.01 and lp.z > ab.position.z - 0.15
+		if t.kind != ToolData.Kind.ELECTRIC_SHOVEL:
+			runner.check(inside, "§6 %s: the load heaps on its blade (%.2f, %.2f, %.2f in the blade's frame)" % [id, lp.x, lp.y, lp.z])
+	runner.info("§6 blade widths: " + ", ".join(widths))
+	for id in S6_MACHINES:
+		var t: ToolData = Catalog.tool(StringName(id))
+		var ab := ToolModels.mesh_for(id).get_aabb()
+		var span: Vector2 = ToolModels.edge_span.get(id, Vector2.ZERO)
+		runner.check(is_equal_approx(span.y - span.x, t.width) and ab.size.x >= t.width and ab.size.x <= t.width + 0.12 and ab.position.y > -0.02,
+			"§6 %s: the intake is %.2f m wide (profile %.2f m), the machine %.2f m across, standing on the ground" % [id, span.y - span.x, t.width, ab.size.x])
+
+
+## The models: first person keeps a separate handle and blade (both through the viewmodel clip
+## shader that hides what's under the snow), the world / third-person model is the tool shader in
+## several materials; both hands' grip points lie on the new grip and shaft; the 17 exposure points
+## lie on the new shaft and blade; the blowers' chute is part of the model and turns at the old pivot.
+func test_s6_models_grips_and_exposure_points() -> void:
+	var clip := load("res://shaders/viewmodel_clip.gdshader")
+	var tool_sh := load("res://shaders/tool.gdshader")
+	for id in S6_TOOLS:
+		var t: ToolData = Catalog.tool(StringName(id))
+		var hm := ToolModels.handle_mesh(id)
+		var bm := ToolModels.blade_mesh(id)
+		var wm := ToolModels.mesh_for(id)
+		var fp_ok := hm != bm and hm.get_surface_count() > 0 and bm.get_surface_count() > 0
+		for m in [hm, bm]:
+			for si in range((m as Mesh).get_surface_count()):
+				var mat := (m as Mesh).surface_get_material(si)
+				fp_ok = fp_ok and mat is ShaderMaterial and (mat as ShaderMaterial).shader == clip
+		runner.check(fp_ok, "§6 %s: first person has its own handle (%d parts) and blade (%d), each through the clip shader" % [id, hm.get_surface_count(), bm.get_surface_count()])
+		var finishes := {}
+		var world_ok := true
+		for si in range(wm.get_surface_count()):
+			var mat2 := wm.surface_get_material(si)
+			world_ok = world_ok and mat2 is ShaderMaterial and (mat2 as ShaderMaterial).shader == tool_sh
+			if mat2 is ShaderMaterial:
+				finishes[int((mat2 as ShaderMaterial).get_shader_parameter("finish"))] = true
+		runner.check(world_ok and finishes.size() >= 3 and not finishes.has(ToolModels.FIN_PLAIN) and wm.get_surface_count() <= 9,
+			"§6 %s: the model is %d draw surfaces in %d materials (finishes %s)" % [id, wm.get_surface_count(), finishes.size(), str(finishes.keys())])
+		# Both hands: the grip points (ToolController._grip_frames) on the handle's geometry.
+		var tc := ToolController.new()
+		tc.tool_id = id
+		tc.data = t
+		var frames := tc._grip_frames()
+		tc.free()
+		var htris := _s6_tris(hm)
+		var gd := []
+		for f in frames:
+			gd.append(_s6_dist(f["point"], htris))
+		runner.check(gd.size() == 2 and float(gd[0]) <= 0.025 and float(gd[1]) <= 0.025, "§6 %s: both hands' grip points are on the grip and the shaft (%.3f / %.3f m from the surface)" % [id, gd[0], gd[1]])
+		# The 17 exposure points on the shaft and the blade.
+		var pts := ToolModels.sample_points(id)
+		var wtris := _s6_tris(wm)
+		var worst := 0.0
+		for p in pts:
+			worst = maxf(worst, _s6_dist(p, wtris))
+		runner.check(pts.size() == 17 and worst <= 0.03, "§6 %s: its %d exposure points lie on the shaft and the blade (worst %.3f m off)" % [id, pts.size(), worst])
+	for id in S6_MACHINES:
+		var cm := ToolModels.chute_mesh(id)
+		var ab := cm.get_aabb()
+		runner.check(cm.get_surface_count() > 0 and absf(ab.get_center().x) < 0.01 and ab.position.y < -0.1 and ab.end.y > 0.2 and ab.position.z < -0.2,
+			"§6 %s: the chute model rises from the housing at the pivot and its deflector points forward (%s)" % [id, str(ab)])
+	# A blower in the world uses it, at the same pivot.
+	await _s3_world("fun")
+	var e := {"uid": Game.uid(), "tool": "small_blower", "pos": Vector3(60, 0, 83), "yaw": 0.0}
+	Game.machines.append(e)
+	var wb: WalkBehind = world.spawn_machine_node(e)
+	await _frames(2)
+	var cmi: MeshInstance3D = wb.chute.get_child(0)
+	runner.check(wb.chute.position == Vector3(0, 0.62, -0.25) and cmi.mesh == ToolModels.chute_mesh("small_blower") and wb.mesh.mesh == ToolModels.mesh_for("small_blower"), "§6 the walk-behind blower wears the model and turns the model's chute at the same pivot")
+	Game.machines.erase(e)
+	await _unload()
+
+
+## Every Icons control under n (depth first).
+static func _s6_icons(n: Node) -> Array:
+	var out := []
+	for c in n.get_children():
+		if c is Icons:
+			out.append(c)
+		out.append_array(_s6_icons(c))
+	return out
+
+
+## One icon set: the hotbar, the store, the upgrades and the inventory use the same Icons; the rendered
+## set comes from a stage with one orthographic camera (the same angle), the same lights, one model
+## per icon, each framed in its own square (long tools all laid the same way); headless there is
+## no render and the drawn icons stand in (no test depends on a captured image). Bare hands keep
+## the mitten; empty slots stay dimmed.
+func test_s6_one_icon_set() -> void:
+	runner.check(DisplayServer.get_name() == "headless" and ToolIcons.texture("small_shovel") == null and ToolIcons.state == "headless", "§6 headless: no icon render; the drawn icons stand in")
+	var ids := ToolIcons.ids()
+	runner.check(ids.size() == Catalog.TOOL_IDS.size() and ids[0] == "" and ids.has("large_blower") and ids.has("electric_shovel"), "§6 one icon for bare hands (the mitten) and every tool and machine (%d)" % ids.size())
+	var holder := Node3D.new()
+	runner.add_child(holder)
+	@warning_ignore("integer_division")
+	var rows := (ids.size() + ToolIcons.COLS - 1) / ToolIcons.COLS
+	var st := ToolIcons.build_stage(holder, ids, rows)
+	var cams := holder.find_children("*", "Camera3D", true, false)
+	var lights := holder.find_children("*", "DirectionalLight3D", true, false)
+	runner.check(cams.size() == 1 and (cams[0] as Camera3D).projection == Camera3D.PROJECTION_ORTHOGONAL and lights.size() == 3, "§6 the icon stage: one orthographic camera (every icon seen from the same angle), the same three lights")
+	var cam: Camera3D = st["camera"]
+	var ci := cam.basis.inverse()
+	var framed := []
+	var axes := []
+	for it in st["items"]:
+		var cell: Vector2 = it["cell"]
+		var r: Rect2 = it["rect"]
+		if not Rect2(cell - Vector2(0.5, 0.5), Vector2.ONE).grow(0.001).encloses(r) or r.size.x < 0.5 and r.size.y < 0.5:
+			framed.append(it["id"])
+		var id: String = it["id"]
+		if id != "" and Catalog.tool(StringName(id)).kind != ToolData.Kind.WALK_BLOWER:
+			var g: Vector3 = ci * ((it["pose"] as Basis) * ToolModels.blade_offset(id))
+			axes.append(rad_to_deg(Vector2(g.x, g.y).angle_to(ToolIcons.SCREEN_AXIS)))
+	runner.check(framed.is_empty() and (st["items"] as Array).size() == ids.size(), "§6 every icon framed in its own square, filling it %s" % str(framed))
+	runner.check(axes.all(func(a): return absf(a) < 1.0), "§6 the long tools all laid the same way in their icons (%s°)" % str(axes.map(func(a): return snappedf(a, 0.01))))
+	holder.queue_free()
+	# The hotbar: the set's icons, the mitten for bare hands, empty slots dimmed.
+	await _s3_world("fun")
+	Game.slots = ["small_shovel", "", "wide_pusher", ""]
+	Game.selected = 1
+	Game.inventory_changed.emit()
+	await _frames(2)
+	var hud = world.hud
+	var ok := true
+	for i in range(4):
+		var ic: Icons = hud.slot_icons[i]
+		ok = ok and ic.tool_id == Game.slots[i] and ic.is_in_group("tool_icons")
+	var dim: Array = hud.slot_icons.map(func(ic): return snappedf((ic as Control).modulate.a, 0.01))
+	var want_dim := [1.0, 1.0, 1.0, 0.35]
+	for i in range(4):
+		ok = ok and is_equal_approx(float(dim[i]), want_dim[i])
+	runner.check(ok, "§6 the hotbar shows the set: the tools, the mitten in the selected empty slot, the other empty slot dimmed %s" % str(dim))
+	# The store and the upgrades.
+	Game.flags["computer_unlocked"] = true
+	world.open_computer()
+	await _tree().process_frame
+	var comp: ComputerUI = world.modal
+	comp._open_app(2)
+	await _tree().process_frame
+	var store_ids := _s6_icons(comp.content).map(func(n): return (n as Icons).tool_id)
+	var want := Catalog.store_tools().map(func(td): return String((td as ToolData).id))
+	runner.check(want.all(func(x): return x in store_ids), "§6 the store: every tool and machine card shows its icon from the set (%d icons)" % store_ids.size())
+	comp._open_app(3)
+	await _tree().process_frame
+	var up_ids := _s6_icons(comp.content).map(func(n): return (n as Icons).tool_id)
+	var n_tool := 0
+	for uid in Catalog.UPGRADE_IDS:
+		var u: UpgradeData = Catalog.upgrade(uid)
+		if u and u.category in [UpgradeData.Category.TOOL, UpgradeData.Category.MACHINE]:
+			n_tool += 1
+	runner.check(up_ids.size() == n_tool and up_ids.all(func(x): return x in ["small_shovel", "small_blower"]), "§6 the upgrades: each hand-tool and blower upgrade shows the set's icon for its kind of item (%d)" % up_ids.size())
+	world.close_modal()
+	await _tree().process_frame
+	# The inventory panel.
+	var inv: Control = Panels.inventory(hud)
+	var inv_ids := _s6_icons(inv).map(func(n): return (n as Icons).tool_id)
+	runner.check(inv_ids == Game.slots, "§6 the inventory panel uses the same icons %s" % str(inv_ids))
+	inv.queue_free()
+	await _unload()

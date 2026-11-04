@@ -78,21 +78,15 @@ func buried_depth() -> float:
 
 
 ## Sample points on the tool (world space): along the grip and shaft, and across the blade.
+## Polish 5 §6: from the model itself (ToolModels.sample_points: nine on the shaft, two rows of four
+## on the blade — by its back and by its front edge).
 func sample_points() -> PackedVector3Array:
 	var out := PackedVector3Array()
 	if mesh == null or is_crate():
 		return out
 	var xf := mesh.global_transform
-	var tipp := ToolModels.tip(tool_id)
-	for k in range(9):
-		out.append(xf * (tipp * (k / 9.0)))
-	var t: ToolData = Catalog.tool(StringName(tool_id))
-	var w := clampf(t.width if t else 0.4, 0.25, 1.0)
-	var fwd := tipp.normalized() if tipp.length() > 0.01 else Vector3(0, 0, -1)
-	for k in range(4):
-		var u := -0.5 + k / 3.0
-		out.append(xf * (tipp + Vector3(u * w * 0.9, 0, 0)))
-		out.append(xf * (tipp + Vector3(u * w * 0.9, 0, 0) + fwd * 0.18))
+	for p in ToolModels.sample_points(tool_id):
+		out.append(xf * p)
 	return out
 
 

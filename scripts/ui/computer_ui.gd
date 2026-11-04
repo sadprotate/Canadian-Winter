@@ -284,13 +284,15 @@ func _active() -> void:
 
 
 # --- Store -------------------------------------------------------------------------------
-func _store_card(id: String, title: String, price: int, desc: String, stats: String) -> void:
+func _store_card(id: String, title: String, price: int, desc: String, stats: String, icon := "") -> void:
 	var c := UIKit.card()
 	content.add_child(c)
 	var h := UIKit.hbox(16)
 	c.add_child(h)
 	if Catalog.tools.has(StringName(id)):
 		h.add_child(Icons.tool(id, 72))
+	elif icon != "":
+		h.add_child(Icons.tool(icon, 72))
 	var v := UIKit.vbox(4)
 	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	h.add_child(v)
@@ -368,7 +370,18 @@ func _upgrades() -> void:
 			var desc := u.description
 			if Game.has_upgrade(u.id):
 				desc += "  (owned)"
-			_store_card(String(u.id), u.display_name, u.price, desc, "")
+			_store_card(String(u.id), u.display_name, u.price, desc, "", _upgrade_icon(u))
+
+
+## Polish 5 §6: an upgrade's card shows the icon of the kind of item it is for (from the one tool
+## icon set): the hand tools' upgrades the small shovel, the snowblowers' the small blower.
+static func _upgrade_icon(u: UpgradeData) -> String:
+	match u.category:
+		UpgradeData.Category.TOOL:
+			return "small_shovel"
+		UpgradeData.Category.MACHINE:
+			return "small_blower"
+	return ""
 
 
 func _bills() -> void:

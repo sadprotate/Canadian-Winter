@@ -42,12 +42,11 @@ func _ready() -> void:
 	mesh.mesh = ToolModels.mesh_for(tool_id)
 	add_child(mesh)
 	chute = Node3D.new()
-	chute.position = Vector3(0, 0.62, -0.25)
+	chute.position = ToolModels.CHUTE_POS
 	add_child(chute)
-	var ck := MeshKit.new()
-	ck.cylinder(Mats.std(data.primary_color, 0.5), Transform3D(Basis(Vector3(1, 0, 0), deg_to_rad(-25)), Vector3.ZERO), 0.08, 0.07, 0.45, 8, false)
+	# Polish 5 §6: the chute (tube and deflector) is part of the blower's model.
 	var cm := MeshInstance3D.new()
-	cm.mesh = ck.commit()
+	cm.mesh = ToolModels.chute_mesh(tool_id)
 	chute.add_child(cm)
 	cs = CollisionShape3D.new()
 	var box := BoxShape3D.new()
