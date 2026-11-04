@@ -18,16 +18,54 @@ extends Resource
 @export var proximity_bid_bonus: float = 0.08
 
 @export_group("Contracts")
-## A contract is lost when its property stays snowed in (any of its boxes incomplete) for more
-## than this many game hours. The clock does not run while a storm or blizzard is still falling.
-@export var contract_snowed_in_hours: float = 48.0
-## Warnings are posted when this many hours (or fewer) remain before a contract is lost.
+## Polish 5 §10: due times replace the 48-hour snowed-in rule (a job won at 9:01 p.m. is due by
+## 9 p.m. the next day; Contracts.DUE_HOUR). Warnings are posted when this many hours (or fewer)
+## remain before a job is due.
 @export var contract_warn_hours: float = 12.0
 @export var contract_last_warn_hours: float = 3.0
-## Reputation lost when a client drops you for leaving them snowed in.
+## Reputation lost when a job is missed (still open at its due time).
 @export var contract_lost_reputation: float = 6.0
 ## Polish 5 §7: the company's contract history keeps this many entries (the oldest go first).
 @export var contract_history_max: int = 200
+## Polish 5 §10 (Decision 5): the reputation tiers — their names, and the reputation each one
+## starts at (Residential from the start, then Commercial, then City).
+@export var rep_tier_names: PackedStringArray = PackedStringArray(["Residential", "Commercial", "City"])
+@export var rep_tier_thresholds: PackedFloat32Array = PackedFloat32Array([0.0, 68.0, 85.0])
+## Share of residential listings that are driveway jobs (the rest are path jobs) at reputation 0
+## and at the Commercial threshold — linear between, and the Commercial share above it.
+@export var driveway_share_rep0: float = 0.25
+@export var driveway_share_commercial: float = 0.5
+## Reputation gained for a completed job, scaled with its size: base + per m³, at most max. A
+## recurring or city visit gains rep_visit_factor of that. Above rep_gain_full_below the gain falls
+## off linearly towards reputation 100 (to a tenth at most): the next tier is harder to earn.
+@export var rep_gain_base: float = 0.5
+@export var rep_gain_per_m3: float = 0.03
+@export var rep_gain_max: float = 2.0
+@export var rep_visit_factor: float = 1.0
+@export var rep_gain_full_below: float = 50.0
+## The board: each morning (6 a.m.) it is filled up to this many open listings; the share of new
+## listings that are commercial and city work (the rest residential), and the share of
+## residential ones that are recurring.
+@export var listings_per_day: int = 6
+@export var listing_share_commercial: float = 0.15
+@export var listing_share_city: float = 0.15
+@export var listing_recurring_share: float = 0.45
+## The largest residential job (m³ of snow) the board posts while your best equipment is a shovel
+## or your hands — what the starting gear clears between 7 a.m. and 9 p.m. (tests/contract_bench);
+## better equipment scales it by Contracts.EQUIP_RATE.
+@export var listing_res_max_m3: float = 18.0
+## Bids: nobody (you or a rival) bids below this fraction of the suggested price.
+@export var bid_floor_frac: float = 0.8
+## Rivals per listing, their first bids (fractions of the suggested price, before their edge),
+## and how they answer an undercut: the chance, how often per listing, and by how much.
+@export var rival_count_min: int = 1
+@export var rival_count_max: int = 3
+@export var rival_open_min: float = 0.97
+@export var rival_open_max: float = 1.2
+@export var rival_reply_chance: float = 0.5
+@export var rival_replies_max: int = 2
+@export var rival_reply_step_min: float = 0.02
+@export var rival_reply_step_max: float = 0.06
 
 @export_group("Clearing boxes")
 ## Fraction of a box's snow that must be cleared before the box completes and snaps to bare ground

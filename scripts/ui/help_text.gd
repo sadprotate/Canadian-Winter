@@ -50,7 +50,8 @@ static func lines(survival: bool) -> Array:
 	out.append("• Every driveway, path, sidewalk, parking lot and street section is a clearing box. While you work in one, a light outline shows its edges — throw the snow outside it. Clear 90% of a box and it snaps to bare ground. New snow reopens it.")
 	out.append("• Wading through deep snow treads a trench; walking back along it is easier. Look straight down to scoop the snow at your own feet.")
 	out.append("• The truck needs its keys (buried in your front lawn) and room to drive: dig the snow from around the wheels and clear the driveway. It tells you what's in the way.")
-	out.append("• A contract is lost if its property stays snowed in for more than 48 hours (the clock pauses while a storm is still falling).")
+	# Polish 5 §10: due times (was the 48-hour snowed-in rule).
+	out.append("• Bid on the contract board until 9 p.m.; the lowest bid wins at 9:01 p.m. A job you win is due by 9 p.m. the next day; a recurring or city visit by 9 p.m. the day after the snow stops. A storm adds a day, once. Miss it and you lose reputation and the pay.")
 	out.append("• Sleep in your bed to save; you always wake at 7:00 a.m.")
 	# Polish 5 §9: the day length from the clock, the key from the input map.
 	out.append("• A day lasts %d minutes of play. %s or the 1× / 2× / 10× buttons by the clock speed it up on foot, indoors and at the computer; it drops back to 1× when something needs you." % [int(Clock.REAL_MIN_PER_DAY), Settings.action_label("fast_forward")])

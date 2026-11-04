@@ -14,6 +14,10 @@ extends Node
 ##   -- --only=ff   runs just the world, idle outdoors and the fast-forward scenarios (quicker repeats)
 ##   -- --ff_sweep=10:0.5,1,2.5  instead measures one speed (uncapped) at each snowfall rate (cm/h),
 ##      on the normal map and on the 4 m deep map — how Clock.SPEED_CAPS were set
+## Polish 5 §10 (last): the computer open on the Contract board with live bidding — every listing
+## bid on, the rivals bidding through the measured frames (the board redraws on each bid) — at 1×
+## and at 10×.
+##   -- --only=board   runs just the world and the live board
 
 ## Polish 4 §1: the highest hourly snowfall of any major event (seed 2024 and 20 other seeds,
 ## winters 1–5) once storms open with a lead-in (pass 3: 52.2 cm/h). Measured at the game's own
@@ -83,6 +87,10 @@ func _ready() -> void:
 		return
 	if only == "ff":
 		await _fast_forward(pl, p)
+		AudioMgr.quit()
+		return
+	if only == "board":
+		await _board_live(pl, p)
 		AudioMgr.quit()
 		return
 	# Polish 4: indoors, the desk with the computer screen and the photo by the door in view.
@@ -179,9 +187,54 @@ func _ready() -> void:
 	pl = world.player
 	await _measure("idle outdoors (fresh world)", 120, func(_i): pass)
 	await _fast_forward(pl, p)
+	await _board_live(pl, p)
 	# AudioMgr.quit: stop every sound before quitting, so nothing is reported leaked at exit
 	# (HANDOFF §13 item 13).
 	AudioMgr.quit()
+
+
+## Polish 5 §10: the computer open on the Contract board, live bidding: your bid on every open
+## listing, the rivals' bids landing through the measured frames (each one redraws the board), at
+## 1× and at 10× (fast-forward runs at the computer).
+func _board_live(pl: Player, p: Vector2) -> void:
+	pl.teleport(Vector3(p.x, 0.05, p.y), PI)
+	Clock.time_scale = 1.0
+	Clock.caps_on = true
+	Weather.force(Weather.C.CLEAR, 48.0)
+	Game.company_name = "Perf Snow Co."
+	Game.flags["computer_unlocked"] = true
+	await get_tree().process_frame
+	for sp in [1, 10]:
+		Contracts.on_advance(0.0)
+		for k in range(4):
+			Contracts._add_lot_listing(Contracts.residential_lots()[k], Clock.day_index(), RandomNumberGenerator.new(), "path")
+		# The rivals bid over the next stretch of game time: 6.4 game minutes at 1× (480 frames), an
+		# hour at 10×.
+		var span := 6.0 if sp == 1 else 60.0
+		var n := 0
+		for l in Contracts.listings:
+			for rv in l["rivals"]:
+				rv["bid"] = 0
+				rv["at"] = Clock.minutes + span * float(n % 12 + 1) / 13.0
+				n += 1
+			if not Contracts.listing_locked(l):
+				Contracts.place_bid(int(l["lid"]), Contracts.bid_floor(l) + 1)
+		world.open_computer()
+		await get_tree().process_frame
+		(world.modal as ComputerUI)._open_app(ComputerUI.app_index("board"))
+		Clock.running = true
+		Clock.set_speed(sp)
+		var bids0 := 0
+		for l in Contracts.listings:
+			bids0 += Contracts.bid_count(l)
+		await _measure("computer: live board (%d×)" % sp, 480, func(_i): pass)
+		var bids1 := 0
+		for l in Contracts.listings:
+			bids1 += Contracts.bid_count(l)
+		print("  live board %d×: %d listings, bids %d → %d, clock at %d×" % [sp, Contracts.listings.size(), bids0, bids1, Clock.effective_speed()])
+		Clock.set_speed(1)
+		world.close_modal()
+		await get_tree().process_frame
 
 
 ## Polish 5 §9: fast-forward on foot in the yard. Each condition at 2× and 10× uncapped (what the

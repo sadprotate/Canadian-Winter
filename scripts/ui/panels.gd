@@ -394,7 +394,7 @@ static func summary(parent: Control, on_next: Callable) -> Control:
 	v.add_child(UIKit.label("Renew recurring contracts for next winter:", 22, UIKit.ACCENT))
 	var renew := {}
 	for c in Contracts.active:
-		if c["type"] != "one_time" and c["status"] != "expired":
+		if c["type"] != "one_time" and c["status"] != "expired" and c["status"] != "lost":
 			var cb := CheckBox.new()
 			cb.text = "%s — %s / visit" % [c["address"], UIKit.money(c["pay"])]
 			cb.button_pressed = true

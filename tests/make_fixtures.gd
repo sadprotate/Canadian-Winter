@@ -491,7 +491,7 @@ static func p5_summary() -> String:
 	L.append("  contracts: %d running of %d %s" % [live, cs.size(), cs if cs.size() <= 8 else cs.slice(0, 8) + ["…"]])
 	var ls := []
 	for l in Contracts.listings:
-		ls.append("%s %s (until day %d)" % [l["type"], l["address"], int(l["expires"])])
+		ls.append("%s %s (%s)" % [l["type"], l["address"], ("closes " + Clock.format_time(float(l["closes"]))) if l.has("closes") else "until day %d" % int(l.get("expires", -1))])
 	L.append("  listings: %d %s; bids %d; orders %s" % [ls.size(), ls, Contracts.bids.size(), Economy.orders.map(func(o): return "%s:%s" % [o["item"], o["status"]])])
 	var snow := []
 	for a in P5_LOTS:

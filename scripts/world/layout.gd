@@ -314,7 +314,32 @@ static func place_name(target: String) -> String:
 		for seg in road_segments:
 			if seg["id"] == target.substr(5):
 				return str(seg["name"])
+	if target.begins_with("walk:"):
+		return walk_section_name(target.substr(5))
 	return ""
+
+
+## Polish 5 §10: a city sidewalk section — the lots of one row on one side of Cedar Lane ("A_w":
+## row A, west), whose sidewalk boxes a city sidewalk contract covers.
+static func walk_section_lots(sec: String) -> Array:
+	ensure()
+	var out := []
+	var row := sec.substr(0, 1)
+	var west := sec.ends_with("_w")
+	for lot in lots:
+		if lot["row"] == row and (float(lot["center_x"]) < 96.0) == west:
+			out.append(lot)
+	return out
+
+
+## "Sidewalks, 11–19 Maple Street" ("" for an unknown section).
+static func walk_section_name(sec: String) -> String:
+	var ls := walk_section_lots(sec)
+	if ls.is_empty():
+		return ""
+	var nums := ls.map(func(l): return int(l["number"]))
+	nums.sort()
+	return "Sidewalks, %d–%d %s" % [nums[0], nums[-1], ls[0]["street"]]
 
 
 ## Polish 5 §5: text saved by an older build (a history entry, a transaction) with its places named

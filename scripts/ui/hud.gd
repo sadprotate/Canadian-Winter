@@ -414,7 +414,8 @@ func _process(delta: float) -> void:
 	for c in Contracts.active:
 		var left: float = Contracts.hours_left(c)
 		if left <= Catalog.balance.contract_warn_hours:
-			alerts.append("⚠ %s: %d h left to clear" % [c["address"], int(ceil(maxf(left, 0.0)))])
+			# Polish 5 §10: the due time (was the snowed-in hours left).
+			alerts.append("⚠ %s: due %s — %d h left" % [c["address"], Contracts.due_text(c), int(ceil(maxf(left, 0.0)))])
 	alert_l.text = "\n".join(alerts)
 	if surv:
 		var w := Survival.warmth
@@ -453,9 +454,11 @@ func _process(delta: float) -> void:
 			var pr := float(b["progress"])
 			var line := "%s   %s" % [head, "clear ✓" if b["complete"] else "%d%%" % int(floor(pr * 100.0))]
 			if not c.is_empty() and not c.get("tutorial", false):
-				var left: float = Contracts.hours_left(c)
-				if left < INF:
-					line += "\nSnowed in — %d h left before %s gives up%s" % [int(ceil(maxf(left, 0.0))), c["client"], "  (clock paused: storm)" if Contracts.storming() else ""]
+				# Polish 5 §10: the job's due time (was the snowed-in clock).
+				var dt := Contracts.due_text(c)
+				if dt != "":
+					var left: float = Contracts.hours_left(c)
+					line += "\nDue %s%s" % [dt, "  (%d h left)" % int(ceil(maxf(left, 0.0))) if left < INF else ""]
 			contract_l.text = line
 			contract_bar.value = 1.0 if b["complete"] else pr
 	else:

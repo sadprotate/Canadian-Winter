@@ -382,22 +382,37 @@ func test_recurring_contract_visits() -> void:
 
 func test_bidding_resolves() -> void:
 	_fresh()
-	var won := 0
-	var lost := 0
-	for k in range(4):
-		if Contracts.listings.is_empty():
-			Contracts._generate_listings(Clock.day_index(), false)
-		var l: Dictionary = Contracts.listings[0]
-		var amount := int(l["budget"] * (0.7 if k % 2 == 0 else 1.35))
-		Contracts.place_bid(int(l["lid"]), amount)
+	# Polish 5 §10: bids stay open until the listing closes (9 p.m.) and the lowest bid wins at
+	# 9:01 p.m. (was: answered within a few hours). Two bids at the floor (nobody bids lower, a tie
+	# goes to you) and two well over the suggested price.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 77
+	var lots := Contracts.residential_lots()
+	var k := 0
+	while Contracts.listings.filter(func(x): return not Contracts.listing_locked(x)).size() < 4 and k < lots.size():
+		if not Contracts._occupied_targets().has("lot:%d" % lots[k]["index"]):
+			Contracts._add_lot_listing(lots[k], Clock.day_index(), rng)
+		k += 1
+	var tried := []
+	var close_t := 0.0
+	for l in Contracts.listings:
+		if tried.size() >= 4 or Contracts.listing_locked(l):
+			continue
+		var amount := Contracts.bid_floor(l) if tried.size() % 2 == 0 else int(l["budget"] * 1.35)
+		if Contracts.place_bid(int(l["lid"]), amount)["ok"]:
+			tried.append(int(l["lid"]))
+			close_t = maxf(close_t, float(l["closes"]))
 	runner.check(Contracts.bids.size() == 4, "Bids pending")
 	var act0 := Contracts.active.size()
-	var rw0 := Contracts.rival_wins
-	Clock.skip(4 * 60.0)
-	won = Contracts.active.size() - act0
-	lost = Contracts.rival_wins - rw0
-	runner.check(Contracts.bids.is_empty(), "All bids resolved within a few hours")
+	var n0 := Notify.history.size()
+	Clock.skip(close_t - 1.0 - Clock.minutes)
+	runner.check(Contracts.bids.size() == 4, "…still open a minute before bidding closes")
+	Clock.skip(Contracts.AWARD_DELAY_MIN + 2.0)
+	var won := Contracts.active.size() - act0
+	var lost := Notify.history.slice(n0).filter(func(n): return str(n["text"]).begins_with("Bid lost")).size()
+	runner.check(Contracts.bids.is_empty(), "All bids resolved at the award (%s)" % Clock.format_time(Clock.minutes))
 	runner.check(won + lost == 4, "Each bid either won or lost (%d won, %d lost)" % [won, lost])
+	runner.check(won >= 2, "Bids at the floor always win (%d won)" % won)
 	runner.check(lost >= 1, "Overpriced bids can lose to rivals")
 
 
@@ -648,7 +663,7 @@ func test_difficulty_scaling_is_capped() -> void:
 
 
 # -----------------------------------------------------------------------------
-# Polish pass: 48-hour contracts, storm tiers, lamp-height ceiling
+# Polish pass: 48-hour contracts (polish 5 §10: due times), storm tiers, lamp-height ceiling
 # -----------------------------------------------------------------------------
 
 func _award_driveway(lot_index: int, kind := "one_time") -> Dictionary:
@@ -659,32 +674,44 @@ func _award_driveway(lot_index: int, kind := "one_time") -> Dictionary:
 	return Contracts.force_award(int(l["lid"]))
 
 
-func test_contract_lost_after_48_hours_snowed_in() -> void:
+## Polish 5 §10: due times replace the 48-hour snowed-in rule (the test of that rule, now a
+## deadline test): a one-time job is due by 9 p.m. the day after it was won — still open then, it is
+## missed; a recurring visit falls due when its boxes reopen, by 9 p.m. the day after the snowfall
+## ends; heavy snow inside a job's window adds a day, once.
+func test_contract_missed_at_due_time() -> void:
 	_fresh()
 	Weather.force(Weather.C.CLEAR, 200.0)
 	var c := _award_driveway(2)
-	runner.check(Contracts.is_snowed_in(c), "A new job starts snowed in")
-	Clock.advance(47.0 * 60.0)
-	runner.check(c["status"] == "active", "Still kept after 47 hours snowed in (%.1f h left)" % Contracts.hours_left(c))
-	Clock.advance(1.5 * 60.0)
-	runner.check(c["status"] == "lost", "Lost after more than 48 hours snowed in")
-	# The timer resets when the boxes are completed.
+	var day := Clock.day_index()
+	var due := Clock.at(day + 1, Contracts.DUE_HOUR)
+	runner.check(Contracts.is_snowed_in(c) and is_equal_approx(float(c["due"]), due), "A new job starts snowed in, due by 9 p.m. the next day (%s)" % Contracts.due_text(c))
+	Clock.advance(due - 1.0 - Clock.minutes)
+	runner.check(c["status"] == "active" and int(c["warned"]) == 2, "Still kept a minute before it's due, both warnings given (%.2f h left)" % Contracts.hours_left(c))
+	Clock.advance(1.0)
+	runner.check(c["status"] == "lost", "Missed at 9:00 p.m. (%s)" % Clock.format_time(Clock.minutes))
+	# A recurring visit: due when the boxes reopen, by 9 p.m. the day after that snow ends.
 	var c2 := _award_driveway(6, "recurring")
-	Clock.advance(30.0 * 60.0)
-	runner.check(Contracts.hours_left(c2) < 19.0, "Timer running (%.1f h left)" % Contracts.hours_left(c2))
 	for z in c2["zones"]:
 		_clear_zone(z)
 		Contracts.measure_zone(c2, z)
-	runner.check(c2["status"] == "serviced" and Contracts.hours_left(c2) == INF, "Clearing every box stops and resets the clock")
-	Snow.add_snowfall(0.04)
+	runner.check(c2["status"] == "serviced" and Contracts.hours_left(c2) == INF, "Clearing every box: the visit is done, nothing due")
+	Weather.force(Weather.C.MODERATE, 3.0, 2.5)
+	Clock.advance(60.0)
 	Contracts.on_hour(Clock.day_index(), Clock.hour())
-	runner.check(c2["status"] == "needs_service" and absf(Contracts.hours_left(c2) - Catalog.balance.contract_snowed_in_hours) < 0.01, "New snow restarts the full 48-hour clock")
-	Clock.advance(47.0 * 60.0)
-	runner.check(c2["status"] == "needs_service", "…kept at 47 h")
-	# Storms pause the clock (clients don't expect clearing mid-storm).
-	Weather.force(Weather.C.HEAVY, 10.0, 1.5)
-	Clock.advance(5.0 * 60.0)
-	runner.check(c2["status"] == "needs_service", "The clock pauses while a storm is falling")
+	runner.check(c2["status"] == "needs_service" and Contracts.due_pending(c2), "New snow reopens it: due once the snow stops (%s)" % Contracts.due_text(c2))
+	var t_end := Clock.minutes
+	Weather.force(Weather.C.CLEAR, 200.0)     # the snow stops now
+	Clock.advance(10.0)
+	var d2 := Contracts.day_of(t_end - 0.001)
+	runner.check(not Contracts.due_pending(c2) and is_equal_approx(float(c2["due"]), Clock.at(d2 + 1, Contracts.DUE_HOUR)), "…by 9 p.m. the day after the snowfall ends (%s)" % Contracts.due_text(c2))
+	# Storms add a day, once per job.
+	var due2 := float(c2["due"])
+	Weather.force(Weather.C.HEAVY, 1.0, 1.5)
+	Clock.advance(60.0)
+	runner.check(is_equal_approx(float(c2["due"]), due2 + Contracts.STORM_EXTENSION_MIN) and bool(c2["ext"]), "Heavy snow inside the window: due a day later (%s)" % Contracts.due_text(c2))
+	Weather.force(Weather.C.HEAVY, 1.0, 1.5)
+	Clock.advance(60.0)
+	runner.check(is_equal_approx(float(c2["due"]), due2 + Contracts.STORM_EXTENSION_MIN), "…once per job")
 	Weather.override_cond = -1
 
 

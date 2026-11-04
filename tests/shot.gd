@@ -93,6 +93,9 @@ extends Node
 ##   --ff=1|2|10              (§9) choose that fast-forward speed before the frames are waited (and
 ##                            again just before the capture); with --weather=4 (heavy snow) 10× shows
 ##                            its cap
+##   --board_state=1          (§10) with --ui=computer: live bidding on the board — a bid winning, a
+##                            bid outbid by a rival, a parking lot locked above the tier, the first
+##                            rival bids on every listing (use --tab=2 to open on the board)
 
 var args := {}
 var game: Node = null
@@ -525,6 +528,8 @@ func _open_ui(which: String) -> void:
 			Game.flags["computer_unlocked"] = true
 			if args.has("company"):
 				Game.set("company_name", str(args["company"]))   # §7 (no such state on older builds)
+			if args.has("board_state"):
+				_board_state()
 			w.open_computer()
 			if args.has("tab"):
 				var c = w.modal
@@ -680,6 +685,30 @@ func _comp_state() -> void:
 	Economy.buy("standard_shovel")
 	for bl in Economy.bills.duplicate():
 		Economy.pay_bill(int(bl["month"]))
+
+
+## --board_state=1 (polish 5 §10): live bidding on the board, made with the game's own calls — every
+## listing's first rival bid in, a parking lot (locked below Commercial), your bid winning on one
+## residential listing and outbid on another.
+func _board_state() -> void:
+	if not Contracts.has_method("bid_status"):
+		return
+	Contracts.on_advance(0.0)   # the board posted for the time the clock was set to
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	if not Contracts.listings.any(func(l): return str(l.get("tier", "")) == "commercial"):
+		Contracts._add_area_listing(Layout.big_areas[2], Clock.day_index(), rng)
+	for l in Contracts.listings:
+		if not (l["rivals"] as Array).is_empty():
+			Contracts._rival_bid(l, 0, int(l["rivals"][0]["open"]), Clock.minutes)
+	var res: Array = Contracts.listings.filter(func(l): return str(l.get("tier", "")) == "residential")
+	if res.size() > 0:
+		var low := int(Contracts.bid_status(res[0])["lowest"])
+		Contracts.place_bid(int(res[0]["lid"]), maxi(low - 2, Contracts.bid_floor(res[0])) if low > 0 else int(res[0]["budget"]))
+	if res.size() > 1:
+		Contracts.place_bid(int(res[1]["lid"]), int(res[1]["budget"]) + 6)
+		Contracts._rival_bid(res[1], 0, int(res[1]["budget"]) - 2, Clock.minutes)
+	Notify.clear()
 
 
 ## --comp_apps=all|i,j,… (polish 5 §7): each app of the open computer, captured to <out>_NN.png.

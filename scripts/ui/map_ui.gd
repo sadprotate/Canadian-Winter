@@ -43,8 +43,8 @@ func _fit(vs: Vector2) -> void:
 
 # --- Polish 5 §5: the labels on the map ------------------------------------------------------
 # Every name and number drawn on the map is laid out here first — the street names, every
-# building's name and address, every house's number on its own lot (with HOME / vacant / a
-# contract's hours under it), the parking lots — so none overlaps another (the test reads this).
+# building's name and address, every house's number on its own lot (with HOME / vacant / when a
+# contract there is due under it), the parking lots — so none overlaps another (the test reads this).
 
 const NUMBER_SIZE := 18       # house numbers (px at the 1920 × 1080 canvas)
 const NAME_SIZE := 14
@@ -121,7 +121,7 @@ func labels(vs: Vector2) -> Array:
 			continue
 		out.append(_label(str(a["name"]).replace(" parking lot", ""), _rect_px(a["rect"]).get_center(), NAME_SIZE, Color(0.2, 0.22, 0.3), "area", str(a["id"])))
 	# Houses: the number on the front lawn, on the side away from the driveway; under it HOME,
-	# vacant or a contract's hours left.
+	# vacant or when a contract there is due.
 	for lot in Layout.lots:
 		var u := Layout.gu(lot, -7.5) if not lot["vacant"] else 0.0
 		var is_c := targets.has("lot:%d" % lot["index"])
@@ -139,10 +139,12 @@ func labels(vs: Vector2) -> Array:
 			tag = "vacant"
 			tag_col = Color(0.35, 0.38, 0.48)
 		if is_c:
-			var left: float = Contracts.hours_left(targets["lot:%d" % lot["index"]])
+			# Polish 5 §10: when the job is due (was the snowed-in hours left).
+			var tc: Dictionary = targets["lot:%d" % lot["index"]]
+			var left: float = Contracts.hours_left(tc)
 			if left < INF:
-				tag = "%dh" % int(ceil(maxf(left, 0.0)))
-				tag_col = Color(0.85, 0.1, 0.05) if left <= 12.0 else Color(0.7, 0.35, 0.0)
+				tag = due_tag(tc)
+				tag_col = Color(0.85, 0.1, 0.05) if left <= Catalog.balance.contract_warn_hours else Color(0.7, 0.35, 0.0)
 		if tag != "":
 			# Under the number, towards the house.
 			var tl := _label(tag, Vector2.ZERO, 12, tag_col, "tag", str(lot["index"]), false, true)
@@ -270,11 +272,18 @@ func _draw() -> void:
 		var c2: Dictionary = contract_targets[t]
 		var lh: float = Contracts.hours_left(c2)
 		var st2: String = {"active": "to do", "needs_service": "needs clearing", "serviced": "clear"}.get(c2["status"], c2["status"])
-		if lh < INF:
-			st2 += " — %d h left" % int(ceil(maxf(lh, 0.0)))
-		draw_string(font, Vector2(lx, list_y + 30 + k * 26), "• %s (%s)" % [c2["address"], st2], HORIZONTAL_ALIGNMENT_LEFT, 440, 17, Color(1.0, 0.6, 0.5) if lh <= 12.0 else Color.WHITE)
+		var dt2 := Contracts.due_text(c2)
+		if dt2 != "" and lh < INF:
+			st2 += " — due " + dt2     # polish 5 §10: the due time (was the hours left)
+		draw_string(font, Vector2(lx, list_y + 30 + k * 26), "• %s (%s)" % [c2["address"], st2], HORIZONTAL_ALIGNMENT_LEFT, 440, 17, Color(1.0, 0.6, 0.5) if lh <= Catalog.balance.contract_warn_hours else Color.WHITE)
 		k += 1
 	draw_string(font, Vector2(lx, vs.y - 40), "%s or %s to close" % [Settings.action_label("map"), Settings.action_label("pause")], HORIZONTAL_ALIGNMENT_LEFT, -1, 18, UIKit.MUTED)
+
+
+## Polish 5 §10: the tag under a house number for a job there: the day it's due (always 9 p.m.;
+## the legend gives the time) — "due Fri".
+static func due_tag(c: Dictionary) -> String:
+	return "due " + Clock.weekday(Contracts.day_of(float(c.get("due", 0.0))), Game.year)
 
 
 ## Polish 5 §7: the heading of the legend's contract list, with the company's name once it has one.

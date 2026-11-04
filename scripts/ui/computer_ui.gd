@@ -14,8 +14,9 @@ signal closed
 const APP_IDS := ["weather", "contracts", "board", "store", "upgrades", "bills", "orders", "property", "help"]
 const APPS := ["Weather", "Contracts", "Contract board", "Equipment store", "Upgrades", "Bills & payments",
 	"Orders", "Property & storage", "Help"]
-## Apps refreshed every 2 s (time-based); the rest every 30 s, and on data signals.
-const LIVE_APPS := ["contracts", "bills", "weather", "orders"]
+## Apps refreshed every 2 s (time-based); the rest every 30 s, and on data signals. Polish 5 §10:
+## the board too (live bidding).
+const LIVE_APPS := ["contracts", "board", "bills", "weather", "orders"]
 
 ## Type sizes and spacing shared by every app (polish 5 §7).
 const FS_TITLE := 30      # the app's title
@@ -46,11 +47,17 @@ var _renaming := false
 var _name_err: Label
 var _refresh_t := 0.0
 var _bid_values: Dictionary = {}
+var bid_edits: Dictionary = {}       # polish 5 §10: lid -> the typed-bid field on the board
 var _battery := 100.0
 
 
 static func app_index(id: String) -> int:
 	return APP_IDS.find(id)
+
+
+## Polish 5 §10: "Reputation 52 · Residential" — the value and the tier's name (header, board).
+static func reputation_text() -> String:
+	return "Reputation %d · %s" % [int(Game.reputation), Contracts.tier_name(Contracts.tier_index())]
 
 
 func _ready() -> void:
@@ -136,11 +143,13 @@ func _close() -> void:
 
 
 ## Polish 5 §7: Esc (Pause) or ui_cancel in the name field leaves the field; the next one closes
-## the computer as before. Runs before the field sees the key.
+## the computer as before. Runs before the field sees the key. Polish 5 §10: the same for a typed
+## bid on the board.
 func _input(event: InputEvent) -> void:
-	if name_edit != null and is_instance_valid(name_edit) and name_edit.has_focus():
+	var f := get_viewport().gui_get_focus_owner()
+	if f is LineEdit and is_ancestor_of(f):
 		if event.is_action_pressed("pause") or event.is_action_pressed("ui_cancel"):
-			name_edit.release_focus()
+			f.release_focus()
 			get_viewport().set_input_as_handled()
 
 
@@ -168,7 +177,7 @@ func _update_header(delta: float) -> void:
 	var named := Game.company_name != ""
 	company_l.text = Game.company_name if named else "Your company"
 	company_l.add_theme_color_override("font_color", Color.WHITE if named else UIKit.MUTED)
-	reputation_l.text = "Reputation %d" % int(Game.reputation)
+	reputation_l.text = reputation_text()
 	balance_l.text = UIKit.money(Game.money)
 	clock_l.text = "%s %s  %s" % [Clock.weekday(Clock.day_index(), Game.year), Clock.date_string(Clock.day_index(), true), Clock.time_string()]
 	if not Survival.power_on:
@@ -204,6 +213,7 @@ func _rebuild(reset_scroll: bool) -> void:
 	UIKit.clear(content)
 	name_edit = null
 	_name_err = null
+	bid_edits = {}
 	title_l.text = APPS[current]
 	var id: String = APP_IDS[current]
 	if id in ["contracts", "board"] and (Game.company_name == "" or _renaming):
@@ -327,7 +337,16 @@ func _contracts() -> void:
 	var head := UIKit.hbox(20)
 	content.add_child(head)
 	head.add_child(UIKit.label(Game.company_name, FS_CARD, Color.WHITE))
-	head.add_child(UIKit.label("Reputation %d" % int(Game.reputation), FS_BODY, Color(0.8, 0.86, 1.0)))
+	head.add_child(UIKit.label(reputation_text(), FS_BODY, Color(0.8, 0.86, 1.0)))
+	# Polish 5 §10: progress to the next tier.
+	var nt := Contracts.next_tier()
+	if not nt.is_empty():
+		var pb := UIKit.progress(float(nt["frac"]), UIKit.ACCENT, 14)
+		pb.custom_minimum_size.x = 200
+		pb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		pb.name = "TierProgress"
+		head.add_child(pb)
+		head.add_child(UIKit.label("%s at %d" % [nt["name"], int(nt["need"])], FS_SMALL, UIKit.MUTED))
 	head.add_child(UIKit.hspacer())
 	head.add_child(UIKit.button("Rename", func():
 		_renaming = true
@@ -381,10 +400,16 @@ func _active() -> void:
 		if c["type"] != "one_time":
 			info += "  ·  Visits: %d" % int(c.get("visits", 0))
 		v.add_child(UIKit.label(info, FS_SMALL, UIKit.MUTED))
-		var left: float = Contracts.hours_left(c)
-		if left < INF:
-			v.add_child(UIKit.label("Snowed in — %d h left to clear it%s" % [int(ceil(maxf(left, 0.0))), "  (paused while the storm falls)" if Contracts.storming() else ""], FS_BODY,
-				UIKit.BAD if left <= Catalog.balance.contract_warn_hours else UIKit.WARN))
+		# Polish 5 §10: the due time (was the 48-hour snowed-in clock).
+		var dt := Contracts.due_text(c)
+		if dt != "":
+			var left: float = Contracts.hours_left(c)
+			var dl := "Due %s" % dt
+			if left < INF:
+				dl += "  ·  %d h left" % int(ceil(maxf(left, 0.0)))
+			if bool(c.get("ext", false)):
+				dl += "  ·  a storm added a day"
+			v.add_child(UIKit.label(dl, FS_BODY, UIKit.BAD if left <= Catalog.balance.contract_warn_hours else UIKit.WARN))
 		if st == "active" or st == "needs_service":
 			var g := _table(3, v)
 			for z in c["zones"]:
@@ -435,90 +460,114 @@ static func _signed(v: float) -> String:
 
 # --- Contract board ---------------------------------------------------------------------------------
 
-func _est_minutes(vol: float) -> String:
-	var cap := Contracts.equipment_capability()
-	var rate: float = [0.02, 0.06, 0.1, 0.5][cap]
-	var mins: float = vol / rate / 60.0
-	return "~%d real min with your best equipment" % maxi(1, int(ceil(mins)))
+const JOB_NAMES := {"path": "Path job", "driveway": "Driveway job", "parking": "Parking lot", "street": "Street", "sidewalk": "Sidewalks"}
 
 
+## Polish 5 §10: the board — every listing (locked above your tier), live bidding until 9 p.m.
 func _board() -> void:
 	var who := UIKit.hbox(20)
 	content.add_child(who)
 	who.add_child(UIKit.label("Bidding as %s" % Game.company_name, FS_CARD, Color.WHITE))
-	who.add_child(UIKit.label("Reputation %d" % int(Game.reputation), FS_BODY, Color(0.8, 0.86, 1.0)))
-	_p("Rivals bid too. Reputation, good equipment and clients close to your others help you win.")
-	if not Contracts.municipal_unlocked():
-		_p("City street contracts unlock at reputation 58+ with a plow or blower vehicle.", UIKit.WARN)
+	who.add_child(UIKit.label(reputation_text(), FS_BODY, Color(0.8, 0.86, 1.0)))
+	_p("Bid until 9 p.m.; the lowest bid wins at 9:01 p.m. (a tie goes to you). Jobs are due by 9 p.m. the next day.", UIKit.MUTED, FS_SMALL)
 	if Contracts.listings.is_empty():
 		_p("No listings right now. New jobs are posted every morning at 6:00.")
-	var hrs := int(Catalog.balance.contract_snowed_in_hours)
 	for l in Contracts.listings:
-		var c := UIKit.card()
-		content.add_child(c)
-		var v := UIKit.vbox(6)
-		c.add_child(v)
-		var top := UIKit.hbox(16)
-		v.add_child(top)
-		var tname: String = {"one_time": "One-time job", "recurring": "Recurring — all winter", "municipal": "City contract — all winter"}[l["type"]]
-		top.add_child(UIKit.label(l["address"], FS_CARD, Color.WHITE))
-		top.add_child(UIKit.label(tname, FS_BODY, UIKit.ACCENT))
-		top.add_child(UIKit.hspacer())
-		top.add_child(UIKit.label("Client budget: " + UIKit.money(l["budget"]) + (" / visit" if l["type"] != "one_time" else ""), FS_CARD, Color(0.7, 1.0, 0.7)))
-		var zn := []
-		for z in l["zones"]:
-			zn.append(z["name"])
-		v.add_child(UIKit.label("Client: %s   ·   Areas: %s" % [l["client"], ", ".join(zn)], FS_SMALL, UIKit.MUTED))
-		var terms := ""
-		if l["type"] == "one_time":
-			terms = "Clear the marked areas within %d game hours. About %.1f m³ now (%s)." % [hrs, l["est_volume"], _est_minutes(l["est_volume"])]
-		else:
-			terms = "Clear it after every snowfall of %d cm or more. Lost after %d game hours snowed in (not counting storms). About %.1f m³ a visit." % [int(Catalog.balance.box_reopen_depth * 100.0), hrs, l["est_volume"]]
-		_p(terms, UIKit.MUTED, FS_SMALL, v)
-		var near := Contracts.near_existing(Vector2(l["pos"][0], l["pos"][1]))
-		if near:
-			v.add_child(UIKit.label("✓ Close to your home / existing clients (bidding bonus)", FS_SMALL, UIKit.GOOD))
-		var row := UIKit.hbox(14)
-		v.add_child(row)
-		var lid: int = l["lid"]
-		var budget: int = l["budget"]
-		var cur: int = _bid_values.get(lid, budget)
-		var amt_l := UIKit.label("Your bid: " + UIKit.money(cur), FS_CARD, Color.WHITE)
-		amt_l.custom_minimum_size.x = 220
-		var s := HSlider.new()
-		s.min_value = int(budget * 0.6)
-		s.max_value = int(budget * 1.4)
-		s.step = 1
-		s.value = cur
-		s.custom_minimum_size = Vector2(420, 28)
-		s.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		var odds := UIKit.label("", FS_BODY, UIKit.MUTED)
-		odds.custom_minimum_size.x = 160
-		var upd := func(x):
-			_bid_values[lid] = int(x)
-			amt_l.text = "Your bid: " + UIKit.money(int(x))
-			var f := Contracts.bid_factors(l, int(x))
-			var sc: float = f["score"]
-			odds.text = "Odds: %s" % ("very good" if sc < 0.85 else ("good" if sc < 0.95 else ("fair" if sc < 1.05 else ("low" if sc < 1.15 else "very low"))))
-		s.value_changed.connect(upd)
-		upd.call(cur)
-		row.add_child(amt_l)
-		row.add_child(s)
-		row.add_child(odds)
-		row.add_child(UIKit.hspacer())
-		row.add_child(UIKit.button("Place bid", func():
-			var r := Contracts.place_bid(lid, int(_bid_values.get(lid, budget)))
+		_listing_card(l)
+
+
+func _listing_card(l: Dictionary) -> void:
+	var c := UIKit.card()
+	c.name = "Listing_%d" % int(l["lid"])
+	c.set_meta("lid", int(l["lid"]))
+	content.add_child(c)
+	var v := UIKit.vbox(6)
+	c.add_child(v)
+	var top := UIKit.hbox(16)
+	v.add_child(top)
+	var job: String = JOB_NAMES.get(str(l.get("job", "")), "Job")
+	top.add_child(UIKit.label(l["address"], FS_CARD, Color.WHITE))
+	top.add_child(UIKit.label("%s · %s" % [job, "one-time" if l["type"] == "one_time" else "all winter"], FS_BODY, UIKit.ACCENT))
+	top.add_child(UIKit.hspacer())
+	top.add_child(UIKit.label("Suggested " + UIKit.money(l["budget"]) + (" / visit" if l["type"] != "one_time" else ""), FS_CARD, Color(0.7, 1.0, 0.7)))
+	var zn := []
+	var area := 0.0
+	for z in l["zones"]:
+		zn.append(z["name"])
+		area += Contracts.zone_area(z)
+	var snow := float(l.get("now_volume", l["est_volume"]))
+	var nb := Contracts.bid_count(l)
+	v.add_child(UIKit.label("%s  ·  %s, %d m²  ·  about %.1f m³ of snow  ·  closes %s  ·  %d bid%s" % [l["client"], ", ".join(zn), int(round(area)), snow,
+		Contracts.when_text_rel(float(l["closes"])), nb, "" if nb == 1 else "s"], FS_SMALL, UIKit.MUTED))
+	var lid: int = l["lid"]
+	if Contracts.listing_locked(l):
+		v.add_child(UIKit.label("Needs reputation %d" % int(Contracts.tier_threshold(Contracts.listing_tier(l))), FS_BODY, UIKit.WARN))
+		return
+	var st := Contracts.bid_status(l)
+	var st_l := UIKit.label(st["text"] if st["text"] != "" else "No bid yet", FS_BODY, UIKit.GOOD if st["winning"] else (UIKit.BAD if st["mine"] > 0 else UIKit.MUTED))
+	st_l.name = "Status"
+	st_l.custom_minimum_size.x = 300
+	if bool(l.get("closed", false)):
+		var row0 := UIKit.hbox(14)
+		v.add_child(row0)
+		row0.add_child(st_l)
+		row0.add_child(UIKit.label("Bidding closed — the result at 9:01 p.m.", FS_BODY, UIKit.MUTED))
+		return
+	var row := UIKit.hbox(14)
+	v.add_child(row)
+	row.add_child(st_l)
+	var budget: int = l["budget"]
+	var fl := Contracts.bid_floor(l)
+	var cur: int = _bid_values.get(lid, st["mine"] if st["mine"] > 0 else budget)
+	var e := LineEdit.new()
+	e.name = "BidAmount"
+	e.text = str(cur)
+	e.max_length = 6
+	e.custom_minimum_size = Vector2(110, 0)
+	e.add_theme_font_size_override("font_size", FS_BODY)
+	e.context_menu_enabled = false
+	e.alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	bid_edits[lid] = e
+	var s := HSlider.new()
+	s.min_value = fl
+	s.max_value = maxi(int(budget * 1.5), fl + 1)
+	s.step = 1
+	s.value = cur
+	s.custom_minimum_size = Vector2(300, 28)
+	s.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	s.value_changed.connect(func(x):
+		_bid_values[lid] = int(x)
+		if not e.has_focus():
+			e.text = str(int(x)))
+	e.text_changed.connect(func(t):
+		var n := int(t) if t.is_valid_int() else 0
+		if n > 0:
+			_bid_values[lid] = n
+			s.set_value_no_signal(clampi(n, int(s.min_value), int(s.max_value))))
+	e.text_submitted.connect(func(_t):
+		e.release_focus()
+		_bid(lid))
+	row.add_child(UIKit.label("$", FS_BODY, Color.WHITE))
+	row.add_child(e)
+	row.add_child(s)
+	row.add_child(UIKit.hspacer())
+	row.add_child(UIKit.button("Change bid" if st["mine"] > 0 else "Place bid", func(): _bid(lid), FS_BODY))
+	if st["mine"] > 0:
+		row.add_child(UIKit.button("Withdraw", func():
+			var r := Contracts.withdraw_bid(lid)
+			_bid_values.erase(lid)
 			_msg(r["msg"], r["ok"])
-			_rebuild(false), 20))
-	if not Contracts.bids.is_empty():
-		_section("Pending bids")
-		var g := _table(3)
-		for col in ["Address", "Your bid", "Answer by"]:
-			_cell(g, col, UIKit.MUTED, HORIZONTAL_ALIGNMENT_RIGHT if col == "Your bid" else HORIZONTAL_ALIGNMENT_LEFT, false, FS_SMALL)
-		for bd in Contracts.bids:
-			_cell(g, bd["listing"]["address"], Color.WHITE)
-			_cell(g, UIKit.money(bd["amount"]), Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT)
-			_cell(g, Clock.format_time(bd["resolve_at"]))
+			_rebuild(false), FS_BODY))
+
+
+func _bid(lid: int) -> void:
+	var l := Contracts.listing_by_id(lid)
+	if l.is_empty():
+		return
+	var amount := int(_bid_values.get(lid, int(l.get("bid", 0)) if int(l.get("bid", 0)) > 0 else int(l["budget"])))
+	var r := Contracts.place_bid(lid, amount)
+	_msg(r["msg"], r["ok"])
+	_rebuild(false)
 
 
 # --- Store -------------------------------------------------------------------------------

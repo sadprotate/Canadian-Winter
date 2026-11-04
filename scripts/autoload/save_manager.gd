@@ -4,7 +4,9 @@ extends Node
 ## Missing or invalid saves never crash the game.
 
 ## Version 2 (polish pass): clearing boxes, loose-snow flags, contract snowed-in timers.
-## Version 3 (polish 5 §7): game.company_name and contracts.job_history (both optional).
+## Version 3 (polish 5 §7): game.company_name and contracts.job_history (both optional). Polish 5
+## §10 adds optional keys inside contracts (the listings' bids and rivals, the contracts' due times,
+## tier_noted); a save without them gets due times on load (Contracts._migrate_due_times).
 ## Older saves are migrated on load, in order: 1 -> 2 (_migrate_v1), 2 -> 3 (_migrate_v2).
 const SAVE_VERSION := 3
 const MIN_VERSION := 1

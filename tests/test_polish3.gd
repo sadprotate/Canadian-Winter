@@ -329,13 +329,14 @@ func test_ninety_percent_snap_updates_everything() -> void:
 	l2["zones"] = [Contracts._zone("Sidewalk", [side["id"]])]
 	l2["type"] = "recurring"
 	var c2 := Contracts.force_award(int(l2["lid"]))
-	c2["snowed_min"] = 20.0 * 60.0
+	# Polish 5 §10: due times replace the 48-hour clock — the first visit is due.
+	runner.check(Contracts.hours_left(c2) < INF, "The recurring contract's first visit is due (%s)" % Contracts.due_text(c2))
 	var speak := Boxes.snow_volume(side, true)
 	_leave(side, speak, 0.095)
 	Boxes.measure(side, true)
 	Contracts.on_hour(Clock.day_index(), Clock.hour())
 	runner.check(side["complete"] and c2["status"] == "serviced" and c2["visits"] >= 1, "A recurring visit is done at 90 %% (%s, %d visits)" % [c2["status"], c2["visits"]])
-	runner.check(float(c2.get("snowed_min", 0.0)) < 1.0, "…and its 48-hour snowed-in clock resets (%.0f min)" % float(c2.get("snowed_min", 0.0)))
+	runner.check(Contracts.hours_left(c2) == INF and float(c2.get("due", 0.0)) < 0.0, "…and nothing is due any more until new snow (%s)" % Contracts.due_text(c2))
 	Clock.running = false
 	await _unload()
 
@@ -1312,7 +1313,8 @@ func test_playthrough_from_the_menu_both_modes() -> void:
 				await _frames(1)
 			runner.check(not Contracts.bids.is_empty(), "%s: bids placed from the contract board" % mode)
 			world.close_modal()
-		Clock.skip(240.0)
+		# Polish 5 §10: bids are answered at the award, 9:01 p.m. (was: within a few hours).
+		Clock.skip(Contracts.next_9pm(Clock.minutes) + Contracts.AWARD_DELAY_MIN + 1.0 - Clock.minutes)
 		for ct in Contracts.active:
 			if not ct.get("tutorial", false):
 				won = true

@@ -2375,8 +2375,9 @@ func test_s5_same_addresses_everywhere() -> void:
 	world.close_modal()
 	await _frames(2)
 	var la: Dictionary = Contracts.listings[Contracts.listings.size() - 2]
+	Contracts.adjust_reputation(Contracts.tier_threshold(1) - Game.reputation)   # §10: parking lots are Commercial work
 	var n0 := Notify.history.size()
-	Contracts.place_bid(int(la["lid"]), 1)
+	Contracts.place_bid(int(la["lid"]), Contracts.bid_floor(la))   # §10: nobody bids under the floor
 	var c := Contracts.force_award(int(Contracts.listings[Contracts.listings.size() - 1]["lid"]))
 	runner.check(c["address"] == "28 Maple Street" and Notify.history[n0]["text"].contains("Maple Ridge School, 12 Cedar Lane"), "§5 the contract and the bid's notification name the place by its address")
 	for z in c["zones"]:
@@ -2459,7 +2460,7 @@ func test_s5_map_shows_every_number() -> void:
 					over.append("%s / %s" % [ls[i]["text"], ls[j]["text"]])
 		var tags := ls.filter(func(l): return l["kind"] == "tag").map(func(l): return l["text"])
 		runner.check(probs.is_empty() and over.is_empty(), "§5 the map at %dx%d: %d labels — every house number on its lot (18 px), every building's address on it, the three street names, none overlapping %s %s" % [vs.x, vs.y, ls.size(), str(probs), str(over)])
-		runner.check("HOME" in tags and "vacant" in tags and tags.any(func(t): return str(t).ends_with("h")), "§5 …with HOME, vacant and a contract's hours under their numbers %s" % str(tags))
+		runner.check("HOME" in tags and "vacant" in tags and tags.any(func(t): return str(t) == MapUI.due_tag(Contracts.active[-1])), "§5 …with HOME, vacant and (§10) when a contract is due under their numbers %s" % str(tags))
 	world.close_modal()
 	await _unload()
 
@@ -2815,7 +2816,7 @@ func test_s7_app_order_and_layout() -> void:
 		await _frames(2)
 		var ok: bool = c.find_child("Header", true, false) != null and c.find_child("Sidebar", true, false) != null and c.find_child("Main", true, false) != null
 		ok = ok and c.title_l.text == ComputerUI.APPS[i] and c.content.get_child_count() > 0
-		ok = ok and c.company_l.text == Game.company_name and c.reputation_l.text == "Reputation %d" % int(Game.reputation)
+		ok = ok and c.company_l.text == Game.company_name and c.reputation_l.text == ComputerUI.reputation_text()   # §10: with the tier
 		ok = ok and c.balance_l.text == UIKit.money(Game.money) and c.clock_l.text.contains(Clock.time_string()) and c.clock_l.text.contains(Clock.date_string(Clock.day_index(), true))
 		if not ok:
 			bad.append(ComputerUI.APPS[i])
@@ -2945,16 +2946,19 @@ func test_s7_company_name() -> void:
 	await _frames(2)
 	runner.check(Game.company_name == "Maple Ridge Clearing" and not cr.form_up(), "§7 …and renames it (Enter)")
 	# Where the name shows.
-	runner.check(cr.company_l.text == Game.company_name and cr.reputation_l.text == "Reputation %d" % int(Game.reputation), "§7 the header: the company and its reputation")
+	runner.check(cr.company_l.text == Game.company_name and cr.reputation_l.text == ComputerUI.reputation_text() and cr.reputation_l.text.begins_with("Reputation %d" % int(Game.reputation)), "§7 the header: the company and its reputation (§10: and its tier)")
 	runner.check(_s2_texts(cr.content).contains(Game.company_name) and _s2_texts(cr.content).contains("Reputation %d" % int(Game.reputation)), "§7 Contracts: the company and its reputation")
 	cr._open_app(ComputerUI.app_index("board"))
 	await _frames(2)
 	runner.check(_s2_texts(cr.content).contains("Bidding as Maple Ridge Clearing"), "§7 the board: \"Bidding as …\"")
-	var lid := int(Contracts.listings[0]["lid"])
-	var addr: String = Contracts.listings[0]["address"]
-	Contracts.place_bid(lid, 1)
-	Clock.minutes = float(Contracts.bids[-1]["resolve_at"]) + 1.0
-	Contracts._resolve_bids()
+	# Polish 5 §10: a bid at the floor on an open listing (nobody bids lower; a tie goes to you), and
+	# the award at 9:01 p.m. (was: an answer a few hours later).
+	var open_l: Array = Contracts.listings.filter(func(x): return not Contracts.listing_locked(x))
+	var lid := int(open_l[0]["lid"])
+	var addr: String = open_l[0]["address"]
+	Contracts.place_bid(lid, Contracts.bid_floor(open_l[0]))
+	Clock.minutes = float(open_l[0]["closes"]) + Contracts.AWARD_DELAY_MIN + 0.5
+	Contracts.on_advance(Contracts.AWARD_DELAY_MIN + 1.0)   # a step through 9 p.m. and 9:01 p.m.
 	runner.check(Notify.history[-1]["text"].contains("Maple Ridge Clearing wins " + addr), "§7 the award names it: \"%s\"" % Notify.history[-1]["text"])
 	cr.show_contracts_tab(1)
 	cr._open_app(ComputerUI.app_index("contracts"))
@@ -3071,10 +3075,11 @@ func test_s7_contract_history() -> void:
 	runner.check(h.size() == 2 and h[0]["result"] == "completed" and h[0]["type"] == "one_time" and h[0]["pay"] == made[0]["pay"] and h[0]["address"] == made[0]["address"] and h[0]["year"] == 1,
 		"§7 a completed one-time job is recorded with its pay (%s)" % (str(h[0]) if h.size() > 0 else "none"))
 	runner.check(h.size() == 2 and h[1]["result"] == "completed" and h[1]["type"] == "recurring" and h[1]["pay"] == made[1]["pay"], "§7 …a recurring visit too")
-	# 2. A missed job: its time runs out (the snowed-in clock, as today).
+	# 2. A missed job: its due time passes (polish 5 §10; was the snowed-in clock).
 	var c3: Dictionary = made[2]
 	var rep0 := Game.reputation
-	c3["snowed_min"] = Catalog.balance.contract_snowed_in_hours * 60.0 - 1.0
+	c3["due"] = Clock.minutes + 1.0
+	Clock.minutes += 5.0
 	Contracts.on_advance(5.0)
 	runner.check(c3["status"] == "lost" and h.size() == 3 and h[2]["result"] == "missed" and h[2]["pay"] == 0 and is_equal_approx(h[2]["rep"], -Catalog.balance.contract_lost_reputation) and is_equal_approx(Game.reputation, rep0 - Catalog.balance.contract_lost_reputation),
 		"§7 a missed job is recorded with the reputation lost (%s)" % str(h.back()))
@@ -3158,6 +3163,13 @@ func test_s7_v3_save_round_trips() -> void:
 	Clock.minutes += 30.25
 	Weather._alert("WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!")
 	var want := JSON.stringify({"name": Game.company_name, "history": Contracts.job_history, "alerts": Weather.alerts})
+	# §10: the board's live bidding (your bid, the rivals' plan and bids), the due times, the tier
+	# noted — optional keys of version 3.
+	var bl: Dictionary = Contracts.listings.filter(func(x): return not Contracts.listing_locked(x))[0]
+	Contracts.place_bid(int(bl["lid"]), int(bl["budget"]))
+	Contracts._rival_bid(bl, 0, int(bl["budget"]) - 1, Clock.minutes)
+	cc["ext"] = true
+	var want10 := _s10_norm({"listings": Contracts.listings, "active": Contracts.active, "tier_noted": Contracts.tier_noted, "next_id": Contracts._next_id})
 	runner.check(Saves.save_game(), "§7 a version-3 save")
 	Game.company_name = ""
 	Contracts.job_history = []
@@ -3168,6 +3180,10 @@ func test_s7_v3_save_round_trips() -> void:
 	runner.check(got == want and Contracts.job_history.size() == 4 and Weather.alerts.size() == 2, "§7 …with the name, the history and (§8) the recent alerts exactly as saved (%d entries, %d alerts)" % [Contracts.job_history.size(), Weather.alerts.size()])
 	if got != want:
 		runner.info("want %s\n got %s" % [want, got])
+	var got10 := _s10_norm({"listings": Contracts.listings, "active": Contracts.active, "tier_noted": Contracts.tier_noted, "next_id": Contracts._next_id})
+	runner.check(got10 == want10 and Contracts.bids.size() == 1, "§10 …and the board (your bid, the rivals' plan and bids), the due times and the tier noted exactly as saved")
+	if got10 != want10:
+		runner.info("want %s\n got %s" % [want10.left(2000), got10.left(2000)])
 	Saves.delete_save("fun")
 	await _unload()
 
@@ -3188,7 +3204,7 @@ func test_s7_every_app_fits() -> void:
 			Contracts.record_job(c, ["completed", "missed", "cancelled"][k], 1234, -6.0)
 	Contracts.record_job({"id": 77, "address": Layout.big_areas[0]["place"], "client": "x", "type": "municipal"}, "completed", 12345, 1.0)
 	if not Contracts.listings.is_empty():
-		Contracts.place_bid(int(Contracts.listings[0]["lid"]), 99)
+		Contracts.place_bid(int(Contracts.listings[0]["lid"]), int(Contracts.listings[0]["budget"]) + 99)   # §10: above the floor
 	runner.info("fit: %d contracts, %d listings, %d bids, %d history entries" % [Contracts.active.size(), Contracts.listings.size(), Contracts.bids.size(), Contracts.job_history.size()])
 	Weather.alerts.append({"time": Clock.minutes, "text": "WEATHER ALERT: an unforecast storm is dumping snow at 41 cm an hour — stay indoors until the worst of it has passed!"})
 	Economy.buy("standard_shovel")
@@ -3270,8 +3286,11 @@ func _s7_fit_problems(c: ComputerUI, view: Rect2) -> Array:
 			if b.get_minimum_size().x > b.size.x + 0.5 or b.get_minimum_size().y > b.size.y + 0.5 or (bw > b.size.x + 1.0 and b.autowrap_mode == TextServer.AUTOWRAP_OFF):
 				bad.append("button \"%s\" is clipped (%d > %d)" % [b.text, bw, b.size.x])
 		elif ctl is LineEdit:
-			if ctl.size.x < 300.0:
+			# §10: the board's typed-bid fields are LineEdits too — they must show a 6-digit amount.
+			if ctl == c.name_edit and ctl.size.x < 300.0:
 				bad.append("the name field is narrow (%d)" % ctl.size.x)
+			elif ctl != c.name_edit and ctl.get_theme_font("font").get_string_size("999999", HORIZONTAL_ALIGNMENT_LEFT, -1, ctl.get_theme_font_size("font_size")).x + ctl.get_theme_stylebox("normal").get_minimum_size().x > ctl.size.x + 1.0:
+				bad.append("the bid field is narrow (%d)" % ctl.size.x)
 	for g in c.content.find_children("*", "GridContainer", true, false):
 		var cols := (g as GridContainer).columns
 		var kids := (g as Node).get_children().filter(func(k): return (k as Control).visible)
@@ -3901,7 +3920,9 @@ func test_s9_felt_rates() -> void:
 
 ## A stretch of evening play from the 8:30 p.m. fixture (Survival, on foot in the front yard): a
 ## storm, a bid that resolves, a contract, the grader's pass from 8:30 p.m. (near the house it is
-## watched at 1×) and 9 p.m. — run at 1×, 2× and 10×, each to 11:00 p.m. They end identical: the snow (every cell's depth and loose depth), the boxes, money,
+## watched at 1×) and 9 p.m. — run at 1×, 2× and 10×, each to 11:00 p.m. Polish 5 §10: with the
+## rivals' bids, the 9 p.m. close and the 9:01 p.m. award, and due times (a miss, a payment, a
+## visit falling due, a storm day). They end identical: the snow (every cell's depth and loose depth), the boxes, money,
 ## contracts and bids, the grader, weather readings, the TV's and the radio's text, warmth,
 ## notifications. The relaxation's time budget is the one CPU-dependent part of the snow, so it is
 ## off (tile count only) in all runs.
@@ -3914,6 +3935,8 @@ func test_s9_fast_forward_equals_1x() -> void:
 	var base: Dictionary = runs[0]
 	runner.info("1×: %d frames, %d substeps; storm %.1f cm, grader passes %s, bid %s, drops %s" % [base["frames"], base["substeps"], base["fell_cm"], base["passes"], base["bid"], base["drops"]])
 	runner.check(base["fell_cm"] > 4.0 and base["grader_done"] and base["crossed_9pm"] and base["bid"] != "" and base["bid_was"] == 1, "§9 the stretch has a storm (%.1f cm), a whole grader pass, 9 p.m. and a bid resolved (%s)" % [base["fell_cm"], base["bid"]])
+	var s10: Dictionary = base["s10"]
+	runner.check(s10.values().all(func(x): return x), "§10 …and on the clock: the rivals' bids, the award at 9:01 p.m., a job missed at its due time and back on the board, a job paid, a visit due once the snow stopped (a day later for the storm), a due time the storm moved %s" % str(s10))
 	for k in range(1, runs.size()):
 		var r: Dictionary = runs[k]
 		var diff := []
@@ -3956,10 +3979,32 @@ func _s9_stretch(sp: int, caps: bool) -> Dictionary:
 	var t_end := Clock.at(day, 23.0)
 	# A storm now, a bid that resolves at 10 p.m., the grader starting its pass.
 	Weather.force(Weather.C.HEAVY, 1.5, 3.0)
-	var l: Dictionary = Contracts.listings[0]
+	var l: Dictionary = Contracts.listings.filter(func(x): return not Contracts.listing_locked(x))[0]
 	Contracts.place_bid(int(l["lid"]), int(l["budget"]))
-	Contracts.bids[0]["resolve_at"] = Clock.at(day, 22.0)
 	var bids0 := Contracts.bids.size()
+	# §10: due times on the clock — a job due at 10 p.m. that won't be done (its storm day already
+	# used: missed, back on the board), a job cleared and waiting to be measured (paid), a recurring
+	# client the storm reopens (its visit falls due once the snow stops, a day later for the storm),
+	# a job due tomorrow the storm moves a day; the rivals bid on the open listings until 9 p.m.
+	var free_lots := Contracts.residential_lots().filter(func(x): return not Contracts._occupied_targets().has("lot:%d" % x["index"]))
+	var mk := func(i: int, type: String) -> Dictionary:
+		var rr := RandomNumberGenerator.new()
+		rr.seed = 500 + i
+		var ll := Contracts._add_lot_listing(free_lots[i], day, rr, "path")
+		ll["type"] = type
+		return Contracts.force_award(int(ll["lid"]))
+	var jm: Dictionary = mk.call(0, "one_time")
+	jm["due"] = Clock.at(day, 22.0)
+	jm["ext"] = true
+	var jp: Dictionary = mk.call(1, "one_time")
+	for id in Contracts.contract_boxes(jp):
+		for r in Boxes.get_box(id)["rects"]:
+			Snow.set_rect(r, 0.0)
+	var jr: Dictionary = mk.call(2, "recurring")
+	_s10_clear(jr)
+	var je: Dictionary = mk.call(3, "one_time")
+	var je_due := float(je["due"])
+	var money_s10 := Game.money
 	Municipal.next_pass = Clock.minutes
 	Municipal.on_hour(day, Clock.hour())
 	var passes0 := Municipal.passes
@@ -4018,7 +4063,12 @@ func _s9_stretch(sp: int, caps: bool) -> Dictionary:
 	var out := {"label": "%d×%s" % [sp, " (caps on)" if caps else ""], "state": state, "frames": frames, "substeps": substeps,
 		"fast_frames": fast, "held": held, "drops": drops, "fell_cm": (Snow.fall_total - fall0) * 100.0,
 		"passes": "%d → %d" % [passes0, Municipal.passes], "grader_done": started and not Municipal.in_progress and not g.active,
-		"crossed_9pm": crossed, "bid_was": bids0, "bid": "" if not Contracts.bids.is_empty() else ("won" if Contracts.active.size() > 1 else "lost")}
+		"crossed_9pm": crossed, "bid_was": bids0, "bid": "" if not Contracts.bids.is_empty() else ("won" if Contracts.active.any(func(c): return c["target"] == l["target"]) else "lost"),
+		"s10": {"missed": jm["status"] == "lost" and Contracts.listings.any(func(x): return x["target"] == jm["target"] and x.get("relisted", false)),
+			"paid": jp["status"] == "completed" and Game.money >= money_s10 + int(jp["pay"]),
+			"visit": jr["status"] == "needs_service" and bool(jr["ext"]) and is_equal_approx(float(jr["due"]), Clock.at(day + 1, Contracts.DUE_HOUR) + Contracts.STORM_EXTENSION_MIN),
+			"storm": bool(je["ext"]) and is_equal_approx(float(je["due"]), je_due + Contracts.STORM_EXTENSION_MIN),
+			"rivals": l["rivals"].any(func(rv): return int(rv["bid"]) > 0)}}
 	await _unload()
 	Saves.delete_save("survival")
 	return out
@@ -4085,7 +4135,7 @@ func test_s9_auto_return_and_availability() -> void:
 		for id in z["boxes"]:
 			Boxes.get_box(id)["complete"] = false
 	var b: BalanceData = Catalog.balance
-	c["snowed_min"] = (b.contract_snowed_in_hours - b.contract_warn_hours) * 60.0 - 0.5
+	c["due"] = Clock.minutes + b.contract_warn_hours * 60.0 + 0.5    # §10: the warning 12 h before it's due
 	c["warned"] = 0
 	_s9_fast()
 	for k in range(60):
@@ -4095,12 +4145,12 @@ func test_s9_auto_return_and_availability() -> void:
 	runner.check(int(c["warned"]) == 1 and Clock.speed == 1 and Clock.drop_reason == "contract", "§9 a contract warning: back to 1× (%s, warned %d)" % [Clock.drop_reason, int(c["warned"])])
 	Contracts.active.erase(c)
 	# A bid won or lost.
-	var l2: Dictionary = Contracts.listings[0]
+	var l2: Dictionary = Contracts.listings.filter(func(x): return not Contracts.listing_locked(x))[0]
 	Contracts.place_bid(int(l2["lid"]), int(l2["budget"]))
-	Contracts.bids[-1]["resolve_at"] = Clock.minutes
+	l2["closes"] = Clock.minutes - Contracts.AWARD_DELAY_MIN    # §10: closed, its award due now
 	_s9_fast()
 	var n_bids := Contracts.bids.size()
-	Contracts.on_hour(Clock.day_index(), Clock.hour())
+	Contracts.on_advance(0.0)
 	runner.check(Contracts.bids.size() == n_bids - 1 and Clock.speed == 1 and Clock.drop_reason == "bid", "§9 a bid won or lost: back to 1× (%s)" % Clock.drop_reason)
 	# A Survival cold warning.
 	Survival.warmth = 45.2
@@ -4398,4 +4448,545 @@ func test_s9_gerry_walk_holds() -> void:
 	runner.check(world.ff_hold() == "" or n.is_walking(), "§9 …and the hold ends when he stops")
 	Clock.set_speed(1)
 	world.close_modal()
+	await _unload()
+
+
+# =============================================================================
+# §10 Contracts — §10a: the rules (tiers and reputation, the bidding day, due times, old saves)
+# =============================================================================
+
+## The board's card for a listing (the live one: a rebuild frees the old cards at the end of the frame).
+func _s10_card(comp: ComputerUI, lid: int) -> Node:
+	for n in comp.content.get_children():
+		if int(n.get_meta("lid", -1)) == lid and not n.is_queued_for_deletion():
+			return n
+	return null
+
+
+## A new game (no world), the clock stopped, simulated to `day` at `hour`, the weather clear.
+func _s10_game(mode := "fun", day := 1, hour := 10.0) -> void:
+	await _unload()
+	Game.world = null
+	Game.player = null
+	Clock.running = false
+	Clock.speed = 1
+	Municipal.world_handles_passes = false
+	Game.new_game(mode, 2024)
+	Game.flags["mail_read"] = true
+	Game.flags["computer_unlocked"] = true
+	Game.set_stage(Game.Stage.COMPLETE)
+	Game.company_name = "Test Snow Co."
+	Weather.force(Weather.C.CLEAR, 400.0)
+	Clock.skip(Clock.at(day, hour) - Clock.minutes)
+	Weather.force(Weather.C.CLEAR, 400.0)
+	Notify.clear()
+
+
+## A residential job of `kind` on the `i`-th residential lot, won outright now.
+func _s10_job(i: int, kind := "path", type := "one_time") -> Dictionary:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1000 + i
+	var l := Contracts._add_lot_listing(Contracts.residential_lots()[i], Clock.day_index(), rng, kind)
+	l["type"] = type
+	return Contracts.force_award(int(l["lid"]))
+
+
+## Clear a contract's boxes (the snow set to bare ground and measured, as a finished job).
+func _s10_clear(c: Dictionary) -> void:
+	for z in c["zones"]:
+		for id in z["boxes"]:
+			var b := Boxes.get_box(id)
+			for r in b["rects"]:
+				Snow.set_rect(r, 0.0)
+			Boxes.measure(b, true)
+
+
+func _s10_notes_since(n0: int, prefix: String) -> Array:
+	return Notify.history.slice(n0).filter(func(n): return str(n["text"]).begins_with(prefix))
+
+
+## JSON as a save writes and reads it (numbers as JSON has them), keys sorted.
+static func _s10_norm(v: Variant) -> String:
+	return JSON.stringify(JSON.parse_string(JSON.stringify(v)), "", true)
+
+
+## Tiers (Decision 5): the names and thresholds are balance values (the same in balance.tres and the
+## defaults); listings above the player's tier are locked ("Needs reputation N") and can't be bid on;
+## reaching a tier gives one notification; reputation rises on completion (scaled with the job's
+## size, harder to earn near the top) and falls on a miss by the existing amount; F1 sets it.
+func test_s10_tiers_and_reputation() -> void:
+	await _s10_game()
+	var b: BalanceData = Catalog.balance
+	var tres: BalanceData = load("res://data/balance.tres")
+	var dflt := BalanceData.new()
+	var same := true
+	for k in ["rep_tier_names", "rep_tier_thresholds", "driveway_share_rep0", "driveway_share_commercial", "rep_gain_base", "rep_gain_per_m3",
+			"rep_gain_max", "rep_visit_factor", "rep_gain_full_below", "listings_per_day", "listing_share_commercial", "listing_share_city",
+			"listing_recurring_share", "listing_res_max_m3", "bid_floor_frac", "rival_count_min", "rival_count_max", "rival_open_min",
+			"rival_open_max", "rival_reply_chance", "rival_replies_max", "rival_reply_step_min", "rival_reply_step_max", "contract_history_max"]:
+		if str(tres.get(k)) != str(dflt.get(k)):
+			same = false
+			runner.info("balance %s: tres %s, default %s" % [k, str(tres.get(k)), str(dflt.get(k))])
+	var th: PackedFloat32Array = b.rep_tier_thresholds
+	runner.check(same and Array(b.rep_tier_names) == ["Residential", "Commercial", "City"] and th.size() == 3 and th[0] == 0.0 and th[1] > Game.reputation and th[2] > th[1],
+		"§10 the tiers are balance values, the same in balance.tres and the defaults: %s at %s (the game starts at %d)" % [str(b.rep_tier_names), str(th), int(Game.reputation)])
+	runner.check(is_equal_approx(b.driveway_share_rep0, 0.25) and is_equal_approx(b.driveway_share_commercial, 0.5), "§10 driveway share: a quarter at reputation 0, half at the Commercial threshold")
+	runner.check(Contracts.tier_index() == 0 and Contracts.tier_index(th[1] - 0.1) == 0 and Contracts.tier_index(th[1]) == 1 and Contracts.tier_index(th[2]) == 2, "§10 the tier follows the thresholds")
+	# A commercial and a city listing, locked at the start.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 3
+	var la := Contracts._add_area_listing(Layout.big_areas[0], Clock.day_index(), rng)
+	var lc := Contracts._add_walk_listing("B_w", Clock.day_index(), rng)
+	runner.check(Contracts.listing_locked(la) and Contracts.listing_locked(lc) and not Contracts.place_bid(int(la["lid"]), int(la["budget"]))["ok"]
+		and Contracts.place_bid(int(la["lid"]), int(la["budget"]))["msg"] == "Needs reputation %d." % int(th[1]), "§10 above your tier: locked, no bid (\"Needs reputation %d.\")" % int(th[1]))
+	# Reaching a tier: one notification.
+	var n0 := Notify.history.size()
+	Contracts.adjust_reputation(th[1] - Game.reputation)
+	var notes := _s10_notes_since(n0, "Commercial tier reached")
+	Contracts.adjust_reputation(-1.0)
+	Contracts.adjust_reputation(1.0)
+	runner.check(Contracts.tier_index() == 1 and notes.size() == 1 and _s10_notes_since(n0, "Commercial tier reached").size() == 1, "§10 reaching Commercial: one notification (\"%s\")" % (notes[0]["text"] if not notes.is_empty() else "none"))
+	runner.check(not Contracts.listing_locked(la) and Contracts.listing_locked(lc) and Contracts.place_bid(int(la["lid"]), int(la["budget"]))["ok"], "§10 …parking lots unlock, the city's still locked")
+	Contracts.adjust_reputation(th[2] - Game.reputation)
+	runner.check(Contracts.tier_index() == 2 and not Contracts.listing_locked(lc) and _s10_notes_since(n0, "City tier reached").size() == 1, "§10 …and City at %d" % int(th[2]))
+	# Gains scale with size and fall off near the top; a miss costs the existing amount.
+	runner.check(Contracts.rep_gain(2.0, false, 50.0) < Contracts.rep_gain(20.0, false, 50.0) and Contracts.rep_gain(20.0, false, 90.0) < Contracts.rep_gain(20.0, false, 50.0) and Contracts.rep_gain(2.0, false, 99.9) > 0.0,
+		"§10 the gain grows with the job's size (%.2f for 2 m³, %.2f for 20 m³) and is harder to earn near the top (%.2f at 90)" % [Contracts.rep_gain(2.0, false, 50.0), Contracts.rep_gain(20.0, false, 50.0), Contracts.rep_gain(20.0, false, 90.0)])
+	Contracts.adjust_reputation(50.0 - Game.reputation)
+	var c := _s10_job(0, "path")
+	var r0 := Game.reputation
+	var want := Contracts.rep_gain(float(c["size"]))
+	_s10_clear(c)
+	runner.check(c["status"] == "completed" and is_equal_approx(Game.reputation, r0 + want) and want > 0.0, "§10 reputation rises on completion: +%.2f for a %.1f m³ path" % [want, float(c["size"])])
+	var c2 := _s10_job(1, "path")
+	r0 = Game.reputation
+	c2["due"] = Clock.minutes + 0.5
+	Clock.advance(1.0)
+	runner.check(c2["status"] == "lost" and is_equal_approx(Game.reputation, r0 - b.contract_lost_reputation), "§10 …and falls by %d on a miss" % int(b.contract_lost_reputation))
+	# F1: set reputation (the tier follows), jump to 8:59 p.m.
+	var dm := DebugMenu.new()
+	runner.add_child(dm)
+	await _frames(1)
+	dm._set_rep(th[1])
+	var ok_rep := Contracts.tier_index() == 1 and is_equal_approx(Game.reputation, th[1])
+	var pressed := false
+	for bt in dm.find_children("*", "Button", true, false):
+		if (bt as Button).text == "8:59 p.m.":
+			(bt as Button).pressed.emit()
+			pressed = true
+	runner.check(ok_rep and pressed and Clock.hour() == 20 and Clock.minute_of_hour() == 59, "§10 F1: set the reputation (%d · %s), jump to 8:59 p.m. (%s)" % [int(Game.reputation), Contracts.tier_name(Contracts.tier_index()), Clock.time_string()])
+	dm.queue_free()
+	await _frames(1)
+
+
+## Paths first (Decision 5): over many simulated boards, path jobs outnumber driveway jobs at low
+## reputation and the share of driveways grows with reputation (driveways a shovel can do in a day:
+## every residential box cleared before a storm). And the board never posts a residential job
+## bigger than the player's equipment clears in a day: untouched driveways (a season of snow) aren't
+## offered to a player with a shovel.
+func test_s10_paths_first() -> void:
+	await _s10_game()
+	for lot in Contracts.residential_lots():
+		for kind in ["path", "driveway"]:
+			var bx := Boxes.get_box(Boxes.lot_box(lot, kind))
+			for r in bx["rects"]:
+				Snow.set_rect(r, 0.0)
+			Boxes.measure(bx, true)
+	Snow.add_snowfall(0.2)
+	Boxes.measure_all(true)
+	var shares := []
+	var counts := []
+	for rep in [0.0, 30.0, 50.0, Catalog.balance.rep_tier_thresholds[1]]:
+		Game.reputation = rep
+		var n := {"path": 0, "driveway": 0}
+		for d in range(200):
+			Contracts.listings.clear()
+			Contracts._generate_listings(d % 120 + 1000 * int(rep), false)
+			for l in Contracts.listings:
+				if str(l["tier"]) == "residential":
+					n[str(l["job"])] += 1
+		counts.append(n)
+		shares.append(float(n["driveway"]) / maxf(n["path"] + n["driveway"], 1.0))
+	runner.info("driveway share by reputation 0 / 30 / 50 / %d: %s (%s)" % [int(Catalog.balance.rep_tier_thresholds[1]), str(shares.map(func(x): return snappedf(x, 0.01))), str(counts)])
+	runner.check(counts[0]["path"] > counts[0]["driveway"] and counts[2]["path"] > counts[2]["driveway"], "§10 at low reputation path jobs outnumber driveway jobs (%s, %s)" % [str(counts[0]), str(counts[2])])
+	runner.check(absf(shares[0] - 0.25) < 0.07 and absf(shares[3] - 0.5) < 0.08 and shares[1] > shares[0] and shares[3] > shares[2], "§10 …and the driveway share grows with reputation: %.2f at 0 → %.2f at the Commercial threshold" % [shares[0], shares[3]])
+	# The untouched world: no residential listing bigger than a shovel clears in a day.
+	await _s10_game("fun", 6, 7.0)
+	var too_big := []
+	var dw := 0
+	for d in range(60):
+		Contracts.listings.clear()
+		Contracts._generate_listings(d + 6, false)
+		for l in Contracts.listings:
+			if str(l["tier"]) == "residential":
+				if float(l["now_volume"]) > Contracts.res_cap_m3():
+					too_big.append("%s %.0f m³" % [l["address"], float(l["now_volume"])])
+				if l["job"] == "driveway":
+					dw += 1
+	runner.check(too_big.is_empty() and dw == 0 and is_equal_approx(Contracts.res_cap_m3(), Catalog.balance.listing_res_max_m3), "§10 untouched driveways (a season's snow) aren't offered with a shovel; nothing over %.0f m³ %s" % [Contracts.res_cap_m3(), str(too_big)])
+
+
+## The bidding day: what a listing shows; place, raise, lower, withdraw; the floor; ties go to you;
+## the rivals bid at seeded times and answer an undercut once or twice, never under their floor,
+## the same way every time; at 9:00 p.m. bidding closes, at 9:01 p.m. the lowest bid wins, with a
+## notification for each of your bids won or lost (and back to 1×).
+func test_s10_bidding_day() -> void:
+	await _s10_game("fun", 1, 6.5)
+	var day := Clock.day_index()
+	var open_l: Array = Contracts.listings.filter(func(x): return str(x["tier"]) == "residential")
+	runner.check(open_l.size() >= 2, "§10 the morning board has residential listings (%d of %d)" % [open_l.size(), Contracts.listings.size()])
+	var l: Dictionary = open_l[0]
+	var l2: Dictionary = open_l[1]
+	runner.check(is_equal_approx(float(l["closes"]), Clock.at(day, Contracts.DUE_HOUR)) and Contracts.when_text_rel(float(l["closes"])) == "9 p.m. today", "§10 posted at 6 a.m.: closes at 9 p.m. today")
+	# Posted 3 h before 9 p.m. or more: today; later: tomorrow.
+	runner.check(is_equal_approx(Contracts.close_for(Clock.at(day, 18.0)), Clock.at(day, 21.0)) and is_equal_approx(Contracts.close_for(Clock.at(day, 18.5)), Clock.at(day + 1, 21.0)) and is_equal_approx(Contracts.close_for(Clock.at(day, 21.0)), Clock.at(day + 1, 21.0)),
+		"§10 posted by 6 p.m.: closes at 9 p.m.; after: at 9 p.m. the next day")
+	# The rivals' plan: seeded times through the day, at or above the floor.
+	var fl := Contracts.bid_floor(l)
+	var plan_ok := not (l["rivals"] as Array).is_empty()
+	for rv in l["rivals"]:
+		plan_ok = plan_ok and float(rv["at"]) > float(l["posted"]) and float(rv["at"]) < float(l["closes"]) and int(rv["open"]) >= fl and int(rv["bid"]) == 0
+	runner.check(plan_ok and fl == int(ceil(float(l["budget"]) * Catalog.balance.bid_floor_frac - 1e-6)), "§10 %d rivals bid at seeded times through the day, never under the floor ($%d of $%d)" % [(l["rivals"] as Array).size(), fl, int(l["budget"])])
+	# Place, raise, lower, withdraw; the floor.
+	var lid := int(l["lid"])
+	runner.check(not Contracts.place_bid(lid, fl - 1)["ok"] and Contracts.bids.is_empty(), "§10 a bid under the floor is refused")
+	runner.check(Contracts.place_bid(lid, int(l["budget"]))["ok"] and Contracts.bids.size() == 1 and int(l["bid"]) == int(l["budget"]) and Contracts.bid_count(l) == 1, "§10 place a bid")
+	runner.check(Contracts.place_bid(lid, int(l["budget"]) + 10)["ok"] and int(l["bid"]) == int(l["budget"]) + 10, "§10 raise it")
+	runner.check(Contracts.place_bid(lid, fl + 2)["ok"] and int(l["bid"]) == fl + 2 and Contracts.bids[0]["amount"] == fl + 2, "§10 lower it")
+	runner.check(Contracts.withdraw_bid(lid)["ok"] and int(l["bid"]) == 0 and Contracts.bids.is_empty() and Contracts.bid_status(l)["text"] == "", "§10 withdraw it")
+	# Live status; ties go to you.
+	Contracts.place_bid(lid, int(l["budget"]))
+	Contracts._rival_bid(l, 0, int(l["budget"]), Clock.minutes)
+	runner.check(Contracts.bid_status(l)["winning"] and Contracts.bid_status(l)["text"] == "Winning", "§10 a tie goes to you: \"Winning\"")
+	Contracts._rival_bid(l, 0, int(l["budget"]) - 3, Clock.minutes)
+	runner.check(not Contracts.bid_status(l)["winning"] and Contracts.bid_status(l)["text"] == "Outbid · lowest bid $%d" % (int(l["budget"]) - 3), "§10 \"%s\"" % Contracts.bid_status(l)["text"])
+	# Replies: deterministic (the rivals' own stream), never under the floor, at most twice.
+	var runs := []
+	for k in range(2):
+		await _s10_game("fun", 1, 6.5)
+		Catalog.balance.rival_reply_chance = 1.0
+		var lr: Dictionary = Contracts.listings.filter(func(x): return str(x["tier"]) == "residential")[0]
+		Clock.advance(float(lr["closes"]) - 330.0 - Clock.minutes)
+		var steps := []
+		for t in range(8):
+			var st := Contracts.bid_status(lr)
+			Contracts.place_bid(int(lr["lid"]), maxi(int(st["lowest"]) - 1, Contracts.bid_floor(lr)) if int(st["lowest"]) > 0 else Contracts.bid_floor(lr) + 5)
+			Clock.advance(30.0)
+			steps.append(var_to_str(lr["rivals"]))
+		var low := int(Contracts.bid_status(lr)["lowest"])
+		var replied := 0
+		for rv in lr["rivals"]:
+			replied += int(rv["replies"])
+		runs.append({"rivals": "\n".join(steps), "low": low, "floor": Contracts.bid_floor(lr), "replies": replied, "max": int(Catalog.balance.rival_replies_max) * (lr["rivals"] as Array).size()})
+		Catalog.balance.rival_reply_chance = BalanceData.new().rival_reply_chance
+	runner.check(runs[0]["rivals"] == runs[1]["rivals"], "§10 the rivals' replies are the same every time (seeded)")
+	runner.check(runs[0]["low"] >= runs[0]["floor"] and runs[0]["replies"] >= 1 and runs[0]["replies"] <= runs[0]["max"], "§10 they answer an undercut (%d replies, at most %d) and never go under their floor (lowest $%d, floor $%d)" % [runs[0]["replies"], runs[0]["max"], runs[0]["low"], runs[0]["floor"]])
+	# Closing at 9 p.m., the award at 9:01 p.m.: the lowest bid wins.
+	await _s10_game("fun", 1, 6.5)
+	open_l = Contracts.listings.filter(func(x): return str(x["tier"]) == "residential")
+	l = open_l[0]
+	l2 = open_l[1]
+	day = Clock.day_index()
+	Contracts.place_bid(int(l["lid"]), Contracts.bid_floor(l))           # nobody bids lower: wins
+	Contracts.place_bid(int(l2["lid"]), int(l2["budget"]) * 3)           # over every rival: loses
+	Clock.advance(Clock.at(day, 20.0 + 59.0 / 60.0) - Clock.minutes)
+	runner.check(not l["closed"] and Contracts.place_bid(int(l["lid"]), Contracts.bid_floor(l) + 1)["ok"] and Contracts.place_bid(int(l["lid"]), Contracts.bid_floor(l))["ok"], "§10 at 8:59 p.m. bids can still change")
+	Clock.speed = 10
+	var n0 := Notify.history.size()
+	var act0 := Contracts.active.size()
+	Clock.advance(1.0)
+	runner.check(l["closed"] and not Contracts.place_bid(int(l["lid"]), Contracts.bid_floor(l) + 1)["ok"] and Contracts.listing_by_id(int(l["lid"])).size() > 0 and Contracts.active.size() == act0,
+		"§10 9:00 p.m.: bidding has closed (no award yet)")
+	Clock.advance(1.0)
+	var won := Contracts.active.filter(func(c): return c["target"] == l["target"] and c["status"] != "lost")
+	var won_notes := _s10_notes_since(n0, "Bid won!")
+	var lost_notes := _s10_notes_since(n0, "Bid lost:")
+	runner.check(Contracts.listing_by_id(int(l["lid"])).is_empty() and won.size() == 1 and int(won[0]["pay"]) == Contracts.bid_floor(l) and is_equal_approx(float(won[0]["accepted"]), Clock.at(day, 21.0) + 1.0),
+		"§10 9:01 p.m.: the lowest bid wins (%s, $%d)" % [l["address"], int(won[0]["pay"]) if not won.is_empty() else 0])
+	runner.check(won_notes.size() == 1 and str(won_notes[0]["text"]).contains(Game.company_name) and lost_notes.size() == 1 and str(lost_notes[0]["text"]).contains(l2["address"]) and Contracts.bids.is_empty(),
+		"§10 a notification for the bid won and the bid lost (\"%s\" / \"%s\")" % [won_notes[0]["text"] if not won_notes.is_empty() else "", lost_notes[0]["text"] if not lost_notes.is_empty() else ""])
+	runner.check(Clock.speed == 1 and Clock.drop_reason == "bid", "§10 …and fast-forward back to 1× (%s)" % Clock.drop_reason)
+	runner.check(is_equal_approx(float(won[0]["due"]), Clock.at(day + 1, Contracts.DUE_HOUR)), "§10 the job won is due by 9 p.m. the next day (%s)" % Contracts.due_text(won[0]))
+
+
+## Due times (Decision 4; the 48-hour tests' rules, now due times): a job done at 8:59 p.m. is paid,
+## one still open at 9:00 p.m. is missed — reputation lost, no pay, in the history, back on the board
+## closing at the next 9 p.m.; the warnings 12 h and 3 h before; the storm adds a day once per job;
+## recurring and city visits; payment exactly once per job or visit; and the due time everywhere it
+## is shown (notifications, the HUD, the computer, the map).
+func test_s10_due_times() -> void:
+	await _s10_game("fun", 1, 10.0)
+	var b: BalanceData = Catalog.balance
+	var day := Clock.day_index()
+	var a := _s10_job(0, "path")
+	var m := _s10_job(1, "path")
+	var due := Clock.at(day + 1, Contracts.DUE_HOUR)
+	runner.check(is_equal_approx(float(a["due"]), due) and Contracts.due_text(a) == "9 p.m. %s" % Clock.weekday(day + 1, Game.year), "§10 a job won today is due %s" % Contracts.due_text(a))
+	var n0 := Notify.history.size()
+	Clock.speed = 10
+	Clock.advance(due - b.contract_warn_hours * 60.0 + 1.0 - Clock.minutes)
+	var w1 := _s10_notes_since(n0, a["address"] + " is due")
+	runner.check(int(a["warned"]) == 1 and w1.size() == 1 and str(w1[0]["text"]).contains("due 9 p.m.") and Clock.speed == 1 and Clock.drop_reason == "contract", "§10 the 12-hour warning names the due time (\"%s\"), back to 1×" % (w1[0]["text"] if not w1.is_empty() else ""))
+	Clock.advance(due - 60.0 - Clock.minutes)
+	runner.check(int(a["warned"]) == 2 and _s10_notes_since(n0, "URGENT: " + a["address"]).size() == 1, "§10 …and the 3-hour one")
+	# The due time where it's shown.
+	var hud_alert := "⚠ %s: due %s — %d h left" % [a["address"], Contracts.due_text(a), 1]
+	await _spawn_world()
+	Clock.running = false
+	var pl: Player = world.player
+	var mid: Vector2 = (Boxes.get_box(Boxes.lot_box(Contracts.residential_lots()[0], "path"))["rects"][0] as Rect2).get_center()
+	pl.teleport(Vector3(mid.x, Snow.surface_height(mid.x, mid.y) + 0.05, mid.y))
+	await _frames(20)
+	var hud: HUD = world.hud
+	runner.check(hud.alert_l.text.contains(hud_alert) and hud.contract_l.text.contains("Due %s  (1 h left)" % Contracts.due_text(a)), "§10 the HUD: \"%s\" and the box line \"%s\"" % [hud.alert_l.text.split("\n")[0], hud.contract_l.text.replace("\n", " | ")])
+	var comp := await _s7_open()
+	comp._open_app(ComputerUI.app_index("contracts"))
+	await _frames(2)
+	runner.check(_s2_texts(comp.content).contains("Due %s  ·  1 h left" % Contracts.due_text(a)), "§10 the computer's Contracts: \"Due %s  ·  1 h left\"" % Contracts.due_text(a))
+	world.close_modal()
+	await _frames(2)
+	var mp := MapUI.new()
+	world.ui.add_child(mp)
+	world.open_modal(mp, "map")
+	await _frames(2)
+	var tags: Array = mp.labels(Vector2(1920, 1080)).filter(func(x): return x["kind"] == "tag").map(func(x): return x["text"])
+	runner.check(MapUI.due_tag(a) in tags and MapUI.due_tag(a) == "due " + Clock.weekday(day + 1, Game.year), "§10 the map: \"%s\" under the house number %s" % [MapUI.due_tag(a), str(tags)])
+	world.close_modal()
+	await _frames(2)
+	# 8:59 p.m.: done and paid; 9:00 p.m.: the other one is missed.
+	Clock.advance(due - 1.0 - Clock.minutes)
+	var money0 := Game.money
+	var rep0 := Game.reputation
+	_s10_clear(a)
+	runner.check(a["status"] == "completed" and Game.money == money0 + int(a["pay"]) and Game.reputation > rep0 and Contracts.job_history[-1]["result"] == "completed", "§10 done at 8:59 p.m.: paid $%d, reputation +%.2f, in the history" % [int(a["pay"]), Game.reputation - rep0])
+	money0 = Game.money
+	rep0 = Game.reputation
+	n0 = Notify.history.size()
+	Clock.advance(1.0)
+	var relisted := Contracts.listings.filter(func(x): return x["target"] == m["target"] and x.get("relisted", false))
+	runner.check(m["status"] == "lost" and Game.money == money0 and is_equal_approx(Game.reputation, rep0 - b.contract_lost_reputation) and Contracts.job_history[-1]["result"] == "missed" and _s10_notes_since(n0, "MISSED: " + m["address"]).size() == 1,
+		"§10 still open at 9:00 p.m.: missed — no pay, %d reputation, in the history" % -int(b.contract_lost_reputation))
+	runner.check(relisted.size() == 1 and is_equal_approx(float(relisted[0]["closes"]), Clock.at(day + 2, Contracts.DUE_HOUR)) and not (relisted[0]["rivals"] as Array).is_empty(), "§10 …back on the board, closing at the next 9 p.m. (%s)" % (Clock.format_time(float(relisted[0]["closes"])) if not relisted.is_empty() else "none"))
+	# Payment exactly once: measuring again, an hour, new snow on the finished job.
+	money0 = Game.money
+	var hist0 := Contracts.job_history.size()
+	Contracts._refresh(a)
+	Contracts.on_hour(Clock.day_index(), Clock.hour())
+	Boxes.measure_all(true)
+	for id in Contracts.contract_boxes(a):
+		for r in Boxes.get_box(id)["rects"]:
+			Snow.add_layer_rect(r, 0.05)
+	Boxes.measure_all(true)
+	Contracts.on_hour(Clock.day_index(), Clock.hour())
+	runner.check(Game.money == money0 and Contracts.job_history.size() == hist0 and a["status"] == "completed", "§10 paid exactly once: measuring again or new snow on a finished job changes nothing")
+	await _unload()
+	# The storm: heavy snow inside the window adds a day, once per job.
+	await _s10_game("fun", 1, 10.0)
+	day = Clock.day_index()
+	var s := _s10_job(2, "path")
+	var due_s := float(s["due"])
+	n0 = Notify.history.size()
+	Weather.force(Weather.C.HEAVY, 1.0, 1.5)
+	Clock.advance(10.0)
+	runner.check(is_equal_approx(float(s["due"]), due_s + Contracts.STORM_EXTENSION_MIN) and bool(s["ext"]) and _s10_notes_since(n0, "Storm: " + s["address"]).size() == 1, "§10 heavy snow inside the job's window: due a day later, with a notification (%s)" % Contracts.due_text(s))
+	Weather.force(Weather.C.HEAVY, 2.0, 1.5)
+	Clock.advance(60.0)
+	runner.check(is_equal_approx(float(s["due"]), due_s + Contracts.STORM_EXTENSION_MIN), "§10 …once per job")
+	Weather.force(Weather.C.CLEAR, 400.0)
+	# A city sidewalk contract: its first visit due tomorrow; done; new snow → due by 9 p.m. the day
+	# after the snow stops; a storm-reopened visit a day later; each visit paid once.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4
+	var lw := Contracts._add_walk_listing("B_w", Clock.day_index(), rng)
+	var cw := Contracts.force_award(int(lw["lid"]))
+	runner.check(cw["type"] == "municipal" and cw["status"] == "needs_service" and is_equal_approx(float(cw["due"]), Clock.at(Clock.day_index() + 1, Contracts.DUE_HOUR)), "§10 a city contract (%s): its first visit due %s" % [cw["address"], Contracts.due_text(cw)])
+	money0 = Game.money
+	_s10_clear(cw)
+	runner.check(cw["status"] == "serviced" and Game.money == money0 + int(cw["pay"]) and Contracts.hours_left(cw) == INF, "§10 the visit done: paid, nothing due until new snow")
+	Weather.force(Weather.C.MODERATE, 3.0, 2.5)
+	Clock.advance(60.0)
+	Contracts.on_hour(Clock.day_index(), Clock.hour())     # the hourly check finds the new snow
+	runner.check(cw["status"] == "needs_service" and Contracts.due_pending(cw) and Contracts.due_text(cw) == "9 p.m. the day after the snow stops", "§10 new snow reopens it: \"%s\"" % Contracts.due_text(cw))
+	var t_end := Clock.minutes
+	Weather.force(Weather.C.CLEAR, 400.0)
+	Clock.advance(5.0)
+	runner.check(is_equal_approx(float(cw["due"]), Clock.at(Contracts.day_of(t_end - 0.001) + 1, Contracts.DUE_HOUR)) and not bool(cw["ext"]), "§10 …due by 9 p.m. the day after the snow stopped (%s)" % Contracts.due_text(cw))
+	money0 = Game.money
+	_s10_clear(cw)
+	Boxes.measure_all(true)
+	runner.check(Game.money == money0 + int(cw["pay"]) and int(cw["visits"]) == 2, "§10 the second visit paid once")
+	Weather.force(Weather.C.HEAVY, 3.0, 2.0)
+	Clock.advance(90.0)
+	Contracts.on_hour(Clock.day_index(), Clock.hour())
+	Clock.advance(1.0)
+	t_end = Clock.minutes
+	Weather.force(Weather.C.CLEAR, 400.0)
+	Clock.advance(5.0)
+	runner.check(cw["status"] == "needs_service" and bool(cw["ext"]) and is_equal_approx(float(cw["due"]), Clock.at(Contracts.day_of(t_end - 0.001) + 1, Contracts.DUE_HOUR) + Contracts.STORM_EXTENSION_MIN),
+		"§10 a visit a storm reopened: a day later (%s)" % Contracts.due_text(cw))
+
+
+## Old saves (before due times): an active one-time job is due by 9 p.m. on the first day at least
+## 24 game hours after the load; a pending recurring visit follows the rule from the load; open
+## listings close at the next 9 p.m. (the rivals bid until then); a pending bid is back on the board
+## with your bid on it; a job above the player's tier is kept and runs.
+func test_s10_old_saves() -> void:
+	var path := "res://tests/fixtures/polish5/fun_1_contracts.json"
+	var src: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var ok: bool = await _load_save_file(path)
+	var now := Clock.minutes
+	var one := Contracts.active.filter(func(c): return c["type"] == "one_time" and c["status"] == "active" and not c.get("tutorial", false))
+	var rec := Contracts.active.filter(func(c): return c["type"] == "recurring" and c["status"] == "needs_service")
+	var want_due := Contracts.next_9pm(now + 1440.0 - 0.001)
+	runner.check(ok and one.size() == 1 and is_equal_approx(float(one[0]["due"]), want_due) and float(one[0]["due"]) >= now + 1440.0 - 0.01 and float(one[0]["due"]) < now + 2880.0,
+		"§10 an old save's one-time job is due by 9 p.m. on the first day 24 h after the load (%s, loaded %s)" % [Clock.format_time(float(one[0]["due"])) if not one.is_empty() else "?", Clock.format_time(now)])
+	runner.check(rec.size() == 1 and Contracts.due_pending(rec[0]), "§10 …its recurring visit waits for the snow rule from the load")
+	Contracts.on_advance(0.5)
+	var rd := float(rec[0]["due"])
+	runner.check(is_equal_approx(rd, Clock.at(Clock.day_index() + 1, Contracts.DUE_HOUR)) or (Weather.is_snowing() and rd < 0.0), "§10 …due by 9 p.m. the day after the snow stops (%s)" % Contracts.due_text(rec[0]))
+	var lst_ok := not Contracts.listings.is_empty()
+	for l in Contracts.listings:
+		lst_ok = lst_ok and is_equal_approx(float(l["closes"]), Contracts.next_9pm(now)) and not (l["rivals"] as Array).is_empty() and l.has("tier")
+	runner.check(lst_ok and Contracts.listings.size() == (src["contracts"]["listings"] as Array).size(), "§10 …its open listings close at the next 9 p.m., the rivals bidding until then (%d)" % Contracts.listings.size())
+	await _unload()
+	# The 8:30 p.m. save: its listings close at 9 p.m. that evening.
+	ok = await _load_save_file("res://tests/fixtures/polish5/survival_5_evening.json")
+	runner.check(ok and Contracts.listings.all(func(l): return is_equal_approx(float(l["closes"]), Clock.at(Clock.day_index(), 21.0))), "§10 the 8:30 p.m. save: its listings close at 9 p.m. that evening")
+	await _unload()
+	# A pending bid (before live bidding, its listing off the board) and a job above the tier.
+	var d := src.duplicate(true)
+	var lst: Dictionary = (d["contracts"]["listings"] as Array).pop_back()
+	d["contracts"]["bids"] = [{"listing": lst, "amount": int(lst["budget"]), "resolve_at": float(d["clock"]) + 60.0}]
+	var store_c: Dictionary = (d["contracts"]["active"] as Array)[0].duplicate(true)
+	store_c["id"] = 999
+	store_c.erase("tutorial")
+	store_c.erase("due")
+	store_c["target"] = "area:store_lot"
+	store_c["type"] = "one_time"
+	store_c["status"] = "active"
+	store_c["zones"] = [{"name": "Parking lot", "boxes": ["area_store_lot"], "rects": [], "done": false, "progress": 0.0}]
+	(d["contracts"]["active"] as Array).append(store_c)
+	var f := FileAccess.open(Saves.path_for("fun"), FileAccess.WRITE)
+	f.store_string(JSON.stringify(d))
+	f.close()
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(Saves.path_for("fun") + ".bak"))
+	ok = Saves.load_game("fun")
+	var back := Contracts.listing_by_id(int(lst["lid"]))
+	var above := Contracts.active.filter(func(c): return int(c["id"]) == 999)
+	runner.check(ok and not back.is_empty() and int(back["bid"]) == int(lst["budget"]) and Contracts.bids.size() == 1 and is_equal_approx(float(back["closes"]), Contracts.next_9pm(Clock.minutes)),
+		"§10 a pending bid from an old save: back on the board with the bid on it, closing at the next 9 p.m.")
+	runner.check(above.size() == 1 and above[0]["status"] == "active" and Contracts.tier_index() == 0 and str(above[0]["tier"]) == "commercial" and float(above[0]["due"]) > Clock.minutes, "§10 a job above the player's tier is kept and runs (due %s)" % (Contracts.due_text(above[0]) if not above.is_empty() else "?"))
+	Saves.delete_save("fun")
+
+
+## Integrity: save → load mid-bidding and mid-job keeps your bids, the rivals' bids (and a reply on
+## its way), the due times (a job, a visit waiting for the snow to stop) — and what happens next is the
+## same with or without the reload: the award at 9:01 p.m., the payments.
+func test_s10_save_mid_bidding_and_mid_job() -> void:
+	await _s10_game("fun", 1, 12.0)
+	Catalog.balance.rival_reply_chance = 1.0
+	var l: Dictionary = Contracts.listings.filter(func(x): return str(x["tier"]) == "residential")[0]
+	Clock.advance(float(l["closes"]) - 240.0 - Clock.minutes)
+	Contracts.place_bid(int(l["lid"]), maxi(int(Contracts.bid_status(l)["lowest"]) - 2, Contracts.bid_floor(l)) if int(Contracts.bid_status(l)["lowest"]) > 0 else int(l["budget"]))
+	var job := _s10_job(3, "path")
+	var vis := _s10_job(4, "path", "recurring")
+	_s10_clear(vis)
+	Weather.force(Weather.C.MODERATE, 3.0, 2.5)
+	Clock.advance(60.0)
+	var pending := Contracts.due_pending(vis)
+	var replying := (l["rivals"] as Array).any(func(rv): return float(rv["next"]) >= 0.0)
+	var want := _s10_norm({"c": Contracts.serialize(), "clock": Clock.minutes})
+	runner.check(Saves.save_game(), "§10 saved mid-bidding and mid-job")
+	var after := []
+	for k in range(2):
+		if k == 1:
+			Contracts.reset_for_new_game()
+			runner.check(Saves.load_game("fun"), "§10 …loads")
+			var got := _s10_norm({"c": Contracts.serialize(), "clock": Clock.minutes})
+			runner.check(got == want, "§10 …with the bids, the rivals' bids%s and the due times (a job, %s) exactly as saved" % [" (a reply on its way)" if replying else "", "a visit waiting for the snow to stop" if pending else "a visit"])
+			if got != want:
+				runner.info("want %s\n got %s" % [want.left(3000), got.left(3000)])
+		var n0 := Notify.history.size()
+		var m0 := Game.money
+		Weather.force(Weather.C.CLEAR, 400.0)
+		Clock.advance(float(l["closes"]) + 2.0 - Clock.minutes)
+		_s10_clear(Contracts.active.filter(func(c): return int(c["id"]) == int(job["id"]))[0])
+		Clock.advance(30.0)
+		after.append(_s10_norm({"c": Contracts.serialize(), "money": Game.money - m0, "notes": Notify.history.slice(n0).map(func(n): return n["text"])}))
+	runner.check(after[0] == after[1], "§10 …and what follows (the award at 9:01 p.m., a job paid, the visit's due time) is the same with or without the reload")
+	Catalog.balance.rival_reply_chance = BalanceData.new().rival_reply_chance
+	Saves.delete_save("fun")
+
+
+## The board (functional, §7's layout): every listing with its address, kind, boxes and size, the
+## suggested price, when bidding closes, the number of bids and your status; locked ones show "Needs
+## reputation N"; place / raise / lower / withdraw from it; the status updates while it's open; an
+## "Outbid" notification only with the board off screen, at most once per listing per game hour;
+## typing a bid fires no game action.
+func test_s10_board_live() -> void:
+	await _s9_world("fun", 10.0)
+	Clock.running = false
+	Game.company_name = "Live Bid Co."
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 11
+	var la := Contracts._add_area_listing(Layout.big_areas[0], Clock.day_index(), rng)
+	var comp := await _s7_open()
+	comp._open_app(ComputerUI.app_index("board"))
+	await _frames(2)
+	var l: Dictionary = Contracts.listings.filter(func(x): return str(x["tier"]) == "residential")[0]
+	var card: Node = _s10_card(comp, int(l["lid"]))
+	var txt := _s2_texts(card) if card else ""
+	runner.check(card != null and txt.contains(l["address"]) and txt.contains("one-time" if l["type"] == "one_time" else "all winter") and txt.contains("Suggested " + UIKit.money(l["budget"]))
+		and txt.contains("closes 9 p.m. today") and txt.contains("0 bids") and txt.contains("No bid yet") and txt.contains("m²") and txt.contains("m³"), "§10 a listing shows its address, kind, boxes and size, the suggested price, the close, the bids, your status:\n%s" % txt)
+	var lcard: Node = _s10_card(comp, int(la["lid"]))
+	runner.check(lcard != null and _s2_texts(lcard).contains("Needs reputation %d" % int(Contracts.tier_threshold(1))) and lcard.find_children("*", "LineEdit", true, false).is_empty(), "§10 a parking lot above your tier: \"Needs reputation %d\", no bid controls" % int(Contracts.tier_threshold(1)))
+	# Place from the board (typed: Enter), then raise with the slider, then withdraw.
+	var e: LineEdit = comp.bid_edits[int(l["lid"])]
+	e.grab_focus()
+	await _frames(1)
+	var speed0 := Clock.speed
+	var sel0 := Game.selected
+	for act in ["fast_forward", "drop", "slot_2"]:
+		Input.parse_input_event(_s7_event(act, true))
+		await _frames(1)
+		Input.parse_input_event(_s7_event(act, false))
+		await _frames(1)
+	runner.check(Game.typing() and Clock.speed == speed0 and Game.selected == sel0, "§10 typing in the bid field fires no game action (T, G, 2)")
+	e.text = str(int(l["budget"]))
+	e.text_changed.emit(e.text)
+	e.text_submitted.emit(e.text)
+	await _frames(3)
+	runner.check(int(l["bid"]) == int(l["budget"]) and not Game.typing(), "§10 a typed bid placed with Enter ($%d)" % int(l["bid"]))
+	card = _s10_card(comp, int(l["lid"]))
+	runner.check(card != null and _s2_texts(card).contains("Winning") and _s2_texts(card).contains("Change bid") and _s2_texts(card).contains("Withdraw") and _s2_texts(card).contains("1 bid"), "§10 the card: \"Winning\", Change bid, Withdraw, 1 bid")
+	# A rival undercuts while the board is open: the status updates, no notification.
+	var n0 := Notify.history.size()
+	Contracts._rival_bid(l, 0, int(l["budget"]) - 4, Clock.minutes)
+	await _frames(3)
+	card = _s10_card(comp, int(l["lid"]))
+	runner.check(card != null and _s2_texts(card).contains("Outbid · lowest bid $%d" % (int(l["budget"]) - 4)) and _s10_notes_since(n0, "Outbid").is_empty(), "§10 the open board updates: \"Outbid · lowest bid $%d\", no notification" % (int(l["budget"]) - 4))
+	var sl: HSlider = card.find_children("*", "HSlider", true, false)[0]
+	sl.value = int(l["budget"]) - 5
+	await _s7_press(card, "Change bid")
+	runner.check(int(l["bid"]) == int(l["budget"]) - 5 and Contracts.bid_status(l)["winning"], "§10 lower it with the slider: winning again ($%d)" % int(l["bid"]))
+	card = _s10_card(comp, int(l["lid"]))
+	await _s7_press(card, "Withdraw")
+	runner.check(int(l["bid"]) == 0, "§10 withdraw from the board")
+	await _s7_press(_s10_card(comp, int(l["lid"])), "Place bid")
+	world.close_modal()
+	await _frames(2)
+	# The board closed: "Outbid on …", at most once per listing per game hour.
+	for rv in l["rivals"]:
+		rv["bid"] = 0
+	var s0 := int(l["budget"])
+	Contracts.place_bid(int(l["lid"]), s0)
+	n0 = Notify.history.size()
+	Contracts._rival_bid(l, 0, s0 - 1, Clock.minutes)
+	Contracts.place_bid(int(l["lid"]), s0 - 2)
+	Contracts._rival_bid(l, 0, s0 - 3, Clock.minutes + 20.0)
+	var o1 := _s10_notes_since(n0, "Outbid on " + l["address"]).size()
+	Contracts.place_bid(int(l["lid"]), s0 - 4)
+	Contracts._rival_bid(l, 0, s0 - 5, Clock.minutes + 61.0)
+	var o2 := _s10_notes_since(n0, "Outbid on " + l["address"]).size()
+	runner.check(o1 == 1 and o2 == 2, "§10 with the board closed: \"Outbid on %s\", at most once per listing per game hour (%d, then %d)" % [l["address"], o1, o2])
 	await _unload()

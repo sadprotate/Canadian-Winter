@@ -1231,7 +1231,8 @@ func test_playthrough_from_the_menu_both_modes() -> void:
 				await _frames(1)
 			world.close_modal()
 		runner.check(not Contracts.bids.is_empty(), "%s: bids placed from the contract board" % mode)
-		Clock.skip(240.0)
+		# Polish 5 §10: bids are answered at the award, 9:01 p.m. (was: within a few hours).
+		Clock.skip(Contracts.next_9pm(Clock.minutes) + Contracts.AWARD_DELAY_MIN + 1.0 - Clock.minutes)
 		var won := false
 		for ct in Contracts.active:
 			if not ct.get("tutorial", false):
