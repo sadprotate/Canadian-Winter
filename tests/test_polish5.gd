@@ -3819,3 +3819,583 @@ func test_s8_fullest_displays_fit() -> void:
 	Weather.alerts.clear()
 	Game.company_name = ""
 	await _unload()
+
+
+# =============================================================================
+# §9 Time
+# =============================================================================
+
+const S9_EVENING := "res://tests/fixtures/polish5/survival_5_evening.json"
+
+
+## The clock's rate: 48 game minutes per real minute (Decision 3), a game day in REAL_MIN_PER_DAY
+## real minutes; real play moves the clock by it at 1×, and 2× and 10× run exactly 2 and 10 times
+## the game time per frame (clear weather, no grader: no cap or hold).
+func test_s9_clock_rate() -> void:
+	runner.near(Clock.GAME_MIN_PER_REAL_SEC * 60.0, 48.0, 1e-9, "§9 the clock runs 48 game minutes per real minute (%.1f)" % (Clock.GAME_MIN_PER_REAL_SEC * 60.0))
+	runner.near(1440.0 / (Clock.GAME_MIN_PER_REAL_SEC * 60.0), 30.0, 1e-9, "§9 a game day lasts 30 real minutes")
+	await _s9_world("fun")
+	Weather.force(Weather.C.CLEAR, 12.0)
+	Clock.running = true
+	for sp in Clock.SPEEDS:
+		runner.check(Clock.set_speed(sp), "§9 %d× can be chosen on foot" % sp)
+		var m0 := Clock.minutes
+		await _frames(120)
+		var want: float = 120.0 / 60.0 * Clock.GAME_MIN_PER_REAL_SEC * sp
+		runner.near(Clock.minutes - m0, want, 0.02 * sp, "§9 at %d× two real seconds (120 frames at 60 fps) are %.1f game minutes (%.2f)" % [sp, want, Clock.minutes - m0])
+	Clock.set_speed(1)
+	Weather.override_cond = -1
+	await _unload()
+
+
+## Felt rates are recalibrated so they feel the same per real minute at 1× as before polish 5 §9
+## (the old values per game hour at 2.5 real minutes a game hour), and still run on game time;
+## the values are the same in balance.tres and the defaults.
+func test_s9_felt_rates() -> void:
+	var b: BalanceData = Catalog.balance
+	var d := BalanceData.new()
+	# Before §9 (per game hour at 24 game minutes per real minute): exposure 2, 6, 19, 28, 41, 52 %/h,
+	# recovery 280 %/h, the pouch +20 %/h for 30 game minutes — per real minute 0.8, 2.4, 7.6, 11.2,
+	# 16.4, 20.8; 112; 8, for 75 real seconds.
+	var old_exp := [0.8, 2.4, 7.6, 11.2, 16.4, 20.8]
+	var ok := b.exposure_curve.size() == old_exp.size() and b.exposure_curve == d.exposure_curve
+	for i in range(old_exp.size()):
+		ok = ok and is_equal_approx(Survival.per_real_minute(b.exposure_curve[i].y), old_exp[i])
+	runner.check(ok, "§9 the exposure curve loses the same warmth per real minute as before (%s %%/game h)" % str(Array(b.exposure_curve).map(func(v): return v.y)))
+	runner.near(Survival.per_real_minute(b.warmth_recover_per_hour), 112.0, 1e-6, "§9 warming up by the heat: 112 % per real minute, as before")
+	runner.near(Survival.per_real_minute(b.pouch_warmth_per_hour), 8.0, 1e-6, "§9 the heating pouch: +8 % per real minute while it lasts, as before")
+	runner.near(b.pouch_protection_minutes / Clock.GAME_MIN_PER_REAL_SEC, 75.0, 1e-6, "§9 …and it lasts 75 real seconds, as before")
+	runner.check(b.warmth_recover_per_hour == d.warmth_recover_per_hour and b.pouch_protection_minutes == d.pouch_protection_minutes and b.pouch_warmth_per_hour == d.pouch_warmth_per_hour and b.pouch_warmth == d.pouch_warmth, "§9 the same values in balance.tres and the defaults")
+	# On game time: an hour skipped (sleep, an F1 jump) costs what the same game hour costs in play.
+	var lost := []
+	for how in ["play", "skip"]:
+		Game.world = null
+		Game.player = null
+		Clock.running = false
+		Game.new_game("survival", 4242)
+		Clock.reset(Clock.at(1, 10.0))
+		Survival.in_player_house = false
+		Survival.warmth = 100.0
+		Weather.force(Weather.C.CLEAR, 10.0)
+		if how == "play":
+			for k in range(3600):
+				Clock.advance(1.0 / 60.0)
+		else:
+			Clock.skip(60.0)
+		lost.append(100.0 - Survival.warmth)
+	# (A skip steps 30 game minutes at a time, so the weather's drift within the hour is sampled
+	# more coarsely: within 2 %.)
+	runner.check(lost[0] > 0.5 and absf(lost[0] - lost[1]) < 0.02 * lost[0], "§9 a game hour outdoors costs the same warmth in play and skipped (%.3f / %.3f %%)" % [lost[0], lost[1]])
+	Survival.warmth = 50.0
+	Survival.in_player_house = true
+	Survival.house_heat = 1.0
+	Clock.skip(10.0)
+	runner.near(Survival.warmth, minf(100.0, 50.0 + b.warmth_recover_per_hour * 10.0 / 60.0), 0.05, "§9 warming up runs on game time too")
+	Weather.override_cond = -1
+	# World rates keep their game-time values: a day still has 24 game hours, sleep and F1 jumps
+	# move the clock in game time.
+	var m0 := Clock.minutes
+	Clock.skip(60.0)
+	runner.near(Clock.minutes - m0, 60.0, 1e-6, "§9 an F1 '+1 hour' jump is still 60 game minutes")
+
+
+## A stretch of evening play from the 8:30 p.m. fixture (Survival, on foot in the front yard): a
+## storm, a bid that resolves, a contract, the grader's pass from 8:30 p.m. (near the house it is
+## watched at 1×) and 9 p.m. — run at 1×, 2× and 10×, each to 11:00 p.m. They end identical: the snow (every cell's depth and loose depth), the boxes, money,
+## contracts and bids, the grader, weather readings, the TV's and the radio's text, warmth,
+## notifications. The relaxation's time budget is the one CPU-dependent part of the snow, so it is
+## off (tile count only) in all runs.
+func test_s9_fast_forward_equals_1x() -> void:
+	var runs := []
+	# The frame-budget caps only ever lower how many substeps a frame runs (never what one does), so
+	# they are off here and 10× really runs 10× away from the grader.
+	for cfg in [[1, false], [2, false], [10, false]]:
+		runs.append(await _s9_stretch(int(cfg[0]), bool(cfg[1])))
+	var base: Dictionary = runs[0]
+	runner.info("1×: %d frames, %d substeps; storm %.1f cm, grader passes %s, bid %s, drops %s" % [base["frames"], base["substeps"], base["fell_cm"], base["passes"], base["bid"], base["drops"]])
+	runner.check(base["fell_cm"] > 4.0 and base["grader_done"] and base["crossed_9pm"] and base["bid"] != "" and base["bid_was"] == 1, "§9 the stretch has a storm (%.1f cm), a whole grader pass, 9 p.m. and a bid resolved (%s)" % [base["fell_cm"], base["bid"]])
+	for k in range(1, runs.size()):
+		var r: Dictionary = runs[k]
+		var diff := []
+		for key in base["state"].keys():
+			if str(base["state"][key]) != str(r["state"][key]):
+				diff.append(key)
+		runner.info("%s: %d frames (%d substeps), %.0f %% of the frames at more than 1×, held %d frames, drops %s" % [r["label"], r["frames"], r["substeps"], 100.0 * r["fast_frames"] / maxf(r["frames"], 1.0), r["held"], r["drops"]])
+		runner.check(r["substeps"] == base["substeps"] and r["frames"] < base["frames"], "§9 %s took the same %d clock substeps in %d frames (1×: %d)" % [r["label"], r["substeps"], r["frames"], base["frames"]])
+		runner.check(diff.is_empty(), "§9 %s ends identical to 1× (snow, boxes, money, contracts and bids, the grader, weather, TV, radio, warmth, notifications)%s" % [r["label"], "" if diff.is_empty() else " — differs: %s" % str(diff)])
+	runner.check(int(runs[2]["fast_frames"]) > 0 and int(runs[2]["held"]) > 0, "§9 10× ran fast away from the grader and was held at 1× while it passed the house (%d / %d frames)" % [runs[2]["fast_frames"], runs[2]["held"]])
+
+
+static func _s9_sha(bytes: PackedByteArray) -> String:
+	var h := HashingContext.new()
+	h.start(HashingContext.HASH_SHA256)
+	h.update(bytes)
+	return h.finish().hex_encode()
+
+
+## One run of the stretch at a speed: the state at its end, and how it went.
+func _s9_stretch(sp: int, caps: bool) -> Dictionary:
+	var ok: bool = await _load_save_file(S9_EVENING)
+	runner.check(ok, "§9 the evening fixture loads")
+	await _spawn_world()
+	world.snow_renderer.relax_usec = 0      # deterministic relaxation (tile count only), every run
+	# The round-robin positions are transient (not saved) and carry over from the previous run in
+	# this process: start every run from the same ones, as a fresh start of the game would.
+	Boxes._cursor = 0
+	Boxes._near_timer = 0.0
+	Snow.sync_cursor = 0
+	var notes0 := Notify.history.size()
+	Clock.caps_on = caps
+	var pl: Player = world.player
+	var yard := Layout.lot_to_world(Layout.player_lot, Layout.gu(Layout.player_lot, -6.0), 7.0)
+	pl.teleport(Vector3(yard.x, 0.05, yard.y), 0.0)
+	pl.pitch = 0.0
+	pl.head.rotation.x = 0.0
+	await _frames(2)
+	var day := Clock.day_index()
+	var t_end := Clock.at(day, 23.0)
+	# A storm now, a bid that resolves at 10 p.m., the grader starting its pass.
+	Weather.force(Weather.C.HEAVY, 1.5, 3.0)
+	var l: Dictionary = Contracts.listings[0]
+	Contracts.place_bid(int(l["lid"]), int(l["budget"]))
+	Contracts.bids[0]["resolve_at"] = Clock.at(day, 22.0)
+	var bids0 := Contracts.bids.size()
+	Municipal.next_pass = Clock.minutes
+	Municipal.on_hour(day, Clock.hour())
+	var passes0 := Municipal.passes
+	var started: bool = Municipal.in_progress and world.grader.active
+	var fall0 := Snow.fall_total
+	var drops := []
+	var cb := func(s: int, why: String):
+		if s == 1 and why != "":
+			drops.append(why)
+	Clock.speed_changed.connect(cb)
+	var step := 1.0 / 60.0 * Clock.GAME_MIN_PER_REAL_SEC
+	var frames := 0
+	var substeps := 0
+	var fast := 0
+	var held := 0
+	var crossed := false
+	while Clock.minutes < t_end - 1e-9 and frames < 30000:
+		var want := sp if t_end - Clock.minutes > (sp + 1) * step else 1
+		if Clock.speed != want:
+			Clock.set_speed(want)
+		await _tree().physics_frame
+		frames += 1
+		substeps += maxi(Clock.substeps_last_frame, 1)
+		if Clock.substeps_last_frame > 1:
+			fast += 1
+		if Clock.speed > 1 and Clock.hold_reason() != "":
+			held += 1
+		crossed = crossed or Clock.minutes >= Clock.at(day, 21.0)
+	Clock.speed_changed.disconnect(cb)
+	Clock.set_speed(1)
+	Clock.caps_on = true
+	# What a player could see or that is saved.
+	Snow.sync_all()
+	var tv := Panels.tv(world.hud, func(): pass, false)
+	var tv_text := _s2_texts(tv)
+	tv.queue_free()
+	var g: GraderNPC = world.grader
+	var notes := []
+	for n in Notify.history.slice(notes0):
+		notes.append("%s|%s" % [str(n["time"]), str(n["text"])])
+	var state := {
+		"clock": var_to_str(Clock.minutes),
+		"snow": _s9_sha(Snow.depth.to_byte_array() + Snow.loose.to_byte_array()) + var_to_str([Snow.fall_total, Snow.roof_depth, Snow.roof_extra]),
+		"boxes": var_to_str(Boxes.serialize()),
+		"money": Game.money,
+		"game": var_to_str(Game.serialize()),
+		"contracts": var_to_str(Contracts.serialize()),
+		"economy": var_to_str(Economy.serialize()),
+		"grader": var_to_str([Municipal.serialize(), Municipal.in_progress, g.active, g.lane_i, g.s, g.applied_s]),
+		"weather": var_to_str([Weather.condition(), Weather.snow_rate(), Weather.temperature(), Weather.wind_chill(), Weather.serialize()]),
+		"tv": tv_text,
+		"radio": world.radio_text(),
+		"warmth": var_to_str(Survival.serialize()),
+		"notifications": "\n".join(notes),
+	}
+	var out := {"label": "%d×%s" % [sp, " (caps on)" if caps else ""], "state": state, "frames": frames, "substeps": substeps,
+		"fast_frames": fast, "held": held, "drops": drops, "fell_cm": (Snow.fall_total - fall0) * 100.0,
+		"passes": "%d → %d" % [passes0, Municipal.passes], "grader_done": started and not Municipal.in_progress and not g.active,
+		"crossed_9pm": crossed, "bid_was": bids0, "bid": "" if not Contracts.bids.is_empty() else ("won" if Contracts.active.size() > 1 else "lost")}
+	await _unload()
+	Saves.delete_save("survival")
+	return out
+
+
+## A game on Dec 2 at `hour` after the tutorial (no Gerry), the clock running, the player on foot
+## in the front yard of their house (on the snow, a shovel in slot 1), clear weather.
+func _s9_world(mode := "fun", hour := 12.0) -> void:
+	await _unload()
+	Game.force_input = true
+	Game.new_game(mode, 2024)
+	Game.flags["mail_read"] = true
+	Game.flags["computer_unlocked"] = true
+	Game.flags["truck_keys"] = true
+	Game.set_stage(Game.Stage.COMPLETE)
+	Clock.reset(Clock.at(1, hour))
+	await _spawn_world()
+	_s9_yard()
+	Game.slots = ["standard_shovel", "", "", ""]
+	Game.selected = 0
+	Weather.force(Weather.C.CLEAR, 48.0)
+	Clock.running = true
+	await _frames(80)       # the world fades in over 1.2 s (the speed control shows after it)
+
+
+func _s9_yard() -> void:
+	var pl: Player = world.player
+	var yard := Layout.lot_to_world(Layout.player_lot, Layout.gu(Layout.player_lot, -6.0), 7.0)
+	pl.teleport(Vector3(yard.x, 0.05, yard.y), 0.0)
+	pl.pitch = 0.0
+	pl.head.rotation.x = 0.0
+
+
+## Choose 10× (it must be available).
+func _s9_fast() -> bool:
+	return Clock.set_speed(10) and Clock.speed == 10
+
+
+## Every way fast-forward goes back to 1× on its own, where it's available and where not, and the
+## key (cycling, ignored while typing, the vehicle's radio in a vehicle).
+func test_s9_auto_return_and_availability() -> void:
+	await _s9_world("survival")
+	var pl: Player = world.player
+	Survival.warmth = 100.0
+	Municipal.next_pass = Clock.minutes + 3.0 * 1440.0   # no grader pass during the test
+	# The key: 1× → 2× → 10× → 1×, as real key events for its binding.
+	runner.check(Settings.ACTIONS.has("fast_forward") and Settings.ACTIONS["fast_forward"][2] == _s2_k(KEY_T) and Settings.action_label("fast_forward") == "T", "§9 the fast-forward key defaults to T (%s)" % Settings.action_label("fast_forward"))
+	runner.check("fast_forward" in Settings.RATE_LIMITED and "fast_forward" in Settings.live_actions("foot") and "fast_forward" in Settings.live_actions("computer") and not ("fast_forward" in Settings.live_actions("vehicle")), "§9 …capped like every press, read on foot and at the computer, not in a vehicle")
+	var seen := []
+	for k in range(3):
+		await _s2_key("fast_forward")
+		seen.append(Clock.speed)
+	runner.check(seen == [2, 10, 1], "§9 the key cycles 1× → 2× → 10× → 1× (%s)" % str(seen))
+	# A weather alert.
+	_s9_fast()
+	Weather._alert("Test alert.")
+	runner.check(Clock.speed == 1 and Clock.drop_reason == "alert", "§9 a weather alert: back to 1× (%s)" % Clock.drop_reason)
+	# A contract warning (the hook §10's deadline warnings call too).
+	var l: Dictionary = Contracts.listings[0]
+	var c := Contracts.force_award(int(l["lid"]))
+	c["status"] = "active"
+	c["type"] = "one_time"
+	for z in c["zones"]:
+		for id in z["boxes"]:
+			Boxes.get_box(id)["complete"] = false
+	var b: BalanceData = Catalog.balance
+	c["snowed_min"] = (b.contract_snowed_in_hours - b.contract_warn_hours) * 60.0 - 0.5
+	c["warned"] = 0
+	_s9_fast()
+	for k in range(60):
+		await _frames(1)
+		if int(c["warned"]) >= 1:
+			break
+	runner.check(int(c["warned"]) == 1 and Clock.speed == 1 and Clock.drop_reason == "contract", "§9 a contract warning: back to 1× (%s, warned %d)" % [Clock.drop_reason, int(c["warned"])])
+	Contracts.active.erase(c)
+	# A bid won or lost.
+	var l2: Dictionary = Contracts.listings[0]
+	Contracts.place_bid(int(l2["lid"]), int(l2["budget"]))
+	Contracts.bids[-1]["resolve_at"] = Clock.minutes
+	_s9_fast()
+	var n_bids := Contracts.bids.size()
+	Contracts.on_hour(Clock.day_index(), Clock.hour())
+	runner.check(Contracts.bids.size() == n_bids - 1 and Clock.speed == 1 and Clock.drop_reason == "bid", "§9 a bid won or lost: back to 1× (%s)" % Clock.drop_reason)
+	# A Survival cold warning.
+	Survival.warmth = 45.2
+	Survival._state = Survival.state()
+	Weather.force(Weather.C.MODERATE, 4.0, 0.5)
+	_s9_fast()
+	for k in range(600):
+		await _frames(1)
+		if Survival.state() >= Survival.St.COLD:
+			break
+	await _frames(1)
+	runner.check(Survival.state() == Survival.St.COLD and Clock.speed == 1 and Clock.drop_reason == "cold", "§9 a cold warning: back to 1× (%s, warmth %.1f)" % [Clock.drop_reason, Survival.warmth])
+	Survival.warmth = 100.0
+	Weather.force(Weather.C.CLEAR, 48.0)
+	# Starting to scoop, push or throw.
+	pl.pitch = deg_to_rad(-40.0)
+	pl.head.rotation.x = pl.pitch
+	await _frames(2)
+	_s9_fast()
+	Input.action_press("primary")
+	await _frames(3)
+	runner.check(Clock.speed == 1 and Clock.drop_reason == "work" and pl.tools.filling, "§9 starting to scoop: back to 1× (%s)" % Clock.drop_reason)
+	for k in range(20):
+		pl.set_yaw(0.3 * sin(k * 0.3))
+		await _frames(1)
+	pl.pitch = 0.0
+	pl.head.rotation.x = 0.0
+	await _frames(2)
+	runner.check(_s9_fast(), "§9 …10× can be chosen again while holding a load (%.1f L)" % (pl.tools.load * 1000.0))
+	Input.action_release("primary")
+	await _frames(3)
+	runner.check(Clock.speed == 1 and Clock.drop_reason == "work", "§9 throwing: back to 1× (%s)" % Clock.drop_reason)
+	await _s3_settle()
+	_s9_fast()
+	Input.action_press("secondary")
+	await _frames(3)
+	Input.action_release("secondary")
+	runner.check(Clock.speed == 1 and Clock.drop_reason == "work", "§9 starting to push: back to 1× (%s)" % Clock.drop_reason)
+	pl.pitch = 0.0
+	pl.head.rotation.x = 0.0
+	await _frames(2)
+	# Getting into a vehicle; none there, and its T is the radio.
+	var truck: Vehicle = world.vehicle_nodes()[0]
+	_s9_fast()
+	truck.enter_vehicle(pl)
+	await _frames(2)
+	runner.check(Clock.speed == 1 and Clock.drop_reason == "vehicle", "§9 getting into a vehicle: back to 1× (%s)" % Clock.drop_reason)
+	runner.check(not Clock.set_speed(10) and Clock.unavailable_reason() == "vehicle", "§9 …no fast-forward in a vehicle")
+	var n0 := Notify.history.size()
+	await _s2_key("fast_forward")
+	runner.check(Clock.speed == 1 and Notify.history.size() == n0 + 1 and str(Notify.history[-1]["text"]).begins_with("Radio:"), "§9 …where %s is the radio" % Settings.action_label("fast_forward"))
+	truck.exit_vehicle()
+	await _frames(3)
+	# At a walk-behind machine.
+	var wb := _s3_blower("small_blower", pl.global_position + Vector3(1.5, 0, 0))
+	await _frames(2)
+	_s9_fast()
+	wb.interact(pl)
+	await _frames(2)
+	runner.check(Clock.speed == 1 and not Clock.set_speed(10) and Clock.unavailable_reason() == "machine", "§9 at a machine: back to 1×, not available (%s)" % Clock.unavailable_reason())
+	wb.release()
+	await _frames(2)
+	# Gerry's lines, a dialog, sleep.
+	_s9_fast()
+	world.say_gerry([{"speaker": "Gerry", "text": "Just a test line."}])
+	await _frames(2)
+	runner.check(Clock.speed == 1 and not Clock.set_speed(10) and Clock.unavailable_reason() == "gerry", "§9 during Gerry's lines: back to 1×, not available")
+	while world.is_gerry_talking():
+		world._talk_next()
+	await _frames(1)
+	for kind in ["sleep", "pause"]:
+		_s9_fast()
+		if kind == "sleep":
+			world.open_sleep()
+		else:
+			world._open_pause()
+		await _frames(2)
+		runner.check(Clock.speed == 1 and not Clock.set_speed(10) and world.speed_ctrl.visible == false, "§9 the %s dialog: back to 1×, not available, the control hidden" % kind)
+		await _tree().process_frame
+		world.close_modal()
+		await _tree().process_frame
+		await _frames(2)
+	_s9_fast()
+	var sleeping := [0]
+	var watch := func(_d: int, _h: int):
+		if Clock.skipping and Clock.unavailable_reason() == "sleep" and not Clock.set_speed(10):
+			sleeping[0] += 1
+	Clock.hour_changed.connect(watch)
+	await world._do_sleep()
+	Clock.hour_changed.disconnect(watch)
+	runner.check(Clock.speed == 1 and Clock.drop_reason == "sleep" and sleeping[0] > 10 and Clock.hour() == 7, "§9 sleeping: back to 1×, not available all night (%d hours), wake at 7:00 (%s)" % [sleeping[0], Clock.time_string()])
+	await _frames(70)
+	runner.check(Clock.set_speed(10), "§9 …and available again in the morning")
+	Clock.set_speed(1)
+	Municipal.next_pass = Clock.minutes + 3.0 * 1440.0   # no grader pass (and its cap) in what follows
+	# The computer: available there, and the clock runs 10 substeps a frame.
+	world.open_computer()
+	await _frames(2)
+	runner.check(world.modal_kind == "computer" and _s9_fast(), "§9 at the computer: fast-forward available")
+	await _frames(3)
+	runner.check(Clock.substeps_last_frame == 10, "§9 …the clock runs 10 substeps a frame there (%d)" % Clock.substeps_last_frame)
+	# Typing in a text field: the key is ignored (the field gets the letter).
+	var cu: ComputerUI = world.modal
+	cu._open_app(ComputerUI.app_index("contracts"))
+	await _frames(3)
+	runner.check(cu.form_up() and Game.typing(), "§9 the company-name field has the focus")
+	var before := cu.name_edit.text
+	var d := _s7_event("fast_forward", true)
+	Input.parse_input_event(d)
+	await _frames(2)
+	Input.parse_input_event(_s7_event("fast_forward", false))
+	await _frames(2)
+	runner.check(Clock.speed == 10 and cu.name_edit.text != before, "§9 while typing the key is ignored (still 10×; the field reads \"%s\")" % cu.name_edit.text)
+	Clock.set_speed(1)
+	world.close_modal()
+	await _frames(2)
+	_release_all()
+	Weather.override_cond = -1
+	await _unload()
+
+
+## Scripted movers and the frame budget: the grader within reach holds the clock at 1× for its
+## pass (the chosen speed is kept and comes back once it's gone); while it drives elsewhere, or snow
+## is still settling, 10× runs at 2× (a frame's slumping per substep); snowfall from 0.5 cm/h caps
+## 10× at 2×, and a major event's heaviest hours every speed at 1×. The control shows why.
+func test_s9_holds_and_caps() -> void:
+	await _s9_world("fun")
+	var pl: Player = world.player
+	var sc: SpeedControl = world.speed_ctrl
+	Municipal.next_pass = Clock.minutes
+	Municipal.on_hour(Clock.day_index(), Clock.hour())
+	await _frames(2)
+	var g: GraderNPC = world.grader
+	runner.check(g.active, "§9 the grader is on its route")
+	pl.teleport(Vector3(g.global_position.x + 12.0, 0.05, g.global_position.z - 6.0))   # on the sidewalk ahead
+	await _frames(1)
+	runner.check(_s9_fast(), "§9 10× chosen with the grader 12 m away")
+	await _frames(3)
+	runner.check(Clock.hold_reason() == "grader" and Clock.effective_speed() == 1 and Clock.speed == 10 and Clock.substeps_last_frame == 1, "§9 …held at 1× for the pass (chosen 10×, running %d×)" % Clock.effective_speed())
+	runner.check(sc.note_l.visible and sc.note_l.text.contains("grader") and sc.buttons[0].get_theme_stylebox("normal") == sc._st_on and sc.buttons[2].get_theme_stylebox("normal") == sc._st_chosen, "§9 …the control shows 1× running, 10× chosen: \"%s\"" % sc.note_l.text)
+	pl.teleport(Vector3(20.0, Snow.ground_at(20.0, 20.0) + 0.05, 20.0))
+	await _frames(3)
+	runner.check(Clock.hold_reason() == "" and Clock.effective_speed() == 2 and Clock.substeps_last_frame == 2 and sc.note_l.text.contains("Max 2×"), "§9 the grader elsewhere: 10× runs at 2× (\"%s\")" % sc.note_l.text)
+	# The pass over: its windrows settle for a while (relaxation, real time — at 2× while each
+	# substep's share is heavy), then 10× again.
+	world.finish_grader_now()
+	Snow.relax_until_stable()
+	for k in range(3600):
+		if Snow.relax_pending() == 0:
+			break
+		await _frames(1)
+	await _frames(3)
+	runner.check(not g.active and Clock.effective_speed() == 10 and Clock.substeps_last_frame == 10 and not sc.note_l.visible, "§9 the pass over: back to the chosen 10× (%d×, %d substeps, \"%s\")" % [Clock.effective_speed(), Clock.substeps_last_frame, sc.note_l.text if sc.note_l.visible else ""])
+	# A big pile settling: a substep's slumping costs more than FF_RELAX_US, so 10× runs at 2×.
+	var spot := Vector2(pl.global_position.x + 6.0, pl.global_position.z)
+	for k in range(15):
+		Snow.deposit(spot + Vector2((k % 5) * 1.5, 0.0), 5.0, 1.2, true)
+	await _frames(3)
+	runner.check(Clock.effective_speed() == 2 and sc.note_l.text.contains("settling"), "§9 a 75 m³ pile settling: 10× runs at 2× (\"%s\", %d µs a substep)" % [sc.note_l.text, world.snow_renderer.relax_us_last])
+	Snow.relax_until_stable()
+	await _frames(3)
+	Weather.force(Weather.C.HEAVY, 2.0, 3.0)
+	await _frames(3)
+	runner.check(Clock.speed_cap() == 2 and Clock.effective_speed() == 2 and Clock.speed == 10 and sc.note_l.text.begins_with("Max 2×"), "§9 snowing hard (3 cm/h): 10× capped at 2× (\"%s\")" % sc.note_l.text)
+	Weather.force(Weather.C.LIGHT, 2.0, 0.6)
+	await _frames(3)
+	runner.check(Clock.effective_speed() == 2, "§9 light snow (0.6 cm/h): 10× runs at 2× too")
+	Weather.force(Weather.C.LIGHT, 2.0, 0.3)
+	await _frames(3)
+	runner.check(Clock.effective_speed() == 10, "§9 barely snowing (0.3 cm/h): 10×")
+	Weather.force(Weather.C.BLIZZARD, 2.0, 50.0)   # (its warning drops to 1×: choose after it)
+	Clock.set_speed(2)
+	await _frames(3)
+	runner.check(Clock.effective_speed() == 2, "§9 a major event (50 cm/h): 2× runs at 2×")
+	Weather.force(Weather.C.BLIZZARD, 2.0, 109.6)
+	Clock.set_speed(2)
+	await _frames(3)
+	runner.check(Clock.effective_speed() == 1 and Clock.speed == 2 and sc.note_l.text.begins_with("Max 1×"), "§9 …its heaviest hour (110 cm/h): 1× (\"%s\")" % sc.note_l.text)
+	Clock.set_speed(1)
+	Weather.override_cond = -1
+	await _unload()
+
+
+## The control beside the HUD clock: 1×, 2×, 10× and the key, the speed running highlighted; a
+## real click on a button works whenever the cursor is free (at the computer, over its dim), and
+## not while the mouse is captured; greyed in a vehicle.
+func test_s9_speed_control() -> void:
+	await _s9_world("fun")
+	var sc: SpeedControl = world.speed_ctrl
+	var hud: HUD = world.hud
+	await _frames(2)
+	var cr := hud.clock_panel.get_global_rect()
+	var pr := sc.panel.get_global_rect()
+	runner.check(sc.visible and pr.position.x >= cr.end.x and pr.position.x - cr.end.x < 24.0 and absf(pr.position.y - cr.position.y) < 1.0, "§9 the control sits beside the clock (%s / %s)" % [str(cr), str(pr)])
+	var texts := sc.buttons.map(func(x): return (x as Button).text)
+	runner.check(texts == ["1×", "2×", "10×"] and sc.key_l.text == "[%s]" % Settings.action_label("fast_forward"), "§9 it reads %s %s" % [str(texts), sc.key_l.text])
+	runner.check(sc.buttons[0].get_theme_stylebox("normal") == sc._st_on and sc.buttons[1].get_theme_stylebox("normal") == sc._st_off, "§9 1× highlighted at the start")
+	# Mouse captured: the buttons ignore the mouse.
+	runner.check(Game.input_captured() and sc.buttons[2].mouse_filter == Control.MOUSE_FILTER_IGNORE, "§9 the buttons ignore the mouse while it's captured")
+	# At the computer: a real click on 10×, then on 2×.
+	world.open_computer()
+	await _frames(3)
+	for k in [2, 1]:
+		var b: Button = sc.buttons[k]
+		var at := b.get_global_rect().get_center()
+		for down in [true, false]:
+			var e := InputEventMouseButton.new()
+			e.button_index = MOUSE_BUTTON_LEFT
+			e.pressed = down
+			var p: Vector2 = _tree().root.get_final_transform() * at
+			e.position = p
+			e.global_position = p
+			Input.parse_input_event(e)
+			await _tree().process_frame
+		await _frames(2)
+		runner.check(Clock.speed == Clock.SPEEDS[k] and sc.buttons[k].get_theme_stylebox("normal") == sc._st_on, "§9 a click on %s over the computer's dim chooses it (%d×)" % [b.text, Clock.speed])
+	# With its note showing (10× capped by snowfall), the control stays clear of the computer's window.
+	Clock.set_speed(10)
+	Weather.force(Weather.C.HEAVY, 2.0, 3.0)
+	await _frames(3)
+	var win_top := (1080.0 - ComputerUI.WIN.y) * 0.5      # the window is centred on the 1080-px canvas
+	var pr2 := sc.panel.get_global_rect()
+	runner.check(sc.note_l.visible and pr2.end.y <= win_top, "§9 …and stays clear of the computer's window with its note showing (%.1f ≤ %.1f: \"%s\")" % [pr2.end.y, win_top, sc.note_l.text])
+	Weather.force(Weather.C.CLEAR, 48.0)
+	Clock.set_speed(2)
+	world.close_modal()
+	await _frames(2)
+	# In a vehicle: greyed (and back to 1×).
+	var truck: Vehicle = world.vehicle_nodes()[0]
+	truck.enter_vehicle(world.player)
+	await _frames(2)
+	runner.check(sc.visible and sc.buttons[1].disabled and sc.buttons[2].disabled and Clock.speed == 1, "§9 in a vehicle the control is greyed")
+	truck.exit_vehicle()
+	await _frames(2)
+	await _unload()
+
+
+## Fast-forward is never saved: a save made at 10× loads at 1×, and so does a new game.
+func test_s9_not_saved() -> void:
+	await _s9_world("fun")
+	runner.check(_s9_fast(), "§9 10× chosen")
+	world.collect_state()
+	runner.check(Saves.save_game(), "§9 saved at 10×")
+	var txt := FileAccess.get_file_as_string(Saves.path_for("fun"))
+	runner.check(not txt.contains("\"speed\"") and not txt.contains("fast_forward"), "§9 …nothing about the speed in the save")
+	await _unload()
+	Clock.speed = 10
+	runner.check(Saves.load_game("fun") and Clock.speed == 1, "§9 a load starts at 1×")
+	await _spawn_world()
+	await _frames(80)
+	runner.check(Clock.speed == 1 and world.speed_ctrl.visible and world.speed_ctrl.buttons[0].get_theme_stylebox("normal") == world.speed_ctrl._st_on, "§9 …and the world shows 1×")
+	await _unload()
+	Clock.speed = 10
+	Game.new_game("fun", 7)
+	runner.check(Clock.speed == 1, "§9 a new game starts at 1×")
+	Saves.delete_save("fun")
+
+
+
+## Gerry is a scripted mover too: while he walks down his trail to meet the player (they're near
+## him), fast-forward is held at 1× — and resumes when he stops.
+func test_s9_gerry_walk_holds() -> void:
+	await _unload()
+	Game.force_input = true
+	Game.new_game("fun", 2024)
+	Game.flags["mail_read"] = true
+	Game.set_stage(Game.Stage.LETTER_READ)
+	Contracts.create_tutorial_contract(50)
+	Game.set_stage(Game.Stage.NEIGHBOR_TALKED)
+	Clock.reset(Clock.at(0, 10.0))
+	await _spawn_world()
+	Weather.force(Weather.C.CLEAR, 12.0)
+	Municipal.next_pass = Clock.minutes + 3.0 * 1440.0
+	await _frames(80)
+	var n: Neighbor = world.neighbor
+	var foot := Vector2(Neighbor.meet_point().x, Neighbor.meet_point().z) - Vector2(Layout.neighbor_lot["inward"]).normalized() * 3.0
+	world.player.teleport(Vector3(foot.x, Snow.ground_at(foot.x, foot.y) + 0.05, foot.y))
+	runner.check(_s9_fast(), "§9 10× chosen by Gerry's mailbox")
+	var tb := Boxes.get_box("gerry_trail")
+	for r in tb["rects"]:
+		Snow.set_rect(r, 0.0)
+	for c in Contracts.active:
+		if c.get("tutorial", false):
+			for z in c["zones"]:
+				Contracts.measure_zone(c, z)
+	var held := 0
+	var walked := 0
+	for k in range(240):
+		await _frames(1)
+		if n.is_walking():
+			walked += 1
+			if Clock.speed == 10 and Clock.hold_reason() == "gerry" and Clock.substeps_last_frame <= 1:
+				held += 1
+	runner.check(Game.stage() == Game.Stage.TRAIL_DONE and walked > 20 and held == walked, "§9 Gerry walking down to meet the player holds the clock at 1× (%d of %d frames)" % [held, walked])
+	runner.check(world.ff_hold() == "" or n.is_walking(), "§9 …and the hold ends when he stops")
+	Clock.set_speed(1)
+	world.close_modal()
+	await _unload()

@@ -132,7 +132,10 @@ func test_fixtures_load_and_play() -> void:
 		await _unload()
 		runner.check(Saves.load_game(mode), "%s: the autosave reloads" % name)
 		await _spawn_world()
-		runner.check(absf(Clock.minutes - t_saved) < 0.01 and Game.money == money_saved and Game.stage() >= stage, "%s: reloaded at the same time, money and stage" % name)
+		# Polish 5 §9: "the same time" = within the frame or so the clock runs while the world spawns
+		# (1.5 frames of play at 60 fps, read from the clock: 0.01 game minutes at the old rate).
+		var tol := 1.5 / 60.0 * Clock.GAME_MIN_PER_REAL_SEC
+		runner.check(absf(Clock.minutes - t_saved) < tol and Game.money == money_saved and Game.stage() >= stage, "%s: reloaded at the same time, money and stage (%.3f game min apart)" % [name, absf(Clock.minutes - t_saved)])
 		runner.check(world.player != null and is_instance_valid(world.player), "%s: the reloaded world has a player" % name)
 		if money_saved < money - 200:
 			runner.info("%s: money went from %d to %d over the night" % [name, money, money_saved])

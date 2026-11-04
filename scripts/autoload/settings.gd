@@ -33,6 +33,7 @@ const ACTIONS := {
 	"camera_toggle": ["Switch camera", "global", ["key:%d" % KEY_V]],
 	"map": ["Map", "global", ["key:%d" % KEY_M]],
 	"inventory": ["Inventory overview", "global", ["key:%d" % KEY_TAB]],
+	"fast_forward": ["Fast-forward 1× / 2× / 10×", "foot", ["key:%d" % KEY_T]],
 	"pause": ["Pause", "global", ["key:%d" % KEY_ESCAPE]],
 	"debug": ["Debug menu", "global", ["key:%d" % KEY_F1]],
 	"veh_accelerate": ["Drive forward", "vehicle", ["key:%d" % KEY_W]],
@@ -77,7 +78,8 @@ const PLACES := ["foot", "vehicle", "machine", "computer", "menu"]
 
 ## Polish 5 §2: world-changing presses, capped per action at Catalog.balance.input_max_presses_per_s
 ## (accept_press). UI clicks, F1, movement, the camera, map, Tab, slots, horn and radio aren't.
-const RATE_LIMITED := ["primary", "secondary", "interact", "drop", "store", "use_pouch", "tool_angle", "veh_tool"]
+## Polish 5 §9: the fast-forward key (it changes the clock's speed) is capped too.
+const RATE_LIMITED := ["primary", "secondary", "interact", "drop", "store", "use_pouch", "tool_angle", "veh_tool", "fast_forward"]
 
 var cfg := ConfigFile.new()
 var bindings: Dictionary = {}   # action -> Array of encoded events
@@ -166,7 +168,11 @@ static func live_actions(place: String) -> Array:
 			"machine":
 				if a in MACHINE_ACTIONS or ctx == "global":
 					out.append(a)
-			"computer", "menu":
+			"computer":
+				# Polish 5 §9: fast-forward works at the computer too.
+				if a == "pause" or a == "fast_forward":
+					out.append(a)
+			"menu":
 				if a == "pause":
 					out.append(a)
 	return out

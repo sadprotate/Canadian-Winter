@@ -90,6 +90,9 @@ extends Node
 ##   --showcase=x,z,yaw       (§6) every tool model in a row on the ground from world (x, z), facing
 ##                            yaw: the hand tools standing on their blades as if held, the blowers;
 ##                            use with --cam/--look or --views
+##   --ff=1|2|10              (§9) choose that fast-forward speed before the frames are waited (and
+##                            again just before the capture); with --weather=4 (heavy snow) 10× shows
+##                            its cap
 
 var args := {}
 var game: Node = null
@@ -135,6 +138,8 @@ func _ready() -> void:
 	if args.has("scoop"):
 		await _scoop_shot()
 		return
+	if args.has("ff"):
+		Clock.set_speed(int(args["ff"]))   # polish 5 §9
 	if args.has("work"):
 		# Keep "working" in the box while the frames go by (the outline fades when work stops).
 		var bb := Boxes.get_box(Boxes.lot_box(Layout.player_lot, str(args["work"])))
@@ -154,6 +159,9 @@ func _ready() -> void:
 	if args.has("ui"):
 		await _open_ui(str(args["ui"]))
 		await _wait(int(args.get("ui_frames", "6")))
+	if args.has("ff") and Clock.speed != int(args["ff"]):
+		Clock.set_speed(int(args["ff"]))
+		await _wait(4)
 	if args.has("comp_apps") and game.modal_kind == "computer":
 		await _capture_apps(game.modal)
 		get_tree().quit()

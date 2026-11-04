@@ -404,6 +404,8 @@ func _hint(text: String) -> void:
 func _held(action: String, down: bool) -> bool:
 	if down and not _held_was.get(action, false):
 		_held_ok[action] = Settings.accept_press(action)
+		if _held_ok[action] and work_ok:
+			Clock.drop_to_1x("work")   # polish 5 §9: starting to scoop or push stops fast-forward
 	_held_was[action] = down
 	return down and _held_ok.get(action, false)
 
@@ -551,6 +553,8 @@ func _shovel_type(delta: float, pos2: Vector2, fwd: Vector2, travel: Vector2, ui
 	if fill_down and not _was_down:
 		# Polish 5 §2: a press over the per-second cap is ignored (no scoop, and no throw on release).
 		_fill_pressed = Settings.accept_press("primary")
+		if _fill_pressed and work_ok:
+			Clock.drop_to_1x("work")   # polish 5 §9: starting to scoop stops fast-forward
 	# Release: throw whatever is carried (a partial load too).
 	if _was_down and not fill_down and _fill_pressed:
 		_fill_pressed = false
@@ -771,6 +775,7 @@ func _release_throw() -> void:
 		_hint("Nowhere for the snow to land — keep holding it and aim somewhere else.")
 		AudioMgr.play("ui_error", -12.0)
 		return
+	Clock.drop_to_1x("work")   # polish 5 §9: a throw stops fast-forward
 	_indicate("", Vector3.ZERO, null, 1.0)
 	if landing_back_in_box:
 		_hint("That landed back in the box you're clearing — throw past the outline.")

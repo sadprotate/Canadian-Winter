@@ -223,6 +223,7 @@ func _finish(c: Dictionary) -> void:
 
 func _lose(c: Dictionary) -> void:
 	var b: BalanceData = Catalog.balance
+	Clock.drop_to_1x("contract")   # polish 5 §9: so does losing it
 	c["status"] = "lost"
 	Game.adjust_reputation(-b.contract_lost_reputation)
 	record_job(c, "missed", 0, -b.contract_lost_reputation)
@@ -300,9 +301,11 @@ func on_advance(step: float) -> void:
 			_lose(c)
 		elif left <= b.contract_last_warn_hours and warned < 2:
 			c["warned"] = 2
+			Clock.drop_to_1x("contract")   # polish 5 §9: a contract warning stops fast-forward
 			Notify.push("URGENT: %s is lost in %d hours unless it's cleared!" % [c["address"], int(ceil(left))], Notify.BAD)
 		elif left <= b.contract_warn_hours and warned < 1:
 			c["warned"] = 1
+			Clock.drop_to_1x("contract")
 			Notify.push("%s has been snowed in a long time — %d hours left to clear it." % [c["address"], int(ceil(left))], Notify.WARN)
 
 
@@ -558,6 +561,7 @@ func _resolve_bids() -> void:
 			if s < best:
 				best = s
 				best_name = rv["name"]
+		Clock.drop_to_1x("bid")   # polish 5 §9: a bid won or lost stops fast-forward
 		if mine <= best:
 			_award(l, amount)
 			var kind := "recurring service" if l["type"] != "one_time" else "one-time job"

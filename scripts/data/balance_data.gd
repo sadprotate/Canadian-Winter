@@ -109,17 +109,28 @@ extends Resource
 
 @export_group("Survival")
 ## Outdoor warmth loss (% per game hour) by wind-chill temperature (°C), linearly interpolated.
-## Mild early-December days cost a few % per hour; normal −10 °C weather gives 3–4 game hours
-## outside; very cold windy days ~1.5–2 hours; blizzards (x blizzard_cold_mult) 30–60 minutes.
-@export var exposure_curve: PackedVector2Array = PackedVector2Array([Vector2(-2, 2), Vector2(-8, 6),
-	Vector2(-17, 19), Vector2(-25, 28), Vector2(-40, 41), Vector2(-55, 52)])
-@export var warmth_recover_per_hour: float = 280.0
+## Polish 5 §9: warmth is a rate the player feels while playing, so with the 30-minute day (48
+## game minutes per real minute, was 24) every warmth rate per game hour is halved: per real
+## minute at 1× it is what it was (−8 °C: 3 %/game h = 2.4 %/real min, as 6 %/h was). It still
+## runs on game time, so sleep and fast-forward apply it in full. In play: mild early-December
+## days cost a few % per 2–3 real minutes; normal −10 °C weather gives 7–10 real minutes outside
+## (6–8 game hours); very cold windy days ~4–5 real minutes; blizzards (x blizzard_cold_mult) 1–2.
+@export var exposure_curve: PackedVector2Array = PackedVector2Array([Vector2(-2, 1), Vector2(-8, 3),
+	Vector2(-17, 9.5), Vector2(-25, 14), Vector2(-40, 20.5), Vector2(-55, 26)])
+## Warmth regained per game hour at home by the heat (and at Gerry's); halved in polish 5 §9 (was
+## 280) so warming up takes the same real time.
+@export var warmth_recover_per_hour: float = 140.0
 @export var blizzard_cold_mult: float = 3.2
 @export var heavy_cold_mult: float = 1.4
 @export var moderate_cold_mult: float = 1.15
 @export var vehicle_heat_warmup_s: float = 20.0
 @export var pouch_warmth: float = 30.0
-@export var pouch_protection_minutes: float = 30.0
+## How long a heating pouch keeps warming you (game minutes); doubled in polish 5 §9 (was 30) so it
+## lasts the same 75 real seconds at 1×. While it lasts: outdoor loss × 0.6 and +pouch_warmth_per_hour.
+@export var pouch_protection_minutes: float = 60.0
+## Polish 5 §9: the pouch's warmth per game hour while it lasts (was a fixed +20 in survival.gd,
+## halved like every warmth rate).
+@export var pouch_warmth_per_hour: float = 10.0
 
 @export_group("Player")
 @export var walk_speed: float = 4.2

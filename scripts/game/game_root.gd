@@ -17,6 +17,8 @@ var box_outline: BoxOutline
 var quest_outline: BoxOutline
 var ui: CanvasLayer
 var hud: HUD
+var time_layer: CanvasLayer     # polish 5 §9: the fast-forward control, above the modals
+var speed_ctrl: SpeedControl
 var modal: Control = null
 var modal_kind := ""
 var fade: ColorRect
@@ -96,6 +98,11 @@ func _ready() -> void:
 	Clock.hour_changed.connect(_on_hour_displays)
 	_on_power(Survival.power_on)
 	snow_renderer.build_all(player.global_position)
+	# Polish 5 §9: fast-forward runs the world's tick once more per extra clock substep; a world
+	# always starts at 1×.
+	Clock.world_tick = sim_tick
+	Clock.speed = 1
+	Clock.drop_reason = ""
 	Clock.running = true
 	Game.in_game = true
 	AudioMgr.set_menu_music(false)
@@ -113,6 +120,9 @@ func _ready() -> void:
 func _exit_tree() -> void:
 	_set_snow_hide(false)
 	Clock.running = false
+	Clock.speed = 1
+	if Clock.world_tick.is_valid() and Clock.world_tick.get_object() == self:
+		Clock.world_tick = Callable()
 	Game.in_game = false
 	Municipal.world_handles_passes = false
 	AudioMgr.stop_all_ambience()
@@ -387,6 +397,15 @@ func _build_ui() -> void:
 	UIKit.full_rect(fade)
 	fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ui.add_child(fade)
+	# Polish 5 §9: 1× / 2× / 10× beside the HUD clock, on a layer of its own so it can be clicked
+	# with the computer, the map or the TV open (it hides under the fade, dialogs and menus).
+	time_layer = CanvasLayer.new()
+	time_layer.layer = ui.layer + 1
+	add_child(time_layer)
+	speed_ctrl = SpeedControl.new()
+	speed_ctrl.world = self
+	speed_ctrl.hud = hud
+	time_layer.add_child(speed_ctrl)
 
 
 func _ui_root() -> Control:
@@ -412,6 +431,8 @@ func _fade_out(t := 0.8) -> Tween:
 
 
 func open_modal(c: Control, kind: String, pause := false) -> void:
+	if not (kind in FF_MODALS):
+		Clock.drop_to_1x("dialog")   # polish 5 §9: no fast-forward during a dialog or sleep
 	modal = c
 	modal_kind = kind
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -436,6 +457,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if Game.typing():
 		return   # polish 5 §7: while a text field has the focus, no game action fires
+	if event.is_action_pressed("fast_forward") and player.state != "vehicle":
+		# Polish 5 §9: the fast-forward key cycles 1× → 2× → 10× → 1× (on foot, indoors and at the
+		# computer; in a vehicle the same key is its radio).
+		get_viewport().set_input_as_handled()
+		if Settings.accept_press("fast_forward") and not Clock.cycle_speed() and speed_ctrl:
+			speed_ctrl.refused()
+		return
 	if is_gerry_talking() and modal == null and event.is_action_pressed("interact") and (player.focus == null or player.focus == neighbor):
 		# Interact moves Gerry on to his next line (unless you're looking at something else to use,
 		# like his door).
@@ -514,16 +542,7 @@ func _process(delta: float) -> void:
 	if not roofs.is_empty():
 		_roof_idx = (_roof_idx + 1) % roofs.size()
 		(roofs[_roof_idx] as RoofSnow).refresh()
-	_roof_timer -= delta
-	if _roof_timer <= 0.0:
-		_roof_timer = 1.0
-		# Snow accumulates on parked vehicles.
-		var fall := Snow.fall_total - _veh_snow_last
-		if fall > 0.0:
-			for v in vehicle_nodes():
-				(v as Vehicle).add_snowfall(fall)
-		_veh_snow_last = Snow.fall_total
-		RenderingServer.global_shader_parameter_set("snow_cover", clampf(0.45 + Snow.roof_depth * 0.9, 0.35, 1.0))
+	_vehicle_snow_step(delta)
 	# Interior lights follow the power.
 	var on := Survival.power_on
 	for l in interior["lights"]:
@@ -533,6 +552,105 @@ func _process(delta: float) -> void:
 	(interior["fire_mesh"] as Node3D).visible = on
 	(interior["tv_screen"] as Node3D).visible = on
 	(interior["ups_led"] as MeshInstance3D).material_override = Mats.emissive(Color(1.0, 0.6, 0.1), 3.0) if not on and fmod(Time.get_ticks_msec() / 1000.0, 1.0) < 0.5 else null
+
+
+## Snow accumulates on parked vehicles (once a real second).
+func _vehicle_snow_step(delta: float) -> void:
+	_roof_timer -= delta
+	if _roof_timer <= 0.0:
+		_roof_timer = 1.0
+		var fall := Snow.fall_total - _veh_snow_last
+		if fall > 0.0:
+			for v in vehicle_nodes():
+				(v as Vehicle).add_snowfall(fall)
+		_veh_snow_last = Snow.fall_total
+		RenderingServer.global_shader_parameter_set("snow_cover", clampf(0.45 + Snow.roof_depth * 0.9, 0.35, 1.0))
+
+
+# -----------------------------------------------------------------------------
+# Polish 5 §9: fast-forward
+# -----------------------------------------------------------------------------
+
+## Modals fast-forward keeps running under (the computer, the map, the TV, the letter, the photo).
+## Any other — Gerry's dialogue, the sleep prompt, the pause menu, F1, the winter summary — stops it.
+const FF_MODALS := ["computer", "map", "tv", "letter", "photo"]
+## A scripted mover (the grader, Gerry walking) this close to the player holds fast-forward at 1×.
+const FF_HOLD_DIST := 40.0
+
+var _sleeping := false
+
+
+## The world's share of one frame on the clock, run once more for every extra fast-forward
+## substep (Clock._process), in the order a frame at 1× runs it: the vehicle snow, the snow's
+## syncing and relaxation, then the grader (whose own step at 1× comes first in the next frame).
+func sim_tick(delta: float) -> void:
+	if get_tree().paused:
+		return
+	_vehicle_snow_step(delta)
+	if snow_renderer:
+		snow_renderer.sim_step()
+	if grader:
+		grader.sim_step(delta)
+
+
+## No modal, or one fast-forward keeps running under.
+func ff_modal_ok() -> bool:
+	return modal == null or modal_kind in FF_MODALS
+
+
+## Why fast-forward isn't available now ("" when it is): on foot, indoors or at the computer only.
+func ff_unavailable() -> String:
+	if _dead:
+		return "dead"
+	if _sleeping:
+		return "sleep"
+	if player == null or not is_instance_valid(player):
+		return "no player"
+	var st: String = player.state
+	if st == "frozen":
+		st = str(player.get_meta("prev_state", "foot"))
+	if st == "vehicle" or player.vehicle != null:
+		return "vehicle"
+	if st == "machine" or player.machine != null:
+		return "machine"
+	if not ff_modal_ok():
+		return "sleep" if modal_kind == "sleep" else "dialog"
+	if is_gerry_talking():
+		return "gerry"
+	return ""
+
+
+## A substep's relaxation that took longer than this (µs) caps 10× at 2× (see ff_cap).
+const FF_RELAX_US := 500
+
+
+## The world's frame-budget cap on fast-forward ({} when none): while the grader drives its route,
+## or snow is slumping hard enough that a substep's relaxation took over FF_RELAX_US (a big pile
+## settling right after the player moved a lot of snow), 10× runs at 2× — every substep runs a
+## frame's relaxation (up to 2.5 ms), so 10× could spend 25 ms a frame on it (measured in
+## tests/perf.tscn: the grader's pass away from the player 28 ms a frame at 10×, 8 ms at 2×; a
+## 75 m³ pile settling 30 ms at 10×, 10 ms at 2×). It takes effect within the frame (the clock
+## re-reads it after every substep). §11's sidewalk crew joins here.
+func ff_cap() -> Dictionary:
+	if grader and grader.active:
+		return {"max": 2, "why": "grader on the streets"}
+	if snow_renderer and snow_renderer.relax_us_last > FF_RELAX_US:
+		return {"max": 2, "why": "snow settling"}
+	return {}
+
+
+## Why fast-forward is held at 1× now ("" when it isn't): the grader or Gerry moving near the player.
+## §11's sidewalk crew joins here.
+func ff_hold() -> String:
+	if player == null or not is_instance_valid(player):
+		return ""
+	var pp := Vector2(player.global_position.x, player.global_position.z)
+	if grader and grader.active and Vector2(grader.global_position.x, grader.global_position.z).distance_to(pp) < FF_HOLD_DIST:
+		return "grader"
+	if neighbor and is_instance_valid(neighbor) and neighbor.is_walking() \
+			and Vector2(neighbor.global_position.x, neighbor.global_position.z).distance_to(pp) < FF_HOLD_DIST:
+		return "gerry"
+	return ""
 
 
 func is_night() -> bool:
@@ -912,6 +1030,8 @@ static func next_wake_time(now_min: float) -> float:
 
 
 func _do_sleep(_days := 0) -> void:
+	_sleeping = true             # polish 5 §9: no fast-forward from here to the wake-up
+	Clock.drop_to_1x("sleep")
 	player.freeze(true)
 	var tw := _fade_out(1.0)
 	await tw.finished
@@ -928,6 +1048,7 @@ func _do_sleep(_days := 0) -> void:
 	collect_state()
 	var ok := Saves.save_game()
 	player.freeze(false)
+	_sleeping = false
 	_sleep_label(false)
 	_fade_in(1.2)
 	if interrupted == "cold":

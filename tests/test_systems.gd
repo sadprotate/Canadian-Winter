@@ -18,8 +18,14 @@ func _fresh(mode := "fun", seed_val := 4242) -> void:
 
 func test_time_scale_and_calendar() -> void:
 	_fresh()
-	runner.near(Clock.GAME_MIN_PER_REAL_SEC * 60.0, 24.0, 1e-6, "1 real minute = 24 game minutes")
-	runner.near(Clock.GAME_MIN_PER_REAL_SEC * 3600.0, 1440.0, 1e-6, "1 real hour = 1 game day")
+	# Polish 5 §9: the rate is the clock's (one game day = Clock.REAL_MIN_PER_DAY real minutes, 48
+	# game minutes per real minute since Decision 3; polish5's test_s9_clock_rate checks the value).
+	runner.near(Clock.GAME_MIN_PER_REAL_SEC * 60.0 * Clock.REAL_MIN_PER_DAY, 1440.0, 1e-6, "1 game day = %d real minutes (%.0f game minutes per real minute)" % [int(Clock.REAL_MIN_PER_DAY), Clock.GAME_MIN_PER_REAL_SEC * 60.0])
+	var m0 := Clock.minutes
+	Clock.running = true
+	Clock._process(1.5)
+	Clock.running = false
+	runner.near(Clock.minutes - m0, 1.5 * Clock.GAME_MIN_PER_REAL_SEC, 1e-6, "1.5 real seconds of play move the clock %.2f game minutes" % (1.5 * Clock.GAME_MIN_PER_REAL_SEC))
 	runner.check(Clock.DAYS_IN_WINTER == 121, "Winter is 121 days (Dec 1 – Mar 31)")
 	runner.check(Clock.date_string(0) == "December 1", "Day 0 is December 1")
 	runner.check(Clock.date_string(31) == "January 1", "Day 31 is January 1")
@@ -442,24 +448,27 @@ func test_warmth_rates() -> void:
 	Weather.force(Weather.C.BLIZZARD, 100.0)
 	var bliz := Survival.outdoor_loss_per_hour()
 	Weather.override_cond = -1
-	runner.info("loss/h mild %.1f (%.1f h), normal %.1f (to cold in %.1f h), blizzard %.1f (%.0f min)" % [mild, 70.0 / mild, normal, 70.0 / normal, bliz, 70.0 / bliz * 60.0])
-	runner.check(mild < 6.0, "Mild early-December weather barely matters (%.1f %%/h)" % mild)
-	runner.check(70.0 / normal > 2.5 and 70.0 / normal < 5.0, "Normal weather (-10 °C): 3–4 game hours of outdoor work before needing heat")
+	# Polish 5 §9: warmth is felt in real time — the targets are per real minute at 1× (what they
+	# were in game time at 2.5 real minutes a game hour), read through the clock's rate.
+	var rmin := func(game_h: float) -> float: return game_h * 60.0 / Clock.GAME_MIN_PER_REAL_SEC / 60.0
+	runner.info("loss/h mild %.1f (%.1f h = %.1f real min), normal %.1f (to cold in %.1f h = %.1f real min), blizzard %.1f (%.0f game min = %.1f real min)" % [mild, 70.0 / mild, rmin.call(70.0 / mild), normal, 70.0 / normal, rmin.call(70.0 / normal), bliz, 70.0 / bliz * 60.0, rmin.call(70.0 / bliz)])
+	runner.check(Survival.per_real_minute(mild) < 2.4, "Mild early-December weather barely matters (%.2f %% per real minute)" % Survival.per_real_minute(mild))
+	runner.check(rmin.call(70.0 / normal) > 6.25 and rmin.call(70.0 / normal) < 12.5, "Normal weather (-10 °C): 7.5–10 real minutes of outdoor work before needing heat (%.1f)" % rmin.call(70.0 / normal))
 	Weather.temp[h] = -26.0
 	Weather.temp[h + 1] = -26.0
 	Weather.wind[h] = 30.0
 	var vcold := Survival.outdoor_loss_per_hour()
-	runner.check(70.0 / vcold > 1.0 and 70.0 / vcold < 2.6, "Very cold & windy: ~1.5–2 game hours (%.1f)" % (70.0 / vcold))
-	runner.check(70.0 / bliz < 1.1 and 70.0 / bliz > 0.3, "Blizzard: 20–60 minutes before dangerous")
+	runner.check(rmin.call(70.0 / vcold) > 2.5 and rmin.call(70.0 / vcold) < 6.5, "Very cold & windy: ~4–5 real minutes (%.1f)" % rmin.call(70.0 / vcold))
+	runner.check(rmin.call(70.0 / bliz) < 2.75 and rmin.call(70.0 / bliz) > 0.75, "Blizzard: 1–2.5 real minutes before dangerous (%.1f)" % rmin.call(70.0 / bliz))
 	runner.check(mild < normal and normal < vcold, "Colder and windier weather costs more warmth")
 	Survival.warmth = 25.0
 	Survival.in_player_house = true
 	Survival.house_heat = 1.0
 	var t := 0.0
-	while Survival.warmth < 70.0 and t < 120.0:
+	while Survival.warmth < 70.0 and t < 240.0:
 		Clock.advance(1.0)
 		t += 1.0
-	runner.check(t <= 20.0, "Warming up indoors: cold to comfortable in ~10–15 game minutes (%.0f)" % t)
+	runner.check(t / Clock.GAME_MIN_PER_REAL_SEC <= 50.0, "Warming up indoors: cold to comfortable in under a real minute (%.0f game min = %.0f real s)" % [t, t / Clock.GAME_MIN_PER_REAL_SEC])
 
 func test_bill_cutoff_exactly_midnight_16th() -> void:
 	_fresh("survival")

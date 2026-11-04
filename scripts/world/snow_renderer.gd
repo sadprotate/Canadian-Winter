@@ -16,6 +16,7 @@ var relax_usec := 2500         # …and a time budget per frame (µs) for the lo
 var sync_budget := 1           # snowfall chunk syncs per frame
 var mesh_usec := 3500          # time budget for chunk mesh updates per frame (µs)
 var updates_last_frame := 0
+var relax_us_last := 0         # polish 5 §9: µs the last sim_step spent on relaxation
 var detail := 1                # 0 low, 1 medium, 2 high (from settings)
 
 var _mi: Array = []            # MeshInstance3D per chunk
@@ -96,10 +97,19 @@ func _process(delta: float) -> void:
 	if _lod_timer <= 0.0:
 		_lod_timer = 0.3
 		_update_lods(cam_pos)
-	if Snow.auto_process:
-		Snow.sync_round_robin(sync_budget)
-		Snow.process_relax(relax_budget, relax_usec)
+	sim_step()
 	_update_dirty(cam_pos)
+
+
+## The snow's share of a frame: snowfall syncing and relaxation. Polish 5 §9: fast-forward runs it
+## once more for every extra clock substep (through the world's tick), so the snow comes out the
+## same at any speed; the meshes are still updated once per frame.
+func sim_step() -> void:
+	if Snow.auto_process and _built and Snow.initialized:
+		Snow.sync_round_robin(sync_budget)
+		var t0 := Time.get_ticks_usec()
+		Snow.process_relax(relax_budget, relax_usec)
+		relax_us_last = Time.get_ticks_usec() - t0
 
 
 func _update_lods(cam_pos: Vector3) -> void:

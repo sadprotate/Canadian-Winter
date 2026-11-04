@@ -149,12 +149,14 @@ func _ready() -> void:
 	print("path box snow: %.2f m3 (walkway %.1f m2 + stairs + porch)" % [vol0, walk.get_area()])
 	print("removed in the first %.0f s of play: %.3f m3  ->  %.4f m3/s" % [rate_secs, removed, rate])
 	var need: float = Catalog.balance.box_completion if Catalog.balance else 0.98
-	print("projected time to clear %d%% by hand: %.1f min real (%.1f game hours)" % [int(round(need * 100.0)), vol0 * need / maxf(rate, 1e-6) / 60.0, vol0 * need / maxf(rate, 1e-6) / 60.0 * 24.0 / 60.0])
+	# Game hours read the clock's rate (polish 5 §9: 48 game minutes per real minute, was 24).
+	var gm_per_s: float = Clock.GAME_MIN_PER_REAL_SEC
+	print("projected time to clear %d%% by hand: %.1f min real (%.1f game hours)" % [int(round(need * 100.0)), vol0 * need / maxf(rate, 1e-6) / 60.0, vol0 * need / maxf(rate, 1e-6) * gm_per_s / 60.0])
 	if full:
 		if t_box > 0.0:
-			print("MEASURED: the path box completed after %.1f min of bot play (%.1f game hours), %d scoop-and-toss strokes" % [t_box / 60.0, t_box * 0.4 / 60.0, strokes])
+			print("MEASURED: the path box completed after %.1f min of bot play (%.1f game hours), %d scoop-and-toss strokes" % [t_box / 60.0, t_box * gm_per_s / 60.0, strokes])
 			var human := strokes * 1.1 + walk_frames / 60.0
-			print("at a human pace (~1.1 s per scoop, turn, toss and turn back): about %.1f min real (%.1f game hours)" % [human / 60.0, human * 0.4 / 60.0])
+			print("at a human pace (~1.1 s per scoop, turn, toss and turn back): about %.1f min real (%.1f game hours)" % [human / 60.0, human * gm_per_s / 60.0])
 		else:
 			print("MEASURED: not completed within %.0f min" % (frames / 3600.0))
 		var v_after := await _walk_speed(walk)

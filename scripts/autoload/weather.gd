@@ -416,6 +416,7 @@ func _alert(text: String) -> void:
 	alerts.append({"time": Clock.minutes, "text": text})
 	if alerts.size() > 20:
 		alerts.pop_front()
+	Clock.drop_to_1x("alert")   # polish 5 §9: a weather alert stops fast-forward
 	alert_issued.emit(text)
 	Notify.push(text, Notify.WARN)
 

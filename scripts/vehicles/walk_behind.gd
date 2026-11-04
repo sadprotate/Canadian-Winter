@@ -71,6 +71,7 @@ func interact(p: Player) -> void:
 	if Game.carried != "":
 		Notify.push("Drop what you're carrying first (%s)." % Settings.action_label("drop"), Notify.INFO)
 		return
+	Clock.drop_to_1x("machine")   # polish 5 §9: no fast-forward at a machine
 	grabbed = true
 	player = p
 	p.state = "machine"

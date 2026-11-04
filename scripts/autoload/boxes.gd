@@ -301,6 +301,12 @@ func boxes_near(p: Vector2, radius: float) -> Array:
 
 
 func _process(delta: float) -> void:
+	sim_step(delta)
+
+
+## One frame's measuring. Polish 5 §9: fast-forward runs it once more for every extra clock
+## substep (Clock._process), so boxes are looked at as often per game minute as at 1×.
+func sim_step(delta: float) -> void:
 	if not Clock.running or get_tree().paused or not Snow.initialized:
 		return
 	# Boxes the player is working in: exact and frequent (HUD progress, completion snaps).

@@ -15,7 +15,8 @@ extends Node
 ##  1. changes to scenes/main_menu.tscn (the real main scene), waits for its background;
 ##  2. PLAY → the mode's card → New Game (and "Start new game" if a save exists): the menu's own
 ##     change_scene_to_file to scenes/game.tscn;
-##  3. about a minute of play (the game's own delta time, so 24 game minutes on the clock): a few
+##  3. about a minute of play (the game's own delta time, so Clock.GAME_MIN_PER_REAL_SEC × 60 game
+##     minutes on the clock — 48 since polish 5 §9): a few
 ##     steps in the bedroom, then — the house has no path-finding for a bot — it hops to the hall
 ##     inside the front door, opens the door with Interact, walks out (move_forward) into the yard,
 ##     scoops twice (hold primary while sweeping the view with mouse motion, release to throw) and

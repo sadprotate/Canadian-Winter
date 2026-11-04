@@ -6,6 +6,7 @@ extends Control
 var world: Node
 var date_l: Label
 var time_l: Label
+var clock_panel: PanelContainer   # polish 5 §9: the fast-forward control sits beside it
 var weather_icon: Icons
 var weather_l: Label
 var temp_l: Label
@@ -56,6 +57,7 @@ func _ready() -> void:
 	var tl := UIKit.panel(UIKit.sb(Color(0.07, 0.09, 0.15, 0.6), 12, 0, Color.TRANSPARENT, 14))
 	tl.position = Vector2(24, 20)
 	add_child(tl)
+	clock_panel = tl
 	var tlv := UIKit.vbox(0)
 	tl.add_child(tlv)
 	date_l = UIKit.shadow_label("", 20, UIKit.MUTED)
@@ -421,9 +423,11 @@ func _process(delta: float) -> void:
 		var col: Color = [Color(1.0, 0.7, 0.35), Color(0.9, 0.8, 0.5), Color(0.6, 0.8, 1.0), Color(0.45, 0.65, 1.0), Color(0.75, 0.85, 1.0), Color.WHITE][st]
 		warmth_bar.add_theme_stylebox_override("fill", UIKit.sb(col, 6, 0, Color.TRANSPARENT, 0))
 		var trend := ""
-		if Survival.last_rate > 1.0:
+		# Polish 5 §9: the arrows follow the rate as felt — warmth per real minute.
+		var felt := Survival.per_real_minute(Survival.last_rate)
+		if felt > TREND_PER_REAL_MIN:
 			trend = "  ▲ warming"
-		elif Survival.last_rate < -1.0:
+		elif felt < -TREND_PER_REAL_MIN:
 			trend = "  ▼"
 		warmth_l.text = "Warmth: %s%s" % [Survival.STATE_NAMES[st], trend]
 		pouch_l.text = "Heating pouches: %d (%s)" % [Game.heat_pouches, Settings.action_label("use_pouch")] if Game.heat_pouches > 0 else ""
@@ -465,6 +469,11 @@ func _process(delta: float) -> void:
 			int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)), Snow.relax_pending()]
 	else:
 		perf_l.text = ""
+
+
+## Polish 5 §9: the warmth arrows show once warmth moves faster than this per real minute (as the
+## old 1 % per game hour at 2.5 real minutes a game hour).
+const TREND_PER_REAL_MIN := 0.4
 
 
 func _cold_audio(w: float) -> void:

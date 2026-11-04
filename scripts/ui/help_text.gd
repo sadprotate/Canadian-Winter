@@ -52,4 +52,6 @@ static func lines(survival: bool) -> Array:
 	out.append("• The truck needs its keys (buried in your front lawn) and room to drive: dig the snow from around the wheels and clear the driveway. It tells you what's in the way.")
 	out.append("• A contract is lost if its property stays snowed in for more than 48 hours (the clock pauses while a storm is still falling).")
 	out.append("• Sleep in your bed to save; you always wake at 7:00 a.m.")
+	# Polish 5 §9: the day length from the clock, the key from the input map.
+	out.append("• A day lasts %d minutes of play. %s or the 1× / 2× / 10× buttons by the clock speed it up on foot, indoors and at the computer; it drops back to 1× when something needs you." % [int(Clock.REAL_MIN_PER_DAY), Settings.action_label("fast_forward")])
 	return out

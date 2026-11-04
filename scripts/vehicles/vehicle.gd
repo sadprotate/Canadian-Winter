@@ -169,6 +169,7 @@ func interact(p: Player) -> void:
 
 
 func enter_vehicle(p: Player) -> void:
+	Clock.drop_to_1x("vehicle")   # polish 5 §9: no fast-forward in a vehicle
 	driver = p
 	occupied = true
 	p.state = "vehicle"
