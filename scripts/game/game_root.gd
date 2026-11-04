@@ -433,6 +433,8 @@ func close_modal() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if _dead:
 		return
+	if Game.typing():
+		return   # polish 5 §7: while a text field has the focus, no game action fires
 	if is_gerry_talking() and modal == null and event.is_action_pressed("interact") and (player.focus == null or player.focus == neighbor):
 		# Interact moves Gerry on to his next line (unless you're looking at something else to use,
 		# like his door).
@@ -492,7 +494,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _process(delta: float) -> void:
 	# Tab overview (hold).
-	var want_inv := Input.is_action_pressed("inventory") and modal == null
+	var want_inv := Input.is_action_pressed("inventory") and modal == null and not Game.typing()
 	if want_inv and inventory_panel == null:
 		inventory_panel = Panels.inventory(hud)
 	elif not want_inv and inventory_panel != null:

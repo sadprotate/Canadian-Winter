@@ -26,6 +26,8 @@ extends Resource
 @export var contract_last_warn_hours: float = 3.0
 ## Reputation lost when a client drops you for leaving them snowed in.
 @export var contract_lost_reputation: float = 6.0
+## Polish 5 §7: the company's contract history keeps this many entries (the oldest go first).
+@export var contract_history_max: int = 200
 
 @export_group("Clearing boxes")
 ## Fraction of a box's snow that must be cleared before the box completes and snaps to bare ground

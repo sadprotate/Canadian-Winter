@@ -13,6 +13,10 @@ var mode := "fun"
 var year := 1
 var money := 20
 var reputation := 50.0
+## Polish 5 §7: the player's company, named on the computer the first time Contracts or the
+## Contract board opens (empty until then: the form shows). Saved from version 3.
+var company_name := ""
+const COMPANY_NAME_MAX := 24
 var stats: Dictionary = {}
 var lifetime: Dictionary = {}
 var flags: Dictionary = {}
@@ -77,6 +81,7 @@ func new_game(m: String, seed_override := -1) -> void:
 	year = 1
 	money = Catalog.balance.starting_money
 	reputation = 50.0
+	company_name = ""
 	stats = {}
 	lifetime = {}
 	flags = {"stage": Stage.START}
@@ -134,6 +139,35 @@ func shovel_spot() -> Vector2:
 ## The home computer stays locked until Gerry's tutorial is complete (polish §11).
 func computer_unlocked() -> bool:
 	return bool(flags.get("computer_unlocked", false)) or stage() >= Stage.COMPLETE
+
+
+## Polish 5 §7: a company name as typed, trimmed; "" when it isn't 1–COMPANY_NAME_MAX characters.
+static func clean_company_name(text: String) -> String:
+	var t := text.strip_edges()
+	return t if t.length() >= 1 and t.length() <= COMPANY_NAME_MAX else ""
+
+
+## Polish 5 §7: name (or rename) the company. False, and nothing changes, for an invalid name.
+func set_company_name(text: String) -> bool:
+	var t := clean_company_name(text)
+	if t == "":
+		return false
+	company_name = t
+	dirty_since_save = true
+	return true
+
+
+## Polish 5 §7: the neutral name the form suggests, from the player's street ("Maple Snow Removal").
+static func suggested_company_name() -> String:
+	var street := str(Layout.player_lot.get("street", "Maple Street"))
+	return clean_company_name("%s Snow Removal" % street.split(" ")[0])
+
+
+## Polish 5 §7: true while a text field has the keyboard focus (the company name; later a typed
+## bid). No game action may fire then: game_root ignores its keys, and so must any new key.
+func typing() -> bool:
+	var f := get_viewport().gui_get_focus_owner() if get_viewport() else null
+	return f != null and (f is LineEdit or f is TextEdit) and f.is_visible_in_tree()
 
 
 func start_winter(y: int) -> void:
@@ -348,7 +382,7 @@ func _unpack_list(list: Array) -> Array:
 
 
 func serialize() -> Dictionary:
-	return {"mode": mode, "year": year, "money": money, "reputation": reputation, "stats": stats,
+	return {"mode": mode, "year": year, "money": money, "reputation": reputation, "company_name": company_name, "stats": stats,
 		"lifetime": lifetime, "flags": flags, "slots": slots, "selected": selected, "carried": carried,
 		"heat_pouches": heat_pouches, "upgrades": upgrades, "vehicles": _pack_list(vehicles),
 		"items": _pack_list(items), "machines": _pack_list(machines), "rack": rack,
@@ -361,6 +395,8 @@ func deserialize(d: Dictionary) -> void:
 	year = int(d.get("year", 1))
 	money = int(d.get("money", 20))
 	reputation = float(d.get("reputation", 50.0))
+	# Polish 5 §7 (version 3): optional; an old save has none, so the form appears.
+	company_name = clean_company_name(str(d.get("company_name", "")))
 	stats = d.get("stats", {})
 	lifetime = d.get("lifetime", {})
 	flags = d.get("flags", {"stage": Stage.START})

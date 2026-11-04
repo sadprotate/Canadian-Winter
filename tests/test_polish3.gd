@@ -1296,7 +1296,9 @@ func test_playthrough_from_the_menu_both_modes() -> void:
 		var won := false
 		if world.modal_kind == "computer":
 			var c: ComputerUI = world.modal
-			c._open_app(0)
+			c._open_app(ComputerUI.app_index("board"))
+			await _frames(1)
+			_press_btn(c.content, "OK")   # polish 5 §7: name the company (the suggestion) the first time
 			await _frames(1)
 			for tries in range(4):
 				var sl := c.content.find_children("*", "HSlider", true, false)

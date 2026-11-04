@@ -74,6 +74,14 @@ extends Node
 ##                            as an empty slot in the last row), at the store's and the inventory's
 ##                            sizes and large; waits for the rendered set
 ##   --comp_scroll=px         (§6) with --ui=computer: scroll the open app down px
+##   --comp_state=1           (§7) a business for the computer's apps: $3,000, three listings won
+##                            (one cleared, one lost: the contract history), a store order, the
+##                            month's hydro bill paid; works on older builds too
+##   --company=name           (§7) the company's name before the computer opens (empty: the name
+##                            form shows on Contracts / Contract board)
+##   --comp_apps=all|i,j,…    (§7) with --ui=computer: open each app (index into ComputerUI.APPS of
+##                            the build) and capture it to <out>_NN.png (NN = the index)
+##   --comp_tab=n             (§7) the Contracts app's tab (0 Active, 1 History) when it opens
 ##   --showcase=x,z,yaw       (§6) every tool model in a row on the ground from world (x, z), facing
 ##                            yaw: the hand tools standing on their blades as if held, the blowers;
 ##                            use with --cam/--look or --views
@@ -141,6 +149,10 @@ func _ready() -> void:
 	if args.has("ui"):
 		await _open_ui(str(args["ui"]))
 		await _wait(int(args.get("ui_frames", "6")))
+	if args.has("comp_apps") and game.modal_kind == "computer":
+		await _capture_apps(game.modal)
+		get_tree().quit()
+		return
 	if args.has("views"):
 		await _capture_views()
 		get_tree().quit()
@@ -322,6 +334,8 @@ func _setup_world_state() -> void:
 		Game.flags["mail_read"] = true
 		Game.flags["computer_unlocked"] = true
 		Game.set_stage(Game.Stage.COMPLETE)
+	if args.has("comp_state"):
+		_comp_state()
 	if args.has("storm"):
 		_storm_clock()
 	if Game.is_survival():
@@ -494,10 +508,14 @@ func _open_ui(which: String) -> void:
 	match which:
 		"computer":
 			Game.flags["computer_unlocked"] = true
+			if args.has("company"):
+				Game.set("company_name", str(args["company"]))   # §7 (no such state on older builds)
 			w.open_computer()
 			if args.has("tab"):
 				var c = w.modal
 				c.call("_open_app", int(args["tab"]))
+				if args.has("comp_tab") and c.has_method("show_contracts_tab"):
+					c.call("show_contracts_tab", int(args["comp_tab"]))
 			if args.has("comp_scroll"):
 				for i in range(4):
 					await get_tree().process_frame
@@ -623,6 +641,52 @@ func _wait_icons() -> void:
 		await get_tree().process_frame
 	print("tool icons: %s, %d ms (stage %d ms, read back and cut %d ms), %d frames drawn, image %s" % [ti.get("state"), ti.get("render_ms"), ti.get("build_ms"), ti.get("cut_ms"), ti.get("render_frames"), ti.get("image_px")])
 	await _wait(3)
+
+
+## --comp_state=1 (polish 5 §7): a business for the computer's apps, made with the game's own calls
+## (they exist on older builds too): money, three listings won (the first cleared by the box rule,
+## the second lost), a store order, the month's hydro bill paid.
+func _comp_state() -> void:
+	Game.money = 3000
+	var won := []
+	for k in range(3):
+		if Contracts.listings.is_empty():
+			break
+		won.append(Contracts.force_award(int(Contracts.listings[0]["lid"])))
+	if won.size() > 0:
+		for z in won[0]["zones"]:
+			for id in z["boxes"]:
+				var bx := Boxes.get_box(id)
+				for r in bx["rects"]:
+					Snow.set_rect(r, 0.0)
+				Boxes.measure(bx, true)
+	if won.size() > 1:
+		Contracts._lose(won[1])
+	Economy.buy("standard_shovel")
+	for bl in Economy.bills.duplicate():
+		Economy.pay_bill(int(bl["month"]))
+
+
+## --comp_apps=all|i,j,… (polish 5 §7): each app of the open computer, captured to <out>_NN.png.
+func _capture_apps(c: Node) -> void:
+	var names: Array = ComputerUI.APPS
+	var want: Array = []
+	if str(args["comp_apps"]) == "all":
+		want = range(names.size())
+	else:
+		for s in str(args["comp_apps"]).split(","):
+			want.append(int(s))
+	var out: String = args.get("out", "user://shot.png")
+	for i in want:
+		c.call("_open_app", i)
+		if args.has("comp_tab") and c.has_method("show_contracts_tab") and c.get("current") == c.call("app_index", "contracts"):
+			c.call("show_contracts_tab", int(args["comp_tab"]))
+		await _wait(int(args.get("ui_frames", "6")))
+		await RenderingServer.frame_post_draw
+		var img := get_viewport().get_texture().get_image()
+		var p := out.get_basename() + "_%02d.png" % i
+		img.save_png(p)
+		print("saved ", p, " ", img.get_size(), " app ", names[i])
 
 
 ## --showcase=x,z,yaw (polish 5 §6): every tool's model in a row on the ground.

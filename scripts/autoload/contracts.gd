@@ -19,7 +19,12 @@ const CLIENT_LAST := ["Tremblay", "MacDonald", "Singh", "Roy", "Chen", "Gagnon",
 var listings: Array = []
 var bids: Array = []
 var active: Array = []
-var history: Array = []
+var history: Array = []         # completed one-time jobs (pre-polish-5 record, still kept and saved)
+## Polish 5 §7: the company's contract history — every job it held, oldest first (shown newest
+## first): {id, address, client, type, result ("completed" / "missed" / "cancelled"), time, year,
+## pay, rep}. A recurring or city contract adds one entry per visit. Capped at
+## balance.contract_history_max. Saved from version 3 (old saves start with an empty history).
+var job_history: Array = []
 var _next_id := 1
 var rival_wins := 0
 
@@ -29,6 +34,7 @@ func reset_for_new_game() -> void:
 	bids = []
 	active = []
 	history = []
+	job_history = []
 	_next_id = 1
 	rival_wins = 0
 
@@ -198,6 +204,7 @@ func _finish(c: Dictionary) -> void:
 			Game.stats_add("contracts_completed", 1)
 			Game.adjust_reputation(2.0)
 			history.append({"id": c["id"], "address": c["address"], "pay": pay, "time": Clock.minutes})
+			record_job(c, "completed", pay, 2.0)
 			if c.get("tutorial", false):
 				Game.set_stage(Game.Stage.TRAIL_DONE)
 		_:
@@ -207,6 +214,7 @@ func _finish(c: Dictionary) -> void:
 			_pay(c, int(c["pay"]), "Service visit")
 			Game.stats_add("visits_completed", 1)
 			Game.adjust_reputation(1.0 if quick else 0.3)
+			record_job(c, "completed", int(c["pay"]), 1.0 if quick else 0.3)
 	c["snowed_min"] = 0.0
 	c["warned"] = 0
 	Notify.push("%s — all clear." % c["address"], Notify.GOOD)
@@ -217,10 +225,23 @@ func _lose(c: Dictionary) -> void:
 	var b: BalanceData = Catalog.balance
 	c["status"] = "lost"
 	Game.adjust_reputation(-b.contract_lost_reputation)
+	record_job(c, "missed", 0, -b.contract_lost_reputation)
 	Game.stats_add("contracts_lost", 1)
 	Game.stats_add("missed_deadlines", 1)
 	Notify.push("CONTRACT LOST: %s stayed snowed in for over %d hours — %s hired someone else." % [c["address"], int(b.contract_snowed_in_hours), c["client"]], Notify.BAD)
 	changed.emit()
+	Game.dirty_since_save = true
+
+
+## Polish 5 §7: add a job to the company's history (completed, missed or cancelled), dropping the
+## oldest entries past balance.contract_history_max.
+func record_job(c: Dictionary, result: String, pay: int, rep: float) -> void:
+	job_history.append({"id": int(c.get("id", 0)), "address": str(c.get("address", "")), "client": str(c.get("client", "")),
+		"type": str(c.get("type", "one_time")), "result": result, "time": Clock.minutes, "year": Game.year,
+		"pay": pay, "rep": snappedf(rep, 0.01)})
+	var cap := int(Catalog.balance.contract_history_max)
+	if cap > 0 and job_history.size() > cap:
+		job_history = job_history.slice(job_history.size() - cap)
 	Game.dirty_since_save = true
 
 
@@ -539,7 +560,11 @@ func _resolve_bids() -> void:
 				best_name = rv["name"]
 		if mine <= best:
 			_award(l, amount)
-			Notify.push("Bid accepted! %s — %s." % [l["address"], "recurring service" if l["type"] != "one_time" else "one-time job"], Notify.GOOD)
+			var kind := "recurring service" if l["type"] != "one_time" else "one-time job"
+			if Game.company_name != "":   # polish 5 §7: the award names the company
+				Notify.push("Bid accepted! %s wins %s — %s." % [Game.company_name, l["address"], kind], Notify.GOOD)
+			else:
+				Notify.push("Bid accepted! %s — %s." % [l["address"], kind], Notify.GOOD)
 		else:
 			rival_wins += 1
 			Notify.push("Bid rejected for %s — %s won the job." % [l["address"], best_name], Notify.WARN)
@@ -619,7 +644,8 @@ func end_winter(renew_ids: Array) -> void:
 
 
 func serialize() -> Dictionary:
-	return {"listings": listings, "bids": bids, "active": active, "history": history, "next_id": _next_id, "rival_wins": rival_wins}
+	return {"listings": listings, "bids": bids, "active": active, "history": history, "job_history": job_history,
+		"next_id": _next_id, "rival_wins": rival_wins}
 
 
 func deserialize(d: Dictionary) -> void:
@@ -627,6 +653,13 @@ func deserialize(d: Dictionary) -> void:
 	bids = d.get("bids", [])
 	active = d.get("active", [])
 	history = d.get("history", [])
+	# Polish 5 §7 (version 3): optional; old saves start with an empty history.
+	job_history = []
+	for e in d.get("job_history", []):
+		if e is Dictionary:
+			job_history.append({"id": int(e.get("id", 0)), "address": Layout.current_place(str(e.get("address", ""))),
+				"client": str(e.get("client", "")), "type": str(e.get("type", "one_time")), "result": str(e.get("result", "completed")),
+				"time": float(e.get("time", 0.0)), "year": int(e.get("year", 1)), "pay": int(e.get("pay", 0)), "rep": float(e.get("rep", 0.0))})
 	_next_id = int(d.get("next_id", 1))
 	rival_wins = int(d.get("rival_wins", 0))
 	for c in active:

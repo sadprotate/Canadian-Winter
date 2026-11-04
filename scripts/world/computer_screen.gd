@@ -99,15 +99,15 @@ func _wallpaper(dim: bool) -> Control:
 func _build_desktop() -> Control:
 	var d := Control.new()
 	d.size = Vector2(SIZE)
-	# Desktop shortcuts, one per app of the computer UI, in two columns.
+	# Desktop shortcuts, one per app of the computer UI in its order (polish 5 §7), in two columns.
 	for i in range(ComputerUI.APPS.size()):
 		@warning_ignore("integer_division")
 		var col := i / 5
 		var row := i % 5
 		var ic := AppIcon.new()
 		ic.app = i
-		ic.position = Vector2(14 + col * 86, 10 + row * 52)
-		ic.size = Vector2(80, 50)
+		ic.position = Vector2(14 + col * 94, 10 + row * 52)
+		ic.size = Vector2(90, 50)
 		d.add_child(ic)
 	# Taskbar: start button, the apps pinned, the clock.
 	var bar := ColorRect.new()
@@ -120,9 +120,10 @@ func _build_desktop() -> Control:
 	start.position = Vector2(8, SIZE.y - 25)
 	start.size = Vector2(20, 20)
 	d.add_child(start)
-	for k in range(4):
+	var pinned := ["weather", "contracts", "board", "store"]
+	for k in range(pinned.size()):
 		var pin := AppIcon.new()
-		pin.app = [0, 1, 2, 6][k]
+		pin.app = ComputerUI.app_index(pinned[k])
 		pin.small = true
 		pin.position = Vector2(40 + k * 28, SIZE.y - 28)
 		pin.size = Vector2(26, 26)
@@ -206,42 +207,52 @@ class AppIcon extends Control:
 		var c := o + Vector2(s, s) * 0.5
 		var u := s / 30.0
 		var col := Color(0.95, 0.95, 0.97)
-		match app:
-			0:  # contract board: a clipboard
+		match ComputerUI.APP_IDS[app]:
+			"board":  # contract board: a clipboard
 				draw_rect(Rect2(c + Vector2(-8, -10) * u, Vector2(16, 20) * u), col)
 				draw_rect(Rect2(c + Vector2(-4, -12) * u, Vector2(8, 4) * u), UIKit.ACCENT)
 				for k in range(3):
 					draw_line(c + Vector2(-5, -4 + 5 * k) * u, c + Vector2(5, -4 + 5 * k) * u, Color(0.3, 0.3, 0.35), 1.5 * u)
-			1:  # active contracts: ticks
+			"contracts":  # contracts: ticks
 				for k in range(3):
 					var y := (-7 + 7 * k) * u
 					draw_polyline(PackedVector2Array([c + Vector2(-9 * u, y), c + Vector2(-6 * u, y + 3 * u), c + Vector2(-1 * u, y - 3 * u)]), UIKit.GOOD, 2.0 * u)
 					draw_line(c + Vector2(2 * u, y), c + Vector2(9 * u, y), col, 2.0 * u)
-			2:  # equipment store: a shovel
+			"store":  # equipment store: a shovel
 				draw_line(c + Vector2(-7, -9) * u, c + Vector2(4, 4) * u, Color(0.75, 0.55, 0.3), 2.5 * u)
 				draw_colored_polygon(PackedVector2Array([c + Vector2(2, 2) * u, c + Vector2(10, 4) * u, c + Vector2(8, 11) * u, c + Vector2(0, 9) * u]), UIKit.ACCENT)
-			3:  # upgrades: an up arrow
+			"upgrades":  # upgrades: an up arrow
 				draw_colored_polygon(PackedVector2Array([c + Vector2(0, -10) * u, c + Vector2(9, 0) * u, c + Vector2(-9, 0) * u]), UIKit.GOOD)
 				draw_rect(Rect2(c + Vector2(-4, 0) * u, Vector2(8, 10) * u), UIKit.GOOD)
-			4:  # bills: a dollar sign
+			"bills":  # bills: a dollar sign
 				draw_string(ThemeDB.fallback_font, c + Vector2(-6, 8) * u, "$", HORIZONTAL_ALIGNMENT_LEFT, -1, int(22 * u), UIKit.WARN)
-			5:  # property: a house
+			"property":  # property: a house
 				draw_colored_polygon(PackedVector2Array([c + Vector2(0, -10) * u, c + Vector2(10, -1) * u, c + Vector2(-10, -1) * u]), UIKit.ACCENT)
 				draw_rect(Rect2(c + Vector2(-7, -1) * u, Vector2(14, 10) * u), col)
-			6:  # weather: a snow cloud
+			"weather":  # weather: a snow cloud
 				draw_circle(c + Vector2(-4, -2) * u, 6 * u, col)
 				draw_circle(c + Vector2(4, -3) * u, 7 * u, col)
 				draw_rect(Rect2(c + Vector2(-10, -2) * u, Vector2(20, 6) * u), col)
 				for k in range(3):
 					draw_circle(c + Vector2(-6 + 6 * k, 8) * u, 1.5 * u, Color(0.7, 0.85, 1.0))
-			7:  # orders: a parcel
+			"orders":  # orders: a parcel
 				draw_rect(Rect2(c + Vector2(-9, -7) * u, Vector2(18, 15) * u), Color(0.78, 0.6, 0.4))
 				draw_line(c + Vector2(0, -7) * u, c + Vector2(0, 8) * u, Color(0.5, 0.36, 0.22), 2.0 * u)
-			8:  # help: a question mark
+			"help":  # help: a question mark
 				draw_string(ThemeDB.fallback_font, c + Vector2(-5, 8) * u, "?", HORIZONTAL_ALIGNMENT_LEFT, -1, int(22 * u), Color(0.6, 0.8, 1.0))
 		if not small:
 			var app_name: String = ComputerUI.APPS[app]
-			draw_string(ThemeDB.fallback_font, Vector2(0, s + 15), app_name, HORIZONTAL_ALIGNMENT_CENTER, size.x, 10, Color(1, 1, 1, 0.95))
+			var fs := label_size(app_name, size.x)
+			# A dark shadow under the name keeps it readable over the snowy hills (polish 5 §7).
+			draw_string(ThemeDB.fallback_font, Vector2(1, s + 16), app_name, HORIZONTAL_ALIGNMENT_CENTER, size.x, fs, Color(0.03, 0.05, 0.12, 0.85))
+			draw_string(ThemeDB.fallback_font, Vector2(0, s + 15), app_name, HORIZONTAL_ALIGNMENT_CENTER, size.x, fs, Color(1, 1, 1, 0.95))
+
+	## Polish 5 §7: the name's font size, 10 px or smaller so it fits under the icon.
+	static func label_size(app_name: String, width: float) -> int:
+		var fs := 10
+		while fs > 7 and ThemeDB.fallback_font.get_string_size(app_name, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x > width:
+			fs -= 1
+		return fs
 
 
 class Padlock extends Control:

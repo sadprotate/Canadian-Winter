@@ -840,7 +840,7 @@ func test_power_outage_house_and_ups_computer() -> void:
 	await _tree().process_frame
 	runner.check(c.battery_l.text.contains("Battery"), "Battery indicator shown")
 	Game.money = 300
-	c._open_app(4)
+	c._open_app(ComputerUI.app_index("bills"))
 	await _frames(1)
 	var paid := _press(c, "Pay now")
 	await _frames(2)
@@ -859,10 +859,12 @@ func test_computer_apps_and_map_pause_debug() -> void:
 		c._open_app(i)
 		await _frames(1)
 		runner.check(c.content.get_child_count() > 0, "Computer app '%s' renders" % ComputerUI.APPS[i])
-	c._open_app(6)
+	c._open_app(ComputerUI.app_index("weather"))
 	var t := _all_text(c)
 	runner.check(t.contains("grader"), "Weather app shows the city grader schedule")
-	c._open_app(0)
+	c._open_app(ComputerUI.app_index("board"))
+	_press(c, "OK")   # polish 5 §7: the first time, the company is named (the suggestion) first
+	await _frames(1)
 	var bid_ok := _find_button(c, "Place bid") != null
 	runner.check(bid_ok, "Contract board has bid buttons")
 	world.close_modal()

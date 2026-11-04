@@ -259,7 +259,12 @@ func _draw() -> void:
 	var gy := ly + 60 + entries.size() * 34 + 20
 	draw_string(font, Vector2(lx, gy), "Grid: %s%d" % [cols[clampi(int(pp.x / 16.0), 0, 11)], clampi(int(pp.y / 16.0) + 1, 1, 14)], HORIZONTAL_ALIGNMENT_LEFT, -1, 20, UIKit.ACCENT)
 	var list_y := gy + 40
-	draw_string(font, Vector2(lx, list_y), "Contracts:", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, UIKit.ACCENT)
+	# Polish 5 §7: the list is headed by the company's name (shrunk to fit the legend's width).
+	var head := contracts_heading()
+	var head_fs := 20
+	while head_fs > 13 and font.get_string_size(head, HORIZONTAL_ALIGNMENT_LEFT, -1, head_fs).x > 440.0:
+		head_fs -= 1
+	draw_string(font, Vector2(lx, list_y), head, HORIZONTAL_ALIGNMENT_LEFT, -1, head_fs, UIKit.ACCENT)
 	var k := 0
 	for t in contract_targets.keys():
 		var c2: Dictionary = contract_targets[t]
@@ -270,3 +275,8 @@ func _draw() -> void:
 		draw_string(font, Vector2(lx, list_y + 30 + k * 26), "• %s (%s)" % [c2["address"], st2], HORIZONTAL_ALIGNMENT_LEFT, 440, 17, Color(1.0, 0.6, 0.5) if lh <= 12.0 else Color.WHITE)
 		k += 1
 	draw_string(font, Vector2(lx, vs.y - 40), "%s or %s to close" % [Settings.action_label("map"), Settings.action_label("pause")], HORIZONTAL_ALIGNMENT_LEFT, -1, 18, UIKit.MUTED)
+
+
+## Polish 5 §7: the heading of the legend's contract list, with the company's name once it has one.
+static func contracts_heading() -> String:
+	return "Contracts:" if Game.company_name == "" else "Contracts — %s:" % Game.company_name

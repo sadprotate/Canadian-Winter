@@ -371,7 +371,8 @@ static func summary(parent: Control, on_next: Callable) -> Control:
 		"Snow moved: %d m³   ·   Snow hauled to the dump: %d m³" % [int(st.get("snow_moved", 0.0)), int(st.get("snow_hauled", 0.0))],
 		"Total snowfall this winter: %d cm" % int(st.get("snowfall_cm", 0.0)),
 		"Missed deadlines: %d   ·   Hydro bills paid: %d" % [int(st.get("missed_deadlines", 0)), int(st.get("bills_paid", 0))],
-		"Reputation: %d / 100   ·   Balance: %s" % [int(Game.reputation), UIKit.money(Game.money)],
+		("Reputation: %d / 100   ·   Balance: %s" % [int(Game.reputation), UIKit.money(Game.money)]) if Game.company_name == "" else
+			("%s — reputation: %d / 100   ·   Balance: %s" % [Game.company_name, int(Game.reputation), UIKit.money(Game.money)]),
 		"Equipment acquired: %s" % (", ".join(st.get("equipment", [])) if not (st.get("equipment", []) as Array).is_empty() else "none"),
 	]
 	for l in lines:

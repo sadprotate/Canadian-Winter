@@ -2367,7 +2367,8 @@ func test_s5_same_addresses_everywhere() -> void:
 	world.open_computer()
 	await _frames(2)
 	var comp = world.modal
-	comp._open_app(0)
+	Game.company_name = "Test Snow Co."   # polish 5 §7: named, so the board shows (not the name form)
+	comp._open_app(ComputerUI.app_index("board"))
 	await _frames(2)
 	var board := _s2_texts(comp)
 	runner.check(board.contains("Maple Ridge School, 12 Cedar Lane") and board.contains("28 Maple Street"), "§5 the contract board shows them so")
@@ -2719,12 +2720,12 @@ func test_s6_one_icon_set() -> void:
 	world.open_computer()
 	await _tree().process_frame
 	var comp: ComputerUI = world.modal
-	comp._open_app(2)
+	comp._open_app(ComputerUI.app_index("store"))
 	await _tree().process_frame
 	var store_ids := _s6_icons(comp.content).map(func(n): return (n as Icons).tool_id)
 	var want := Catalog.store_tools().map(func(td): return String((td as ToolData).id))
 	runner.check(want.all(func(x): return x in store_ids), "§6 the store: every tool and machine card shows its icon from the set (%d icons)" % store_ids.size())
-	comp._open_app(3)
+	comp._open_app(ComputerUI.app_index("upgrades"))
 	await _tree().process_frame
 	var up_ids := _s6_icons(comp.content).map(func(n): return (n as Icons).tool_id)
 	var n_tool := 0
@@ -2741,3 +2742,544 @@ func test_s6_one_icon_set() -> void:
 	runner.check(inv_ids == Game.slots, "§6 the inventory panel uses the same icons %s" % str(inv_ids))
 	inv.queue_free()
 	await _unload()
+
+
+# =============================================================================
+# §7 The computer
+# =============================================================================
+
+## The apps the brief lists, in its order; the rest keep their old order after Orders.
+const S7_ORDER := ["Weather", "Contracts", "Contract board", "Equipment store", "Upgrades", "Bills & payments", "Orders"]
+const S7_REST := ["Property & storage", "Help"]
+## Logical canvases (stretch canvas_items / aspect expand, base 1920×1080): the game has no separate
+## UI-scale setting, so each resolution's UI scale is the one its canvas gives (as pass 3 / 4 test).
+const S7_CANVASES := {"1280x720": Vector2(1920, 1080), "1920x1080": Vector2(1920, 1080),
+	"2560x1440": Vector2(1920, 1080), "3440x1440": Vector2(2580, 1080)}
+
+
+func _s7_open() -> ComputerUI:
+	world.open_computer()
+	await _frames(2)
+	return world.modal as ComputerUI
+
+
+## Press a button under `root` by its text (first match, enabled), from a process frame.
+func _s7_press(root: Node, text: String) -> bool:
+	for b in root.find_children("*", "Button", true, false):
+		if (b as Button).text == text and not (b as Button).disabled and (b as Button).is_visible_in_tree():
+			await _tree().process_frame
+			(b as Button).pressed.emit()
+			await _frames(2)
+			return true
+	return false
+
+
+## A real key / mouse event for an action's binding, as a keyboard sends it (with the character it
+## types, for printable keys); mouse buttons at `at` (canvas coordinates).
+func _s7_event(action: String, down: bool, at := Vector2.ZERO) -> InputEvent:
+	var e := _s2_event(action, down)
+	if e is InputEventKey:
+		var k := (e as InputEventKey).keycode
+		if down and ((k >= KEY_A and k <= KEY_Z) or (k >= KEY_0 and k <= KEY_9) or k == KEY_SPACE):
+			(e as InputEventKey).unicode = OS.get_keycode_string(k).to_lower().unicode_at(0) if k != KEY_SPACE else 32
+	elif e is InputEventMouseButton:
+		var p: Vector2 = _tree().root.get_final_transform() * at
+		(e as InputEventMouseButton).position = p
+		(e as InputEventMouseButton).global_position = p
+	return e
+
+
+## What a game action could change, as text (the clock is stopped, so nothing else moves).
+func _s7_state() -> String:
+	var pl: Player = world.player
+	return var_to_str({"game": Game.serialize(), "contracts": Contracts.serialize(), "economy": Economy.serialize(),
+		"boxes": Boxes.serialize(), "state": pl.state, "tp": pl.third_person, "yaw": pl.yaw, "pitch": pl.pitch,
+		"load": pl.tools.load, "notes": Notify.history.size(), "modal": world.modal_kind, "inv": world.inventory_panel != null,
+		"vehicles": world.vehicle_nodes().map(func(v): return [(v as Vehicle).occupied, (v as Vehicle).global_position.snapped(Vector3(0.01, 0.01, 0.01))])})
+
+
+## The app order: exactly the brief's, then the rest as before; the sidebar, the monitor's desktop
+## and its taskbar follow it; one layout (header with the company, reputation, money, day and time;
+## sidebar; title over the content) in every app.
+func test_s7_app_order_and_layout() -> void:
+	runner.check(ComputerUI.APPS == S7_ORDER + S7_REST, "§7 the apps in order: %s" % str(ComputerUI.APPS))
+	runner.check(ComputerUI.APP_IDS.size() == ComputerUI.APPS.size() and ComputerUI.app_index("weather") == 0 and ComputerUI.app_index("board") == 2, "§7 each app has a stable id (%s)" % str(ComputerUI.APP_IDS))
+	await _s3_world("survival")
+	Game.company_name = "Layout Test Snow Co."
+	var c := await _s7_open()
+	var names: Array = c.app_buttons.map(func(b): return (b as Button).text)
+	runner.check(names == ComputerUI.APPS, "§7 the sidebar lists them in that order %s" % str(names))
+	var bad := []
+	for i in range(ComputerUI.APPS.size()):
+		c._open_app(i)
+		await _frames(2)
+		var ok: bool = c.find_child("Header", true, false) != null and c.find_child("Sidebar", true, false) != null and c.find_child("Main", true, false) != null
+		ok = ok and c.title_l.text == ComputerUI.APPS[i] and c.content.get_child_count() > 0
+		ok = ok and c.company_l.text == Game.company_name and c.reputation_l.text == "Reputation %d" % int(Game.reputation)
+		ok = ok and c.balance_l.text == UIKit.money(Game.money) and c.clock_l.text.contains(Clock.time_string()) and c.clock_l.text.contains(Clock.date_string(Clock.day_index(), true))
+		if not ok:
+			bad.append(ComputerUI.APPS[i])
+	runner.check(bad.is_empty(), "§7 every app: the header (company, reputation, money, day and time), the sidebar and its title over the content %s" % str(bad))
+	world.close_modal()
+	await _frames(2)
+	# The monitor's desktop: the same apps in the same order (two columns, top to bottom), names that
+	# fit under their icons, and the taskbar's pins in that order too.
+	var scr: ComputerScreen = world.interior["screen"]
+	var icons := []
+	var pins := []
+	for n in scr._desktop.get_children():
+		if n.get("app") == null:
+			continue
+		if n.get("small"):
+			pins.append(n)
+		else:
+			icons.append(n)
+	icons.sort_custom(func(a, b): return a.position.x < b.position.x - 1.0 or (absf(a.position.x - b.position.x) <= 1.0 and a.position.y < b.position.y))
+	pins.sort_custom(func(a, b): return a.position.x < b.position.x)
+	var order: Array = icons.map(func(n): return ComputerUI.APPS[int(n.get("app"))])
+	runner.check(order == ComputerUI.APPS, "§7 the monitor's desktop shows the same apps in the same order %s" % str(order))
+	var fit := true
+	for n in icons:
+		var nm: String = ComputerUI.APPS[int(n.get("app"))]
+		var fs: int = ComputerScreen.AppIcon.label_size(nm, (n as Control).size.x)
+		fit = fit and fs >= 8 and ThemeDB.fallback_font.get_string_size(nm, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x <= (n as Control).size.x
+	runner.check(fit, "§7 …each name fits under its icon")
+	var pin_ids: Array = pins.map(func(n): return ComputerUI.APP_IDS[int(n.get("app"))])
+	runner.check(pin_ids == ["weather", "contracts", "board", "store"], "§7 …and the taskbar pins follow the order %s" % str(pin_ids))
+	await _unload()
+
+
+## Weather first, every time it's used once unlocked: after another app, after closing and opening
+## again, after save → load. Before Gerry's quest it stays locked, as before.
+func test_s7_opens_on_weather() -> void:
+	await _unload()
+	Game.force_input = true
+	Game.new_game("fun", 2024)
+	Clock.reset(Clock.at(0, 9.0))
+	await _spawn_world()
+	world.open_computer()
+	await _frames(2)
+	runner.check(world.modal == null and not Game.computer_unlocked(), "§7 the computer is still locked before Gerry's quest")
+	Game.flags["mail_read"] = true
+	Game.set_stage(Game.Stage.COMPLETE)
+	var weather := ComputerUI.app_index("weather")
+	var c := await _s7_open()
+	runner.check(c != null and c.current == weather and c.title_l.text == "Weather", "§7 unlocked, it opens on Weather")
+	for id in ["store", "contracts", "board", "help"]:
+		c._open_app(ComputerUI.app_index(id))
+		await _frames(1)
+		world.close_modal()
+		await _frames(2)
+		c = await _s7_open()
+		runner.check(c.current == weather and c.title_l.text == "Weather", "§7 …closed on %s, it opens on Weather again" % id)
+	c._open_app(ComputerUI.app_index("orders"))
+	world.close_modal()
+	await _frames(2)
+	runner.check(Saves.save_game(), "§7 saved")
+	await _unload()
+	runner.check(Saves.load_game("fun"), "§7 loaded")
+	await _spawn_world()
+	c = await _s7_open()
+	runner.check(c != null and c.current == weather and c.title_l.text == "Weather", "§7 …and after save → load")
+	world.close_modal()
+	Saves.delete_save("fun")
+	await _unload()
+
+
+## The company's name: the form appears once, on whichever of Contracts and the Contract board comes
+## first, before anything else; 1–24 characters, trimmed, never empty; a neutral suggestion; renamed
+## from Contracts; saved; shown in the header, Contracts, the board, an award, the history, the map
+## legend and the end-of-winter summary.
+func test_s7_company_name() -> void:
+	for first in ["contracts", "board"]:
+		await _s3_world("fun")
+		runner.check(Game.company_name == "", "§7 a new game has no company name")
+		var c := await _s7_open()
+		runner.check(not c.form_up(), "§7 no form on Weather")
+		var idx := ComputerUI.app_index(first)
+		c._open_app(idx)
+		await _frames(3)
+		var sugg := Game.suggested_company_name()
+		runner.check(c.form_up() and c.title_l.text == "Name your company" and c.name_edit.text == sugg and c.name_edit.has_focus() and c.name_edit.max_length == Game.COMPANY_NAME_MAX,
+			"§7 %s first: the form, with the suggestion \"%s\" and the focus in the field" % [first, sugg])
+		var shown := _s2_texts(c.content)
+		runner.check(not shown.contains("Place bid") and c.content.find_child("Tabs", true, false) == null and shown.contains("1 to 24 characters"), "§7 …before anything else of the app")
+		runner.check(sugg.length() >= 1 and sugg.length() <= Game.COMPANY_NAME_MAX and not sugg.contains(Layout.player_lot["address"]), "§7 the suggestion is neutral and valid")
+		for t in ["", "   ", "\t "]:
+			c.name_edit.text = t
+			await _s7_press(c.content, "OK")
+			runner.check(Game.company_name == "" and c.form_up() and c._name_err.text != "", "§7 an empty name (\"%s\") is refused" % t.c_escape())
+		c.name_edit.text = ""
+		c.name_edit.text_submitted.emit("")
+		await _frames(1)
+		runner.check(Game.company_name == "" and c.form_up(), "§7 …also with Enter")
+		runner.check(not Game.set_company_name("x".repeat(Game.COMPANY_NAME_MAX + 1)) and Game.set_company_name(" " + "y".repeat(Game.COMPANY_NAME_MAX) + " ") and Game.company_name == "y".repeat(Game.COMPANY_NAME_MAX), "§7 25 characters are refused, 24 kept (trimmed)")
+		Game.company_name = ""
+		c._rebuild(true)
+		await _frames(2)
+		c.name_edit.text = "  Polar Bear Snow  "
+		await _s7_press(c.content, "OK")
+		runner.check(Game.company_name == "Polar Bear Snow" and not c.form_up() and c.title_l.text == ComputerUI.APPS[idx], "§7 a name is taken trimmed (\"%s\") and the app shows" % Game.company_name)
+		var other := "board" if first == "contracts" else "contracts"
+		c._open_app(ComputerUI.app_index(other))
+		await _frames(2)
+		runner.check(not c.form_up(), "§7 …and %s doesn't ask again" % other)
+		world.close_modal()
+		await _frames(2)
+		c = await _s7_open()
+		c._open_app(idx)
+		await _frames(2)
+		runner.check(not c.form_up(), "§7 …nor %s when the computer is opened again (the form appears once)" % first)
+		world.close_modal()
+		await _frames(2)
+	# Renaming, from Contracts.
+	var cr := await _s7_open()
+	cr._open_app(ComputerUI.app_index("contracts"))
+	await _frames(2)
+	runner.check(await _s7_press(cr.content, "Rename") and cr.form_up() and cr.name_edit.text == "Polar Bear Snow" and cr.title_l.text == "Rename your company", "§7 Rename (in Contracts) opens the form with the name")
+	await _s7_press(cr.content, "Cancel")
+	runner.check(not cr.form_up() and Game.company_name == "Polar Bear Snow", "§7 …Cancel keeps it")
+	await _s7_press(cr.content, "Rename")
+	cr.name_edit.text = "Maple Ridge Clearing"
+	cr.name_edit.text_submitted.emit(cr.name_edit.text)
+	await _frames(2)
+	runner.check(Game.company_name == "Maple Ridge Clearing" and not cr.form_up(), "§7 …and renames it (Enter)")
+	# Where the name shows.
+	runner.check(cr.company_l.text == Game.company_name and cr.reputation_l.text == "Reputation %d" % int(Game.reputation), "§7 the header: the company and its reputation")
+	runner.check(_s2_texts(cr.content).contains(Game.company_name) and _s2_texts(cr.content).contains("Reputation %d" % int(Game.reputation)), "§7 Contracts: the company and its reputation")
+	cr._open_app(ComputerUI.app_index("board"))
+	await _frames(2)
+	runner.check(_s2_texts(cr.content).contains("Bidding as Maple Ridge Clearing"), "§7 the board: \"Bidding as …\"")
+	var lid := int(Contracts.listings[0]["lid"])
+	var addr: String = Contracts.listings[0]["address"]
+	Contracts.place_bid(lid, 1)
+	Clock.minutes = float(Contracts.bids[-1]["resolve_at"]) + 1.0
+	Contracts._resolve_bids()
+	runner.check(Notify.history[-1]["text"].contains("Maple Ridge Clearing wins " + addr), "§7 the award names it: \"%s\"" % Notify.history[-1]["text"])
+	cr.show_contracts_tab(1)
+	cr._open_app(ComputerUI.app_index("contracts"))
+	await _frames(2)
+	runner.check(cr.contracts_tab == 1 and _s2_texts(cr.content).contains(Game.company_name), "§7 the history, under the company's name")
+	world.close_modal()
+	await _frames(2)
+	runner.check(MapUI.contracts_heading().contains(Game.company_name), "§7 the map legend: \"%s\"" % MapUI.contracts_heading())
+	var sum := Panels.summary(world.hud, func(_ids): pass)
+	runner.check(_s2_texts(sum).contains(Game.company_name), "§7 the end-of-winter summary")
+	sum.queue_free()
+	# Saved and reloaded.
+	runner.check(Saves.save_game(), "§7 saved")
+	Game.company_name = ""
+	runner.check(Saves.load_game("fun") and Game.company_name == "Maple Ridge Clearing", "§7 the name is saved and reloaded (\"%s\")" % Game.company_name)
+	Saves.delete_save("fun")
+	await _unload()
+
+
+## Input isolation: while the name field has the focus, every game key and mouse button (each
+## action's binding, so a fast-forward key added later is included) types text or does nothing —
+## nothing in the game changes; Esc leaves the field, and the next Esc closes the computer.
+func test_s7_typing_fires_no_game_action() -> void:
+	await _s3_world("survival")
+	var pl: Player = world.player
+	var lot := Layout.player_lot
+	var spot := Layout.lot_to_world(lot, Layout.gu(lot, -5.0), 4.0)
+	Snow.set_rect(Rect2(spot - Vector2(3, 3), Vector2(6, 6)), 0.0)
+	pl.teleport(Vector3(spot.x, 0.05, spot.y), 0.0)
+	Game.slots = ["standard_shovel", "", "", ""]
+	Game.selected = 0
+	Game.heat_pouches = 3
+	world.spawn_tool_item("wide_pusher", Vector3(spot.x, 0, spot.y - 0.8), 0.0)   # E would pick it up
+	pl.pitch = deg_to_rad(-40.0)
+	pl.head.rotation.x = pl.pitch
+	await _frames(6)
+	var c := await _s7_open()
+	c._open_app(ComputerUI.app_index("contracts"))
+	await _frames(3)
+	runner.check(c.form_up() and c.name_edit.has_focus() and Game.typing(), "§7 the name field has the focus")
+	await _frames(10)
+	var pos0 := pl.global_position
+	var s0 := _s7_state()
+	var sent := []
+	var inv_shown := false
+	var focus_kept := true
+	for a in Settings.ACTIONS.keys():
+		if a == "pause":
+			continue
+		if not c.name_edit.has_focus():
+			c.name_edit.grab_focus()      # Tab moved the focus on (UI navigation): the field takes it back
+			c.name_edit.edit()
+		var fr := c.name_edit.get_global_rect()
+		var at := Vector2(fr.end.x - 12.0, fr.get_center().y)   # on the field, after the text
+		var d := _s7_event(a, true, at)
+		if d == null:
+			continue
+		Input.parse_input_event(d)
+		await _frames(3)
+		inv_shown = inv_shown or world.inventory_panel != null
+		focus_kept = focus_kept and (c.name_edit.has_focus() or a == "inventory")
+		Input.parse_input_event(_s7_event(a, false, at))
+		await _frames(2)
+		sent.append("%s=%s" % [a, Settings.action_label(a)])
+	_release_all()
+	await _frames(4)
+	runner.info("sent: " + ", ".join(sent))
+	runner.check(sent.size() >= Settings.ACTIONS.size() - 1, "§7 every bound key and mouse button was sent (%d actions)" % sent.size())
+	var s1 := _s7_state()
+	runner.check(s1 == s0 and pl.global_position.distance_to(pos0) < 0.01, "§7 no game action fired: nothing in the game changed")
+	runner.check(world.modal_kind == "computer" and c.form_up() and c.current == ComputerUI.app_index("contracts") and not inv_shown, "§7 …the computer stays open on the form (no map, debug menu, Tab overview or app change)")
+	runner.check(focus_kept, "§7 …and the field kept the focus (the mouse buttons were pressed on it)")
+	var typed := c.name_edit.text
+	runner.check(typed != Game.suggested_company_name() and typed.contains("1234") and typed.contains("gfhe"), "§7 the letter and number keys typed text: \"%s\"" % typed)
+	runner.check(Game.company_name == "", "§7 …nothing is named until OK")
+	await _s2_key("pause")
+	await _frames(2)
+	runner.check(not c.name_edit.has_focus() and world.modal_kind == "computer" and not Game.typing(), "§7 Esc leaves the field; the computer stays open")
+	await _s2_key("pause")
+	await _frames(2)
+	runner.check(world.modal == null, "§7 …and the next Esc closes the computer, as before")
+	await _unload()
+
+
+## The contract history: completed one-time jobs and visits, missed jobs (with the reputation lost),
+## cancelled entries; newest first; capped at the balance value (the same in balance.tres and the
+## defaults).
+func test_s7_contract_history() -> void:
+	await _s3_world("fun")
+	Game.company_name = "History Test Co."
+	Weather.force(0, 200.0)
+	runner.check(Contracts.job_history.is_empty(), "§7 a new game starts with an empty history")
+	var lots := []
+	for l in Layout.lots:
+		if not l["vacant"] and not l["is_player"] and l["index"] != Layout.neighbor_lot["index"]:
+			lots.append(l)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var made := []
+	for k in range(3):
+		Contracts._add_lot_listing(lots[k], Clock.day_index(), rng)
+		Contracts.listings[-1]["type"] = "recurring" if k == 1 else "one_time"
+		made.append(Contracts.force_award(int(Contracts.listings[-1]["lid"])))
+	# 1. A one-time job, cleared: the box rule finishes it.
+	for c in made.slice(0, 2):
+		for z in c["zones"]:
+			for id in z["boxes"]:
+				var bx := Boxes.get_box(id)
+				for r in bx["rects"]:
+					Snow.set_rect(r, 0.0)
+				Boxes.measure(bx, true)
+	await _frames(3)
+	var h: Array = Contracts.job_history
+	runner.check(h.size() == 2 and h[0]["result"] == "completed" and h[0]["type"] == "one_time" and h[0]["pay"] == made[0]["pay"] and h[0]["address"] == made[0]["address"] and h[0]["year"] == 1,
+		"§7 a completed one-time job is recorded with its pay (%s)" % (str(h[0]) if h.size() > 0 else "none"))
+	runner.check(h.size() == 2 and h[1]["result"] == "completed" and h[1]["type"] == "recurring" and h[1]["pay"] == made[1]["pay"], "§7 …a recurring visit too")
+	# 2. A missed job: its time runs out (the snowed-in clock, as today).
+	var c3: Dictionary = made[2]
+	var rep0 := Game.reputation
+	c3["snowed_min"] = Catalog.balance.contract_snowed_in_hours * 60.0 - 1.0
+	Contracts.on_advance(5.0)
+	runner.check(c3["status"] == "lost" and h.size() == 3 and h[2]["result"] == "missed" and h[2]["pay"] == 0 and is_equal_approx(h[2]["rep"], -Catalog.balance.contract_lost_reputation) and is_equal_approx(Game.reputation, rep0 - Catalog.balance.contract_lost_reputation),
+		"§7 a missed job is recorded with the reputation lost (%s)" % str(h.back()))
+	Contracts.record_job(made[0], "cancelled", 0, 0.0)
+	# 3. The History tab: newest first, aligned columns, each result in words.
+	var comp := await _s7_open()
+	comp._open_app(ComputerUI.app_index("contracts"))
+	comp.show_contracts_tab(1)
+	await _frames(3)
+	var grids := comp.content.find_children("*", "GridContainer", true, false)
+	var cells: Array = (grids[0] as GridContainer).get_children().map(func(n): return (n as Label).text) if not grids.is_empty() else []
+	runner.check(cells.size() == 5 * 5 and cells[5 + 3] == "Cancelled" and cells[10 + 3] == "Missed" and cells[10 + 4].contains("-6") and cells[15 + 3] == "Completed" and cells[20 + 4] == UIKit.money(made[0]["pay"]),
+		"§7 the History tab lists them newest first %s" % str(cells.slice(5)))
+	comp.show_contracts_tab(0)
+	await _frames(2)
+	runner.check(_s2_texts(comp.content).contains(made[1]["address"]), "§7 the Active tab lists the running contract")
+	world.close_modal()
+	await _frames(2)
+	# 4. The cap.
+	var cap := int(Catalog.balance.contract_history_max)
+	var tres: BalanceData = load("res://data/balance.tres")
+	runner.check(cap >= 150 and cap <= 250 and tres.contract_history_max == cap and BalanceData.new().contract_history_max == cap, "§7 the cap is a balance value (%d), the same in balance.tres and the defaults" % cap)
+	var n0 := h.size()
+	for k in range(cap + 30):
+		Contracts.record_job({"id": 1000 + k, "address": "x", "client": "y", "type": "one_time"}, "completed", k, 2.0)
+	h = Contracts.job_history
+	runner.check(h.size() == cap and int(h[0]["id"]) == 1000 + (n0 + cap + 30 - cap) - n0 and int(h[-1]["id"]) == 1000 + cap + 29, "§7 the history keeps the newest %d entries (%d, first id %d)" % [cap, h.size(), int(h[0]["id"])])
+	await _unload()
+
+
+## Saves move to version 3: a version-2 save (a pass-5 fixture) loads with an empty name and
+## history and is written back as version 3; a version-1 save goes 1 → 2 → 3.
+func test_s7_v2_save_loads_into_v3() -> void:
+	runner.check(Saves.SAVE_VERSION == 3, "§7 the save format is version 3")
+	var path := "res://tests/fixtures/polish5/fun_1_contracts.json"
+	var src: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	runner.check(int(src["version"]) == 2 and not (src["game"] as Dictionary).has("company_name") and not (src["contracts"] as Dictionary).has("job_history"), "§7 the fixture is a version-2 save")
+	Game.company_name = "Left Over Co."
+	Contracts.job_history = [{"id": 1}]
+	var ok: bool = await _load_save_file(path)
+	runner.check(ok and Game.company_name == "" and Contracts.job_history.is_empty() and Contracts.history.size() == (src["contracts"]["history"] as Array).size(), "§7 version 2 → 3: an empty name and history (the old list of completed jobs kept)")
+	await _spawn_world()
+	runner.check(Saves.save_game(), "§7 saved")
+	var out: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(Saves.path_for("fun")))
+	runner.check(int(out["version"]) == 3 and out["game"]["company_name"] == "" and (out["contracts"]["job_history"] as Array).is_empty() and Saves.peek("fun").has("year"), "§7 …written back as version 3 with both keys")
+	await _unload()
+	# Version 1: no boxes, no computer lock flag (both derived on load), then 2 → 3.
+	var v1 := src.duplicate(true)
+	v1["version"] = 1
+	v1.erase("boxes")
+	(v1["game"]["flags"] as Dictionary).erase("computer_unlocked")
+	var f := FileAccess.open(Saves.path_for("fun"), FileAccess.WRITE)
+	f.store_string(JSON.stringify(v1))
+	f.close()
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(Saves.path_for("fun") + ".bak"))
+	Game.company_name = "Left Over Co."
+	runner.check(Saves.load_game("fun") and Game.computer_unlocked() and not Boxes.boxes.is_empty() and Game.company_name == "" and Contracts.job_history.is_empty(), "§7 version 1 → 2 → 3: boxes and the computer lock derived, an empty name and history")
+	await _spawn_world()
+	await _frames(2)
+	runner.check(world.player != null, "§7 …and it plays")
+	Saves.delete_save("fun")
+	await _unload()
+
+
+## A version-3 save round-trips the new state exactly: the company's name and its contract history
+## (every kind of job and result).
+func test_s7_v3_save_round_trips() -> void:
+	await _s3_world("fun")
+	Game.company_name = "Round Trip Snow Co."
+	var lst: Dictionary = Contracts.listings[0]
+	var cc := Contracts.force_award(int(lst["lid"]))
+	Contracts.record_job(cc, "completed", 123, 2.0)
+	var cm := cc.duplicate()
+	cm["type"] = "municipal"
+	Contracts.record_job(cm, "missed", 0, -6.0)
+	Contracts.record_job(cm, "cancelled", 0, 0.0)
+	Clock.minutes += 61.5
+	Contracts.record_job({"id": 99, "address": "St. Andrew's Church, 40 Cedar Lane", "client": "Église", "type": "recurring"}, "completed", 45, 0.3)
+	var want := JSON.stringify({"name": Game.company_name, "history": Contracts.job_history})
+	runner.check(Saves.save_game(), "§7 a version-3 save")
+	Game.company_name = ""
+	Contracts.job_history = []
+	await _unload()
+	runner.check(Saves.load_game("fun"), "§7 …loads")
+	var got := JSON.stringify({"name": Game.company_name, "history": Contracts.job_history})
+	runner.check(got == want and Contracts.job_history.size() == 4, "§7 …with the name and the history exactly as saved (%d entries)" % Contracts.job_history.size())
+	if got != want:
+		runner.info("want %s\n got %s" % [want, got])
+	Saves.delete_save("fun")
+	await _unload()
+
+
+## Every app fits and lines up at 1280×720, 1920×1080, 2560×1440 and 3440×1440: the window on the
+## screen at its size, every control inside it (the content's inside the content area, which only
+## scrolls vertically), no label or button text clipped or cut, table columns aligned. Filled to the
+## worst case: the longest name, the battery line, the name form, both Contracts tabs with history,
+## a pending bid, a long alert, orders, bills and transactions.
+func test_s7_every_app_fits() -> void:
+	await _s3_world("survival")
+	Game.money = 99999
+	Game.company_name = "W".repeat(Game.COMPANY_NAME_MAX)
+	Survival.cut_power()
+	for k in range(3):
+		if Contracts.listings.size() > 1:
+			var c: Dictionary = Contracts.force_award(int(Contracts.listings[0]["lid"]))
+			Contracts.record_job(c, ["completed", "missed", "cancelled"][k], 1234, -6.0)
+	Contracts.record_job({"id": 77, "address": Layout.big_areas[0]["place"], "client": "x", "type": "municipal"}, "completed", 12345, 1.0)
+	if not Contracts.listings.is_empty():
+		Contracts.place_bid(int(Contracts.listings[0]["lid"]), 99)
+	runner.info("fit: %d contracts, %d listings, %d bids, %d history entries" % [Contracts.active.size(), Contracts.listings.size(), Contracts.bids.size(), Contracts.job_history.size()])
+	Weather.alerts.append({"time": Clock.minutes, "text": "WEATHER ALERT: an unforecast storm is dumping snow at 41 cm an hour — stay indoors until the worst of it has passed!"})
+	Economy.buy("standard_shovel")
+	Economy.orders.append({"id": 99, "item": "pickup_plow", "status": "spawned", "placed": Clock.minutes})
+	var states := []
+	for i in range(ComputerUI.APPS.size()):
+		states.append([ComputerUI.APP_IDS[i], i, 0, true])
+	states.append(["contracts, History", ComputerUI.app_index("contracts"), 1, true])
+	states.append(["name form", ComputerUI.app_index("board"), 0, false])
+	var bad := []
+	var checked := 0
+	for res in S7_CANVASES.keys():
+		var logical: Vector2 = S7_CANVASES[res]
+		var host := Control.new()
+		host.size = logical
+		runner.add_child(host)
+		var comp := ComputerUI.new()
+		host.add_child(comp)
+		await _frames(2)
+		for st in states:
+			Game.company_name = "W".repeat(Game.COMPANY_NAME_MAX) if st[3] else ""
+			comp.contracts_tab = st[2]
+			comp._open_app(st[1])
+			for k in range(4):
+				await _tree().process_frame
+			var probs := _s7_fit_problems(comp, Rect2(Vector2.ZERO, logical))
+			checked += 1
+			for p in probs:
+				bad.append("%s %s: %s" % [res, st[0], p])
+			# The bottom of a long app can be scrolled to, and fits there too.
+			comp.scroll.scroll_vertical = int(comp.content.size.y)
+			for k in range(2):
+				await _tree().process_frame
+			for p in _s7_fit_problems(comp, Rect2(Vector2.ZERO, logical)):
+				bad.append("%s %s (scrolled): %s" % [res, st[0], p])
+		host.queue_free()
+		await _frames(1)
+	runner.check(bad.is_empty(), "§7 every app fits and lines up at every resolution (%d views) %s" % [checked, str(bad.slice(0, 12))])
+	Game.company_name = ""
+	Weather.alerts.clear()
+	await _unload()
+
+
+## What doesn't fit in the computer's window (empty when everything does).
+func _s7_fit_problems(c: ComputerUI, view: Rect2) -> Array:
+	var bad := []
+	var win: Control = c.find_child("Window", true, false)
+	var wr := win.get_global_rect()
+	if not view.encloses(wr) or not wr.size.is_equal_approx(ComputerUI.WIN):
+		bad.append("the window is %s on a %s screen" % [str(wr), str(view.size)])
+	var clip := c.scroll.get_global_rect()
+	if c.content.size.x > c.scroll.size.x + 0.5:
+		bad.append("the content is wider than its area (%d > %d)" % [c.content.size.x, c.scroll.size.x])
+	if c.content.size.y > c.scroll.size.y + 0.5 and not c.scroll.get_v_scroll_bar().visible:
+		bad.append("a long app doesn't scroll")
+	for n in win.find_children("*", "Control", true, false):
+		var ctl := n as Control
+		if not ctl.is_visible_in_tree() or ctl is ScrollBar:
+			continue
+		var r := ctl.get_global_rect()
+		var in_scroll := ctl == c.content or c.content.is_ancestor_of(ctl)
+		var box := clip if in_scroll else wr
+		if r.position.x < box.position.x - 0.5 or r.end.x > box.end.x + 0.5 or (not in_scroll and (r.position.y < box.position.y - 0.5 or r.end.y > box.end.y + 0.5)):
+			bad.append("%s \"%s\" sticks out (%s)" % [ctl.get_class(), _s7_text(ctl), str(r)])
+		if in_scroll and (r.end.y <= clip.position.y or r.position.y >= clip.end.y):
+			continue    # scrolled out of view
+		if ctl is Label:
+			var l := ctl as Label
+			if l.text == "":
+				continue
+			var tw := l.get_theme_font("font").get_string_size(l.text, HORIZONTAL_ALIGNMENT_LEFT, -1, l.get_theme_font_size("font_size")).x
+			if l.autowrap_mode == TextServer.AUTOWRAP_OFF and (l.get_minimum_size().x > l.size.x + 0.5 or tw > l.size.x + 1.0):
+				bad.append("\"%s\" is clipped (%d > %d)" % [l.text.left(40), tw, l.size.x])
+			elif l.autowrap_mode != TextServer.AUTOWRAP_OFF and l.get_visible_line_count() < l.get_line_count():
+				bad.append("\"%s\" is cut (%d of %d lines)" % [l.text.left(40), l.get_visible_line_count(), l.get_line_count()])
+		elif ctl is Button:
+			var b := ctl as Button
+			var bw := b.get_theme_font("font").get_string_size(b.text, HORIZONTAL_ALIGNMENT_LEFT, -1, b.get_theme_font_size("font_size")).x + b.get_theme_stylebox("normal").get_minimum_size().x
+			if b.get_minimum_size().x > b.size.x + 0.5 or b.get_minimum_size().y > b.size.y + 0.5 or (bw > b.size.x + 1.0 and b.autowrap_mode == TextServer.AUTOWRAP_OFF):
+				bad.append("button \"%s\" is clipped (%d > %d)" % [b.text, bw, b.size.x])
+		elif ctl is LineEdit:
+			if ctl.size.x < 300.0:
+				bad.append("the name field is narrow (%d)" % ctl.size.x)
+	for g in c.content.find_children("*", "GridContainer", true, false):
+		var cols := (g as GridContainer).columns
+		var kids := (g as Node).get_children().filter(func(k): return (k as Control).visible)
+		for k in range(cols, kids.size()):
+			if absf((kids[k] as Control).global_position.x - (kids[k % cols] as Control).global_position.x) > 0.5:
+				bad.append("a table's column %d isn't aligned" % (k % cols))
+				break
+	return bad
+
+
+static func _s7_text(n: Control) -> String:
+	if n is Label:
+		return (n as Label).text.left(30)
+	if n is Button:
+		return (n as Button).text.left(30)
+	return n.name
