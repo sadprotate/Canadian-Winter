@@ -82,6 +82,11 @@ extends Node
 ##   --comp_apps=all|i,j,…    (§7) with --ui=computer: open each app (index into ComputerUI.APPS of
 ##                            the build) and capture it to <out>_NN.png (NN = the index)
 ##   --comp_tab=n             (§7) the Contracts app's tab (0 Active, 1 History) when it opens
+##   --tv_tier=light|storm|major [--tv_hour=h]  (§8) a morning (h, default 9) whose TV shows that
+##                            strength on tomorrow's or the next day's card, with as many other
+##                            strengths on the other cards as can be found (forecast systems, nothing
+##                            unforecast; the same moment on any build: winters 1–5 of the seed, then
+##                            the next seeds); with --ui=tv or --ui=computer (opens on Weather)
 ##   --showcase=x,z,yaw       (§6) every tool model in a row on the ground from world (x, z), facing
 ##                            yaw: the hand tools standing on their blades as if held, the blowers;
 ##                            use with --cam/--look or --views
@@ -338,6 +343,8 @@ func _setup_world_state() -> void:
 		_comp_state()
 	if args.has("storm"):
 		_storm_clock()
+	if args.has("tv_tier"):
+		_tv_tier_clock()
 	if Game.is_survival():
 		Survival.activate()
 
@@ -840,6 +847,57 @@ func _storm_clock() -> void:
 				t = h + 0.5
 	Clock.reset(t * 60.0)
 	print("storm shot: %s %.1f-%.1f h (%.0f cm), at %.1f h: %s, %.2f cm/h" % [tier, st, float(found["end"]), float(found["total"]), t, Weather.NAMES[Weather.condition()], Weather.snow_rate()])
+
+
+## --tv_tier=light|storm|major [--tv_hour=h]: (§8) the clock at h (default 9:00) on a day whose TV
+## shows that strength on one of its three cards, with as many other strengths on the others as can
+## be found: forecast systems dropping at least 1 cm on each day, nothing unforecast on them — read
+## from the schedule, so any build picks the same moment. Winters 1–5 of the seed are searched,
+## then the next seeds.
+func _tv_tier_clock() -> void:
+	var hr := float(args.get("tv_hour", "9"))
+	var rank := {"light": 1, "storm": 2, "major": 3}
+	var want: int = rank.get(str(args["tv_tier"]), 2)
+	var pick := []
+	var pick_n := 0
+	for k in range(20):
+		for y in range(1, 6):
+			Weather.generate(y, Game.weather_seed + y * 13)
+			var best := []
+			var odd := []
+			for d in range(121):
+				best.append(0)
+				odd.append(false)
+			for ev in Weather.events:
+				var per := {}
+				for hv in (ev["hours"] as Dictionary).keys():
+					var d0 := int(floor(int(hv) / 24.0))
+					per[d0] = float(per.get(d0, 0.0)) + float(ev["hours"][hv])
+				for d1 in per.keys():
+					if ev["surprise"]:
+						odd[d1] = true
+					elif float(per[d1]) >= 1.0:
+						best[d1] = maxi(best[d1], rank[Weather.tier_of(ev)])
+			for d in range(3, 118):
+				if odd[d] or odd[d + 1] or odd[d + 2] or not (best[d + 1] == want or best[d + 2] == want):
+					continue
+				var seen := {}
+				for j in range(3):
+					if best[d + j] > 0:
+						seen[best[d + j]] = true
+				if seen.size() > pick_n:
+					pick_n = seen.size()
+					pick = [Game.weather_seed, y, d, [best[d], best[d + 1], best[d + 2]]]
+		if pick_n >= 3 or (pick_n >= 2 and k >= 4):
+			break
+		Game.weather_seed += 1
+	if pick.is_empty():
+		return
+	Game.weather_seed = int(pick[0])
+	Game.year = int(pick[1])
+	Weather.generate(Game.year, Game.weather_seed + Game.year * 13)
+	Clock.reset(Clock.at(int(pick[2]), hr))
+	print("tv_tier shot: seed %d, winter %d, %s %.1f h: %s" % [Game.weather_seed, Game.year, Clock.date_string(int(pick[2]), true), hr, str(pick[3])])
 
 
 ## --scoop=mid|loaded|glide [--tool=id] [--player=u,v,yaw] [--pitch=deg] [--tp=1]: a real scoop

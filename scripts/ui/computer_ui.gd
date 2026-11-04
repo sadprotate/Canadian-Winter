@@ -703,14 +703,16 @@ func _property() -> void:
 # --- Weather ----------------------------------------------------------------------------------------
 
 func _weather() -> void:
-	var days := Weather.forecast_days()
+	# Polish 5 §8: the TV's cards from the same forecast (at least the TV's three days; the weather
+	# apps add days, the wind and the radar's systems hour by hour).
+	var days := maxi(3, Weather.forecast_days())
 	var detail := 0
 	if Game.has_upgrade(&"weather_radar"):
 		detail = 2
 	elif Game.has_upgrade(&"weather_pro"):
 		detail = 1
 	_p("Now: " + Weather.current_summary(), Color.WHITE, FS_SECTION)
-	_p("Next %d days%s. Forecasts can be wrong." % [days, ["", ", detailed", ", hourly radar"][detail]], UIKit.MUTED, FS_SMALL)
+	_p("Next %d days%s  ·  forecast updated %s" % [days, ["", ", detailed", ", hourly radar"][detail], Weather.hour_name(Weather.issued_hour())], UIKit.MUTED, FS_SMALL)
 	for e in Weather.forecast(days):
 		var c := UIKit.card()
 		content.add_child(c)

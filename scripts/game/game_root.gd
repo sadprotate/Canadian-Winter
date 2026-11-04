@@ -93,6 +93,7 @@ func _ready() -> void:
 	# makes the engine log SelfList errors when it unpauses.
 	Clock.winter_ended.connect(_on_winter_end, CONNECT_DEFERRED)
 	Weather.alert_issued.connect(func(_t): pass)
+	Clock.hour_changed.connect(_on_hour_displays)
 	_on_power(Survival.power_on)
 	snow_renderer.build_all(player.global_position)
 	Clock.running = true
@@ -620,7 +621,22 @@ func open_photo() -> void:
 func radio_forecast() -> void:
 	AudioMgr.play("radio_jingle", -6.0)
 	# Polish 4 §1: the next three game hours, from the forecast model (the grader line as before).
-	subtitle("Radio: %s City grader expected %s." % [Weather.radio_bulletin(), Municipal.next_pass_text()], 10.0)
+	subtitle(radio_text(), 10.0)
+
+
+func radio_text() -> String:
+	return "Radio: %s City grader expected %s." % [Weather.radio_bulletin(), Municipal.next_pass_text()]
+
+
+## Polish 5 §8: the forecast is issued every game hour, and the displays follow it — a TV left on
+## shows the new hour's forecast, and a radio bulletin still on screen is read again for the new hour.
+func _on_hour_displays(_day: int, _hour: int) -> void:
+	if modal_kind == "tv" and modal != null and is_instance_valid(modal):
+		var old := modal
+		modal = Panels.tv(hud, close_modal, false)
+		old.queue_free()
+	if hud != null and hud.subtitle_box.visible and hud.subtitle_l.text.begins_with("Radio: "):
+		subtitle(radio_text(), maxf(hud._subtitle_t, 0.5))
 
 
 func open_mailbox() -> void:

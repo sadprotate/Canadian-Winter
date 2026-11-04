@@ -97,11 +97,14 @@ extends Resource
 ## unforecast, is picked up by the radio this many game hours before it starts (the TV never calls
 ## an unforecast one before it starts). forecast_skill scales it all: errors / skill, the surprise
 ## horizon x skill — the hook for forecasting equipment (no upgrade sets it yet).
+## Polish 5 §8: tuned for the accuracy targets — per day 0.22 → 0.12 (a card's range holds the
+## day's snow ≥ 90 % of the time three days out), timing 2.5 → 0.25 h per day (a start within the
+## hour the day before), the radio's horizon 1 → 3 h (its whole window, Decision 7).
 @export var fc_error_base: float = 0.06
-@export var fc_error_per_day: float = 0.22
-@export var fc_timing_h_per_day: float = 2.5
+@export var fc_error_per_day: float = 0.12
+@export var fc_timing_h_per_day: float = 0.25
 @export var fc_temp_error_per_day: float = 1.6
-@export var radio_surprise_horizon_h: float = 1.0
+@export var radio_surprise_horizon_h: float = 3.0
 @export var forecast_skill: float = 1.0
 
 @export_group("Survival")

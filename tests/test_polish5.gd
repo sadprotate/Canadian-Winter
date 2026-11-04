@@ -3153,14 +3153,19 @@ func test_s7_v3_save_round_trips() -> void:
 	Contracts.record_job(cm, "cancelled", 0, 0.0)
 	Clock.minutes += 61.5
 	Contracts.record_job({"id": 99, "address": "St. Andrew's Church, 40 Cedar Lane", "client": "Église", "type": "recurring"}, "completed", 45, 0.3)
-	var want := JSON.stringify({"name": Game.company_name, "history": Contracts.job_history})
+	# §8: the recent weather alerts (optional key, default none).
+	Weather._alert("Severe weather advisory: heavy snow expected around Dec 3 14:00.")
+	Clock.minutes += 30.25
+	Weather._alert("WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!")
+	var want := JSON.stringify({"name": Game.company_name, "history": Contracts.job_history, "alerts": Weather.alerts})
 	runner.check(Saves.save_game(), "§7 a version-3 save")
 	Game.company_name = ""
 	Contracts.job_history = []
+	Weather.alerts.clear()
 	await _unload()
 	runner.check(Saves.load_game("fun"), "§7 …loads")
-	var got := JSON.stringify({"name": Game.company_name, "history": Contracts.job_history})
-	runner.check(got == want and Contracts.job_history.size() == 4, "§7 …with the name and the history exactly as saved (%d entries)" % Contracts.job_history.size())
+	var got := JSON.stringify({"name": Game.company_name, "history": Contracts.job_history, "alerts": Weather.alerts})
+	runner.check(got == want and Contracts.job_history.size() == 4 and Weather.alerts.size() == 2, "§7 …with the name, the history and (§8) the recent alerts exactly as saved (%d entries, %d alerts)" % [Contracts.job_history.size(), Weather.alerts.size()])
 	if got != want:
 		runner.info("want %s\n got %s" % [want, got])
 	Saves.delete_save("fun")
@@ -3283,3 +3288,534 @@ static func _s7_text(n: Control) -> String:
 	if n is Button:
 		return (n as Button).text.left(30)
 	return n.name
+
+
+# =============================================================================
+# §8 Weather in sync
+# =============================================================================
+
+const S8Audit := preload("res://tests/forecast_audit.gd")
+const S8Truth := preload("res://tests/weather_truth.gd")
+const S8_SEEDS := [2024, 1, 7, 42, 99]
+## The weather that falls at the start of polish 5 (weather_truth.tscn on the baseline build).
+const S8_TRUTH := "res://tests/fixtures/polish5/weather_truth_baseline.json"
+
+
+## The weather that actually falls is the polish-5 baseline's, byte for byte: every event (start,
+## end, condition, tier, total, first and last snowy hour, peak hourly rate, first heavy hour),
+## every winter's total and every alert hour by hour, for seed 2024 and 20 other seeds, winters 1–5.
+## Only the forecasts change in §8.
+func test_s8_truth_unchanged() -> void:
+	await _unload()
+	var d := S8Truth.dump()
+	d["alerts"] = S8Truth.alerts_dump()
+	var now := JSON.stringify(d, "", false)
+	var base := FileAccess.get_file_as_string(S8_TRUTH)
+	var first := -1
+	for i in range(mini(now.length(), base.length())):
+		if now[i] != base[i]:
+			first = i
+			break
+	runner.check(base.length() > 100000 and now == base, "§8 the weather that falls is the baseline's, byte for byte (%d winters, %d bytes%s)" % [d.size() - 1, now.length(), "" if now == base else ", first difference at %d: …%s…" % [first, now.substr(maxi(first - 40, 0), 80)]])
+
+
+## The TV's cards name the strength of the snow in words, one mapping for every display, and for
+## every forecast event the card is right from three days out (5 seeds × winters 1–5): every card
+## for a day a forecast event drops at least 1 cm on, issued 3, 2, 1 and 0 days before (every 3 game
+## hours of the issuing day), names the strongest system of that day (Decision 7 for surprises).
+func test_s8_tier_right_from_three_days_out() -> void:
+	await _unload()
+	runner.check(Weather.tier_name("light") == "Light snow" and Weather.tier_name("storm") == "Snowstorm" and Weather.tier_name("major") == "Major snowstorm",
+		"§8 the words: Light snow, Snowstorm, Major snowstorm")
+	var r := S8Audit.audit_cards(S8_SEEDS, [1, 2, 3, 4, 5], 3)
+	for k in range(3, -1, -1):
+		runner.check(int(r["tier_n"][k]) > 1500 and int(r["tier_bad"][k]) == 0, "§8 %d days out: every card names the right strength (%d cards, %d wrong; %d name a system starting or ending within an hour of the day)%s" % [k, r["tier_n"][k], r["tier_bad"][k], r["tier_edge"][k], "" if int(r["tier_bad"][k]) == 0 else " — " + str((r["tier_examples"] as Array).slice(0, 3))])
+	# Every tier shows up on the cards, and a card's words come from the one mapping.
+	_gen_s8(2024, 5)
+	var seen := {}
+	for d in range(2, 118):
+		var e := Weather.forecast_day(d, (d - 2) * 24 + 7)
+		var ct := Weather.card_text(e)
+		if e["tier"] != "":
+			seen[e["tier"]] = true
+			if ct["title"] != Weather.tier_name(e["tier"]) or ct["amount"] == "" or ct["when"] == "":
+				seen["bad"] = "%s: %s" % [str(e["date"]), str(ct)]
+	runner.check(seen.has("light") and seen.has("storm") and seen.has("major") and not seen.has("bad"), "§8 two days out, winter 5: cards with each strength, each with its word, the snow as a range and when it starts %s" % str(seen.get("bad", "")))
+
+
+func _gen_s8(s: int, y: int) -> void:
+	Weather.generate(y, s + y * 13)
+
+
+## The accuracy targets for forecast events (5 seeds × winters 1–3): the start time shown within
+## ±3 h three days out and ±1 h the day before; the range shown holds the day's snow at least 90 %
+## of the time at every lead, narrowing as the day comes; the radio's next three hours right in at
+## least 95 % of the calls, the rate within ±25 %. The tuned values are the same in both files.
+func test_s8_accuracy_targets() -> void:
+	await _unload()
+	var ev := S8Audit.audit_events(S8_SEEDS, [1, 2, 3])
+	runner.check(int(ev["shown_n"][3]) > 1000 and float(ev["shown_max"][3]) <= 3.0 and float(ev["start_max"][3]) <= 3.0, "§8 three days out the start time shown is within ±3 h (worst %.2f h; the model's %.2f h; %d forecasts)" % [ev["shown_max"][3], ev["start_max"][3], ev["shown_n"][3]])
+	runner.check(int(ev["shown_n"][1]) > 1000 and float(ev["shown_max"][1]) <= 1.0 and float(ev["start_max"][1]) <= 1.0, "§8 the day before, within ±1 h (worst %.2f h; the model's %.2f h)" % [ev["shown_max"][1], ev["start_max"][1]])
+	var mean_s := []
+	var mean_t := []
+	for k in range(4):
+		mean_s.append(float(ev["start_abs"][k]) / maxf(ev["n"][k], 1))
+		mean_t.append(float(ev["tot_rel"][k]) / maxf(ev["n"][k], 1))
+	runner.check(mean_s[3] > mean_s[2] and mean_s[2] > mean_s[1] and mean_s[1] > mean_s[0] and mean_t[3] > mean_t[2] and mean_t[2] > mean_t[1] and mean_t[1] > mean_t[0],
+		"§8 the time and the amount narrow as the day comes (mean start error %.2f / %.2f / %.2f / %.2f h, total %.0f / %.0f / %.0f / %.0f %%, 3 → 0 days out)" % [mean_s[3], mean_s[2], mean_s[1], mean_s[0], 100 * mean_t[3], 100 * mean_t[2], 100 * mean_t[1], 100 * mean_t[0]])
+	var c := S8Audit.audit_cards(S8_SEEDS, [1, 2, 3], 3)
+	var widths := []
+	for k in range(3, -1, -1):
+		var share := float(c["range_in"][k]) / maxf(c["range_n"][k], 1)
+		widths.append(float(c["width"][k]) / maxf(c["range_n"][k], 1))
+		runner.check(int(c["range_n"][k]) > 1000 and share >= 0.90, "§8 %d days out the range shown holds the day's snow %.1f %% of the time (%d days)%s" % [k, 100.0 * share, c["range_n"][k], "" if share >= 0.9 else " — " + str((c["range_examples"] as Array).slice(0, 3))])
+	runner.check(widths[0] > widths[1] and widths[1] > widths[2] and widths[2] > widths[3], "§8 …and the range narrows as the day comes (width / day's snow %.2f, %.2f, %.2f, %.2f)" % widths)
+	var r := S8Audit.audit_radio(S8_SEEDS, [1, 2, 3])
+	var right := float(r["snowy_right"]) / maxf(r["snowy"], 1)
+	var all_right := float(r["right"]) / maxf(r["calls"], 1)
+	var rate_in := float(r["rate_in"]) / maxf(r["rate_n"], 1)
+	runner.check(int(r["snowy"]) > 5000 and right >= 0.95 and all_right >= 0.95, "§8 the radio's next three hours: the condition right in %.1f %% of the snowy calls (%.1f %% of all %d)" % [100 * right, 100 * all_right, r["calls"]])
+	runner.check(int(r["rate_n"]) > 3000 and rate_in >= 0.95, "§8 …the rate within ±25 %% in %.1f %% of the snowy hours (mean error %.1f %%)" % [100 * rate_in, 100.0 * float(r["rate_rel"]) / maxf(r["rate_n"], 1)])
+	var tres: BalanceData = load("res://data/balance.tres")
+	var dflt := BalanceData.new()
+	var same := true
+	for k in ["fc_error_base", "fc_error_per_day", "fc_timing_h_per_day", "fc_temp_error_per_day", "radio_surprise_horizon_h", "forecast_skill"]:
+		same = same and is_equal_approx(float(tres.get(k)), float(dflt.get(k))) and is_equal_approx(float(Catalog.balance.get(k)), float(dflt.get(k)))
+	runner.check(same and is_equal_approx(dflt.radio_surprise_horizon_h, 3.0), "§8 the forecast values are the same in balance.tres and the defaults (radio horizon %.0f h)" % dflt.radio_surprise_horizon_h)
+
+
+## Decision 7. An unforecast major event is never on the TV (or the computer) before it starts, and
+## the radio has it from 3 game hours ahead. A storm that arrives stronger than forecast is called at
+## its real strength by 7:00 a.m. on its day, and on the radio within its window; before that it's
+## still a surprise (under-called the day before).
+func test_s8_surprises() -> void:
+	await _load_s8()
+	var n_major := 0
+	var tv_bad := []
+	var radio_bad := []
+	var n_storm := 0
+	var storm_bad := []
+	var under := 0
+	for s in S8_SEEDS:
+		for y in range(1, 6):
+			_gen_s8(s, y)
+			for i in range(Weather.events.size()):
+				var ev: Dictionary = Weather.events[i]
+				if not ev["surprise"]:
+					continue
+				var st: float = ev["start"]
+				var sday := int(floor(st / 24.0))
+				if Weather.tier_of(ev) == "major":
+					n_major += 1
+					for iss in range(maxi(int(st) - 72, 0), int(st) + 1):
+						if float(iss) >= st:
+							break
+						# The TV and the computer: no card names a major snowstorm or shows the system.
+						for d in range(floori(iss / 24.0), floori(iss / 24.0) + 3):
+							var e := Weather.forecast_day(d, iss)
+							for fe in e["events"]:
+								if absf(float(fe["start"]) - st) < 1.5 and fe["tier"] == "major":
+									tv_bad.append("%d/%d %s, %.1f h before" % [s, y, Clock.format_time(st * 60.0), st - iss])
+							if e["tier"] == "major" and Weather.fc_tier(i, iss) != "":
+								tv_bad.append("%d/%d tier at %.1f h before" % [s, y, st - iss])
+						# The radio: from 3 h ahead, the major snowstorm and its blizzard hours.
+						var on_radio := Weather.fc_tier(i, iss, true) == "major"
+						if on_radio != (st - float(iss) <= 3.0):
+							radio_bad.append("%d/%d radio %s at %.1f h before" % [s, y, "on" if on_radio else "off", st - iss])
+						if st - float(iss) <= 3.0:
+							Clock.minutes = iss * 60.0 + 15.0
+							var b := Weather.radio_bulletin()
+							if not (b.contains("blizzard") or b.contains("Major snowstorm")):
+								radio_bad.append("%d/%d \"%s\"" % [s, y, b])
+				elif Weather.tier_of(ev) == "storm":
+					n_storm += 1
+					var call := sday * 24 + Weather.CALL_HOUR
+					for iss in range(maxi(int(st) - 30, 0), int(ceil(float(ev["end"])))):
+						var t := Weather.fc_tier(i, iss)
+						var called := iss >= call or float(iss) >= st or st - float(iss) <= 3.0
+						if called and t != "storm":
+							storm_bad.append("%d/%d %s: \"%s\" at %s" % [s, y, Clock.format_time(st * 60.0), t, Clock.format_time(iss * 60.0)])
+						if called and Weather.forecast_day(sday, iss)["tier"] != "storm" and float(iss) < st:
+							storm_bad.append("%d/%d %s: card at %s" % [s, y, Clock.format_time(st * 60.0), Clock.format_time(iss * 60.0)])
+						if not called and t == "light":
+							under += 1
+					# The radio inside its window: heavy where heavy falls.
+					for iss in range(int(ceil(st - 3.0)), int(st)):
+						for k in range(1, 4):
+							var h := iss + k
+							if Weather.cond[h] >= Weather.C.HEAVY and Weather.fc_hour(h, iss, true)["cond"] < Weather.C.HEAVY:
+								storm_bad.append("%d/%d radio %s" % [s, y, Clock.format_time(h * 60.0)])
+	runner.check(n_major >= 10 and tv_bad.is_empty(), "§8 %d unforecast major events: never on the TV or the computer before they start%s" % [n_major, "" if tv_bad.is_empty() else " — " + str(tv_bad.slice(0, 3))])
+	runner.check(radio_bad.is_empty(), "§8 …and on the radio from 3 h ahead (named and its blizzard called), never earlier%s" % ("" if radio_bad.is_empty() else " — " + str(radio_bad.slice(0, 3))))
+	runner.check(n_storm >= 20 and storm_bad.is_empty(), "§8 %d storms stronger than forecast: called a snowstorm from 7:00 a.m. on their day (TV, computer, radio), heavy on the radio inside its window%s" % [n_storm, "" if storm_bad.is_empty() else " — " + str(storm_bad.slice(0, 3))])
+	runner.check(under > n_storm * 5, "§8 …and still a surprise before that: under-called as light snow (%d forecasts)" % under)
+	await _unload()
+
+
+## A world (seed 2024, Dec 2 10:00) for the tests that read the displays; the clock stopped.
+func _load_s8(mode := "fun") -> void:
+	await _unload()
+	Game.force_input = true
+	Game.new_game(mode, 2024)
+	Game.flags["mail_read"] = true
+	Game.set_stage(Game.Stage.COMPLETE)
+	Clock.reset(Clock.at(1, 10.0))
+	await _spawn_world()
+	Clock.running = false
+
+
+## The true snow still to come in the event the radio follows, from now (the rest of this hour).
+func _s8_remaining(ev: Dictionary) -> float:
+	var issued := Weather.issued_hour()
+	var hrs: Dictionary = ev["hours"]
+	var r := float(hrs.get(issued, 0.0)) * (1.0 - fmod(Clock.minutes, 60.0) / 60.0)
+	for hv in hrs.keys():
+		if int(hv) > issued:
+			r += float(hrs[hv])
+	return r
+
+
+## "another 8 to 12 cm" / "8 to 12 cm in all" / "up to 3 cm" → [lo, hi]; [] when there's no amount.
+static func _s8_amount(b: String) -> Array:
+	var rx := RegEx.new()
+	rx.compile("(another (\\d+) to (\\d+) cm|, (\\d+) to (\\d+) cm in all|up to (\\d+) cm)")
+	var m := rx.search(b)
+	if m == null:
+		return []
+	if m.get_string(2) != "":
+		return [int(m.get_string(2)), int(m.get_string(3))]
+	if m.get_string(4) != "":
+		return [int(m.get_string(4)), int(m.get_string(5))]
+	return [0, int(m.get_string(6))]
+
+
+## The radio from start to end: due in its window, the bulletin says what's coming, when it should
+## end and how much ("Snowstorm ending around 10 p.m., 15 to 25 cm in all."); while it falls, how
+## much more ("…another 8 to 12 cm."); once it's over, "Snow has ended." The three hourly phrases
+## stay. Over every forecast event of 5 seeds × winters 1–3: the end within an hour, the amount
+## within its range at least 90 % of the time.
+func test_s8_radio_start_to_end() -> void:
+	await _load_s8()
+	var n := 0
+	var end_bad := []
+	var amt_in := 0
+	var amt_n := 0
+	var phrase_bad := []
+	var ended_ok := 0
+	var ended_n := 0
+	var tiers_seen := {}
+	for s in S8_SEEDS:
+		for y in range(1, 4):
+			_gen_s8(s, y)
+			for i in range(Weather.events.size()):
+				var ev: Dictionary = Weather.events[i]
+				if ev["surprise"]:
+					continue
+				var st: float = ev["start"]
+				var en: float = ev["end"]
+				var word := Weather.tier_name(Weather.tier_of(ev))
+				for iss in range(int(st) - 2, int(ceil(en))):
+					Clock.minutes = iss * 60.0 + 20.0
+					if Weather.radio_spell(iss) != i:
+						continue    # another system comes first
+					var b := Weather.radio_bulletin()
+					n += 1
+					var issued := Weather.issued_hour()
+					for k in range(1, 4):
+						if not b.to_lower().contains(Weather.hour_name(issued + k) + " "):
+							phrase_bad.append(b)
+							break
+					var falling := (ev["hours"] as Dictionary).has(issued) and Weather.rate[issued] > 0.01
+					if not b.contains(word + " ending around ") or (falling and not b.begins_with("Right now:")):
+						phrase_bad.append(b)
+						continue
+					tiers_seen[word] = true
+					# This system's own line (the radio may follow a second one after it).
+					var line := Weather._spell_line(i, issued)
+					if not b.contains(line) or not line.begins_with(word + " ending around "):
+						phrase_bad.append(b)
+						continue
+					var sp := Weather.fc_span(i, issued, true)
+					var said := Weather.hour_name(int(roundf(float(sp[1]))))
+					if absf(float(sp[1]) - en) > 1.0 or not line.contains("ending around " + said):
+						end_bad.append("%s: %s (ends %s)" % [Clock.format_time(Clock.minutes), b, Clock.format_time(en * 60.0)])
+					var a := _s8_amount(line)
+					if not a.is_empty():
+						var rem := _s8_remaining(ev) if falling else float(ev["total"])
+						amt_n += 1
+						amt_in += 1 if float(a[0]) <= rem + 0.001 and rem <= float(a[1]) + 0.001 else 0
+						if falling != (line.contains("another") or line.contains("cm more")):
+							phrase_bad.append(b)
+				# Once it's over (and nothing else is due): "Snow has ended."
+				var after := int(ceil(en)) + 1
+				var quiet := true
+				for other in Weather.events:
+					if other != ev and float(other["start"]) < float(after + 5) and float(other["end"]) > en - 1.0:
+						quiet = false
+				if quiet and after < Weather.HOURS - 4:
+					ended_n += 1
+					Clock.minutes = after * 60.0 + 10.0
+					var b2 := Weather.radio_bulletin()
+					if b2.ends_with("Snow has ended.") and not b2.begins_with("Right now"):
+						ended_ok += 1
+					elif phrase_bad.size() < 20:
+						phrase_bad.append("after: " + b2)
+	runner.check(n > 2000 and phrase_bad.is_empty(), "§8 %d bulletins from start to end: the three hourly phrases, \"right now\" while it falls, then \"<strength> ending around …\"%s" % [n, "" if phrase_bad.is_empty() else " — " + str(phrase_bad.slice(0, 3))])
+	runner.check(tiers_seen.size() == 3, "§8 …in the words of the TV (%s)" % str(tiers_seen.keys()))
+	runner.check(end_bad.is_empty(), "§8 …the end it gives is within an hour of the real end%s" % ("" if end_bad.is_empty() else " — " + str(end_bad.slice(0, 2))))
+	runner.check(amt_n > 1500 and float(amt_in) / amt_n >= 0.9, "§8 …and the amount (still) to come is within its range %.1f %% of the time (%d)" % [100.0 * amt_in / maxi(amt_n, 1), amt_n])
+	runner.check(ended_n > 100 and ended_ok == ended_n, "§8 once it's over: \"Snow has ended.\" (%d of %d)" % [ended_ok, ended_n])
+	# One bulletin as the player hears it, from the radio in the house.
+	_gen_s8(2024, 1)
+	for ev in Weather.events:
+		if Weather.tier_of(ev) == "storm" and not ev["surprise"]:
+			Clock.minutes = (floor(float(ev["start"])) + 2.0) * 60.0 + 10.0
+			break
+	world.radio_forecast()
+	await _frames(2)
+	var heard: String = world.hud.subtitle_l.text
+	runner.check(heard.begins_with("Radio: Right now: ") and heard.contains("Snowstorm ending around ") and heard.contains("another ") and heard.contains("City grader expected"), "§8 the radio in the house: \"%s\"" % heard)
+	await _unload()
+
+
+## The TV's cards, the computer's Weather app (the TV's cards from the same forecast), the radio,
+## the HUD's weather panel and what's falling agree in every hour of 5 seeds × winters 1–3 (at
+## 5, 30 and 55 minutes past): if the radio calls snow in its window the card for that day shows
+## snow then, at a strength no weaker; current conditions everywhere are what's falling now. The
+## only difference allowed is Decision 7's: the radio has an unforecast major event up to 3 h before
+## the TV, which calls it from the hour after it starts.
+func test_s8_sync_every_hour() -> void:
+	await _unload()
+	for minute in [5.0, 30.0, 55.0]:
+		var r := S8Audit.audit_sync(S8_SEEDS, [1, 2, 3], minute)
+		var bad := 0
+		for k in ["radio_tv", "radio_tv_time", "strength", "spell_tier", "ended_snow", "falling_tv", "falling_radio", "hud_falling", "radio_now"]:
+			bad += int(r[k])
+		runner.check(int(r["hours"]) > 40000 and int(r["checked"]) > 4000 and bad == 0, "§8 :%02d past every hour: no display contradicts another or what's falling (%d hours, %d with snow on the radio or falling, %d in an unforecast major's radio lead)%s" % [int(minute), r["hours"], r["checked"], r["surprise_window"], "" if bad == 0 else " — " + str((r["examples"] as Array).slice(0, 4))])
+	# The screens themselves, around every storm and major event of a winter: the TV, the computer
+	# and the HUD show the same words.
+	await _load_s8()
+	Game.company_name = "Sync Test Snow Co."
+	_gen_s8(2024, 5)
+	Game.year = 5
+	var hours := []
+	for ev in Weather.events:
+		if Weather.tier_of(ev) != "light":
+			for h in [int(ev["start"]) - 30, int(ev["start"]) - 2, int(ev["start"]), int(ev["start"]) + 1, int(ceil(float(ev["end"]))) + 1]:
+				if h > 0 and h < Weather.HOURS - 4:
+					hours.append(h)
+	var bad_ui := []
+	var host := Control.new()
+	host.size = Vector2(1920, 1080)
+	runner.add_child(host)
+	for h in hours:
+		Clock.minutes = h * 60.0 + 20.0
+		var tv := Panels.tv(host, func(): pass, false)
+		var comp := ComputerUI.new()
+		host.add_child(comp)
+		for k in range(3):
+			await _tree().process_frame
+		var tv_t := _s2_texts(tv)
+		var comp_t := _s2_texts(comp.content)
+		var hud: HUD = world.hud
+		hud._t = 0.0
+		await _tree().process_frame
+		await _tree().process_frame
+		var now := Weather.current_summary()
+		var ok: bool = comp.current == ComputerUI.app_index("weather") and tv_t.contains(now) and comp_t.contains("Now: " + now) and hud.weather_l.text == Weather.NAMES[Weather.condition()]
+		for e in Weather.forecast(3):
+			var ct := Weather.card_text(e)
+			for f in ["date", "title", "amount", "when", "temps"]:
+				if str(ct[f]) != "" and not tv_t.contains(str(ct[f])):
+					ok = false
+			if not comp_t.contains(Weather.card_line(e)) or not comp_t.contains(str(ct["temps"])):
+				ok = false
+		if not ok:
+			bad_ui.append(Clock.format_time(Clock.minutes))
+		tv.queue_free()
+		comp.queue_free()
+		await _tree().process_frame
+	host.queue_free()
+	runner.check(hours.size() > 40 and bad_ui.is_empty(), "§8 the TV, the computer's Weather app and the HUD show the same, before, during and after every storm and major event of winter 5 (%d moments)%s" % [hours.size(), "" if bad_ui.is_empty() else " — " + str(bad_ui.slice(0, 4))])
+	await _unload()
+
+
+## The TV's, the computer's and the radio's text are the same in real time, after a sleep and after
+## save → load (the pass-4 mid-storm fixtures; the recent alerts are saved now, so the TV's latest
+## alert reads the same too). A TV left on and a radio bulletin still on screen follow the hour.
+func test_s8_same_in_real_time_sleep_and_reload() -> void:
+	for mode in ["fun", "survival"]:
+		var path := "res://tests/fixtures/polish4/%s_6_storm.json" % mode
+		var ok: bool = await _load_save_file(path)
+		await _spawn_world()
+		Clock.running = false
+		Game.flags["computer_unlocked"] = true
+		Weather._alert("Severe weather advisory: heavy snow expected around %s." % Clock.format_time(Clock.minutes + 600.0))
+		var target: float = floor(Clock.minutes / 60.0) * 60.0 + 135.0
+		Clock.time_scale = 40.0
+		Clock.running = true
+		var guard := 0
+		while Clock.minutes < target and guard < 8000:
+			await _frames(1)
+			guard += 1
+		Clock.running = false
+		Clock.time_scale = 1.0
+		var ta := Clock.minutes
+		var a := await _s8_texts()
+		var alerts_a := Weather.alerts.size()
+		await _unload()
+		await _load_save_file(path)
+		await _spawn_world()
+		Clock.running = false
+		Game.flags["computer_unlocked"] = true
+		Weather._alert("Severe weather advisory: heavy snow expected around %s." % Clock.format_time(Clock.minutes + 600.0))
+		Clock.skip(ta - Clock.minutes)
+		var b := await _s8_texts()
+		runner.check(Saves.save_game(), "§8 %s: saved" % mode)
+		await _unload()
+		var ok3 := Saves.load_game(mode)
+		await _spawn_world()
+		Clock.running = false
+		var c := await _s8_texts()
+		runner.check(ok and ok3 and absf(ta - Clock.minutes) < 0.1 and alerts_a > 0, "§8 %s: the storm fixture at %s, in real time, by sleeping, by saving and loading (%d alerts out)" % [mode, Clock.format_time(ta), alerts_a])
+		for key in ["tv", "radio", "computer"]:
+			runner.check(a[key] == b[key] and b[key] == c[key], "§8 %s: the %s says the same in real time, after a sleep and after save → load%s" % [mode, key, "" if a[key] == b[key] and b[key] == c[key] else ": %s / %s / %s" % [str(a[key]).left(200), str(b[key]).left(200), str(c[key]).left(200)]])
+		runner.check(str(a["tv"]).contains("Latest alert") and str(a["radio"]).contains("ending around"), "§8 %s: …the latest alert included, and the radio's start-to-end line" % mode)
+		# A TV left on and the radio on screen across the hour.
+		world.open_tv()
+		world.radio_forecast()
+		await _frames(2)
+		var before_tv := _s2_texts(world.modal)
+		var h0 := Weather.issued_hour()
+		Clock.advance(60.0 - fmod(Clock.minutes, 60.0))
+		await _frames(2)
+		runner.check(Weather.issued_hour() == h0 + 1 and world.modal_kind == "tv", "§8 %s: the hour changed with the TV on" % mode)
+		var host := Control.new()
+		host.size = Vector2(1920, 1080)
+		runner.add_child(host)
+		var fresh := Panels.tv(host, func(): pass, false)
+		await _frames(1)
+		var on_tv := _s2_texts(world.modal)
+		runner.check(on_tv == _s2_texts(fresh) and on_tv != before_tv and on_tv.contains("Forecast updated %s" % Weather.hour_name(h0 + 1)), "§8 %s: …the TV shows the new hour's forecast, as a TV turned on now would" % mode)
+		runner.check(world.hud.subtitle_l.text == world.radio_text() and world.hud.subtitle_box.visible, "§8 %s: …and the radio's bulletin on screen is the new hour's" % mode)
+		host.queue_free()
+		world.close_modal()
+		Saves.delete_save(mode)
+		await _unload()
+
+
+## The TV's labels, the radio's subtitle and the computer's Weather app, as text.
+func _s8_texts() -> Dictionary:
+	var host := Control.new()
+	host.size = Vector2(1920, 1080)
+	runner.add_child(host)
+	var tv := Panels.tv(host, func(): pass, false)
+	var comp := ComputerUI.new()
+	host.add_child(comp)
+	for k in range(3):
+		await _tree().process_frame
+	var out := {"tv": _s2_texts(tv), "radio": world.radio_text(), "computer": _s2_texts(comp.content)}
+	host.queue_free()
+	await _tree().process_frame
+	return out
+
+
+## The fullest displays fit at 1280×720, 1920×1080, 2560×1440 and 3440×1440 (their logical canvases):
+## the TV with three snow cards and the longest words on them (and an alert) — every line inside its
+## card and the screen, the screen no taller than pass 3's alert line makes it; the longest radio
+## bulletin in the subtitle box; the computer's Weather app with every weather upgrade (eight cards
+## and the radar's lines), the battery line and a long alert.
+func test_s8_fullest_displays_fit() -> void:
+	await _load_s8("survival")
+	var best := -1
+	var best_at := Vector2i(1, 0)
+	var longest := ""
+	for y in [1, 3, 5]:
+		_gen_s8(2024, y)
+		for iss in range(24, Weather.HOURS - 72, 3):
+			@warning_ignore("integer_division")
+			var d := iss / 24
+			var score := 0
+			for k in range(3):
+				var ct := Weather.card_text(Weather.forecast_day(d + k, iss))
+				if ct["amount"] != "":
+					score += 1000 + str(ct["title"]).length() + str(ct["amount"]).length() + str(ct["when"]).length()
+			if score > best:
+				best = score
+				best_at = Vector2i(y, iss)
+			if iss % 3 == 0 and Weather.rate[iss] + Weather.rate[iss + 2] > 0.0:
+				Clock.minutes = iss * 60.0 + 20.0
+				var t: String = world.radio_text()
+				if t.length() > longest.length():
+					longest = t
+	_gen_s8(2024, best_at.x)
+	Game.year = best_at.x
+	Clock.minutes = best_at.y * 60.0 + 20.0
+	Weather.alerts.append({"time": Clock.minutes, "text": "WEATHER ALERT: an unforecast storm is dumping snow at 41 cm an hour — stay indoors!"})
+	var cards := Weather.forecast(3).map(func(e): return Weather.card_line(e))
+	runner.info("fullest TV: winter %d, %s: %s; longest bulletin (%d characters): %s" % [best_at.x, Clock.format_time(Clock.minutes), str(cards), longest.length(), longest])
+	Game.grant_upgrade(&"weather_pro")
+	Game.grant_upgrade(&"weather_radar")
+	Game.company_name = "W".repeat(Game.COMPANY_NAME_MAX)
+	Survival.cut_power()
+	var hud: HUD = world.hud
+	var bad := []
+	for res in S7_CANVASES.keys():
+		var logical: Vector2 = S7_CANVASES[res]
+		hud.size = logical
+		hud.subtitle(longest, 5.0)
+		await _frames(2)
+		var view := Rect2(hud.global_position, logical)
+		var box := hud.subtitle_box.get_global_rect()
+		var l := hud.subtitle_l
+		if not (view.encloses(box) and box.end.y <= view.end.y - 249.0 and box.position.y > view.get_center().y + 60.0 and l.get_line_count() == l.get_visible_line_count()):
+			bad.append("%s: the bulletin's box %s" % [res, str(box)])
+		var host := Control.new()
+		host.size = logical
+		runner.add_child(host)
+		var root := Panels.tv(host, func(): pass, false)
+		await _frames(3)
+		var scr: Control = root.find_child("Screen", true, false)
+		var content: Control = root.find_child("Content", true, false)
+		var row: Control = root.find_child("Forecast", true, false)
+		var sr := scr.get_global_rect()
+		var alert_l: Control = null
+		for lab in content.find_children("*", "Label", false, false):
+			if (lab as Label).text.begins_with("Latest alert"):
+				alert_l = lab
+		var grow := sr.size.y - Panels.TV_SCREEN.y
+		var allowed := 0.5 + (alert_l.size.y + float(content.get_theme_constant("separation")) if alert_l else 0.0)
+		if grow > allowed or not Rect2(Vector2.ZERO, logical).encloses(root.find_child("TV", true, false).get_global_rect()):
+			bad.append("%s: the TV grew %.0f px (alert line %.0f)" % [res, grow, allowed])
+		for card in row.get_children():
+			var cr := (card as Control).get_global_rect()
+			if (card as Control).size.x > 368.5 or not sr.encloses(cr):
+				bad.append("%s: a card is %s" % [res, str(cr)])
+			for lab in (card as Node).find_children("*", "Label", true, false):
+				var lr := (lab as Control).get_global_rect()
+				var tw := (lab as Label).get_theme_font("font").get_string_size((lab as Label).text, HORIZONTAL_ALIGNMENT_LEFT, -1, (lab as Label).get_theme_font_size("font_size")).x
+				if not cr.encloses(lr) or tw > lr.size.x + 1.0:
+					bad.append("%s: \"%s\" doesn't fit its card" % [res, (lab as Label).text])
+		var comp := ComputerUI.new()
+		host.add_child(comp)
+		for k in range(4):
+			await _tree().process_frame
+		for p in _s7_fit_problems(comp, Rect2(Vector2.ZERO, logical)):
+			bad.append("%s Weather: %s" % [res, p])
+		comp.scroll.scroll_vertical = int(comp.content.size.y)
+		for k in range(2):
+			await _tree().process_frame
+		for p in _s7_fit_problems(comp, Rect2(Vector2.ZERO, logical)):
+			bad.append("%s Weather (scrolled): %s" % [res, p])
+		var n_cards := 0
+		for t in _s2_texts(comp.content).split("\n"):
+			n_cards += 1 if t.contains("High ") else 0
+		if n_cards != Weather.forecast_days():
+			bad.append("%s: the computer shows %d cards with the radar (%d days)" % [res, n_cards, Weather.forecast_days()])
+		host.queue_free()
+		await _frames(1)
+	runner.check(best >= 3000 and longest.contains("ending around") and bad.is_empty(), "§8 the fullest TV (three snow cards: %s, an alert), the longest bulletin (%d characters) and the computer's Weather app with the radar fit at every resolution%s" % [str(cards), longest.length(), "" if bad.is_empty() else " — " + str(bad.slice(0, 6))])
+	hud.subtitle("", 0.0)
+	Weather.alerts.clear()
+	Game.company_name = ""
+	await _unload()

@@ -493,10 +493,19 @@ func _fc_view(i: int, issued: int, lead: float, radio: bool) -> Dictionary:
 		if radio and close:
 			return {"visible": true, "cond": int(ev["cond"]), "scale": amt, "shift": shift}
 		return {"visible": false}
-	if int(ev["fc_cond"]) < int(ev["cond"]) and not close:
+	if int(ev["fc_cond"]) < int(ev["cond"]) and not close and not called_by(st, issued):
 		# Under-called: the forecast shows the weaker system it expects (a few cm).
 		return {"visible": true, "cond": int(ev["fc_cond"]), "scale": 4.0 / maxf(float(ev["total"]), 0.1) * amt, "shift": shift, "under": true}
 	return {"visible": true, "cond": int(ev["cond"]), "scale": amt, "shift": shift}
+
+
+## Polish 5 §8 (Decision 7): a storm that arrives stronger than forecast is called at its real
+## strength from 7:00 a.m. on the day it starts (the radio has it once it's inside its window).
+const CALL_HOUR := 7
+
+
+static func called_by(st: float, issued: int) -> bool:
+	return issued >= int(floor(st / 24.0)) * 24 + CALL_HOUR
 
 
 func _temp_noise(h: int) -> float:
@@ -564,66 +573,203 @@ func forecast(days: int) -> Array:
 		var day := today + kday
 		if day >= 121:
 			break
-		var entry := {"day": day, "date": Clock.date_string(day, true), "cond": C.CLEAR, "hi": -99.0, "lo": 99.0,
-			"snow_lo": 0.0, "snow_hi": 0.0, "wind": 0.0, "events": [], "issued": issued}
-		var cloudy := 0
-		for h in range(day * 24, day * 24 + 24):
-			var hc := C.CLEAR
-			var hr := 0.0
-			var ht := 0.0
-			var hw := 0.0
-			var spread := 0.0
-			if h < issued:
-				hc = cond[h]
-				hr = rate[h]
-				ht = temp[h]
-				hw = wind[h]
-			else:
-				var f := fc_hour(h, issued)
-				hc = f["cond"]
-				hr = f["rate"]
-				ht = f["temp"]
-				hw = f["wind"]
-				spread = minf(fc_error(float(h - issued)), 0.9)
-			entry["hi"] = maxf(entry["hi"], ht)
-			entry["lo"] = minf(entry["lo"], ht)
-			entry["wind"] = maxf(entry["wind"], hw)
-			entry["snow_lo"] += hr * (1.0 - spread)
-			entry["snow_hi"] += hr * (1.0 + spread)
-			if hc >= C.LIGHT:
-				entry["cond"] = maxi(entry["cond"], hc)
-			elif hc == C.CLOUDY and h % 24 >= 8 and h % 24 < 18:
-				cloudy += 1
-		if entry["cond"] == C.CLEAR and cloudy > 4:
-			entry["cond"] = C.CLOUDY
-		# Forecast systems touching the day (the computer's radar detail).
-		for i in range(events.size()):
-			var ev: Dictionary = events[i]
-			var lead := maxf(float(ev["start"]) - float(issued), 0.0)
-			var view := _fc_view(i, issued, lead, false)
-			if not view["visible"]:
-				continue
-			var fs := float(ev["start"]) + float(view["shift"])
-			var fe := float(ev["end"]) + float(view["shift"])
-			if fe < day * 24 or fs > day * 24 + 24:
-				continue
-			entry["events"].append({"start": fs, "end": fe, "cond": int(view["cond"])})
-		out.append(entry)
+		out.append(forecast_day(day, issued))
 	return out
 
 
-func forecast_text(entry: Dictionary, detail: int) -> String:
-	var s := "%s: %s, high %d° low %d°" % [entry["date"], NAMES[entry["cond"]], int(entry["hi"]), int(entry["lo"])]
-	if entry["snow_hi"] > 0.2:
-		if detail >= 1:
-			s += ", snow %d–%d cm" % [int(entry["snow_lo"]), int(ceil(entry["snow_hi"]))]
+## Polish 5 §8: one set of words for a snow system's strength — a light snowfall, a storm, a major
+## event — used by the TV, the computer and the radio.
+const TIER_NAMES := {"light": "Light snow", "storm": "Snowstorm", "major": "Major snowstorm"}
+const TIER_RANK := {"": 0, "light": 1, "storm": 2, "major": 3}
+const TIER_COND := {"": C.CLEAR, "light": C.LIGHT, "storm": C.HEAVY, "major": C.BLIZZARD}
+
+
+static func tier_name(t: String) -> String:
+	return str(TIER_NAMES.get(t, ""))
+
+
+## The strength an hour's condition reads as (light and moderate snow are a light snowfall).
+static func cond_tier(c: int) -> String:
+	if c >= C.BLIZZARD:
+		return "major"
+	if c >= C.HEAVY:
+		return "storm"
+	return "light" if c >= C.LIGHT else ""
+
+
+## The strength the forecast issued at hour `issued` names for event `i` ("" while it doesn't show
+## it): a forecast event's own tier; a storm still under-called reads as a light snowfall.
+func fc_tier(i: int, issued: int, radio := false) -> String:
+	var ev: Dictionary = events[i]
+	var view := _fc_view(i, issued, maxf(float(ev["start"]) - float(issued), 0.0), radio)
+	if not view["visible"]:
+		return ""
+	return "light" if view.get("under", false) else tier_of(ev)
+
+
+## When the forecast issued at `issued` has event `i` starting and ending (game hours; the timing
+## error shrinks as it gets closer, and is gone once it has started): [start, end], or [] when the
+## forecast doesn't show it.
+func fc_span(i: int, issued: int, radio := false) -> Array:
+	var ev: Dictionary = events[i]
+	var st: float = ev["start"]
+	var en: float = ev["end"]
+	var vs := _fc_view(i, issued, maxf(st - float(issued), 0.0), radio)
+	if not vs["visible"]:
+		return []
+	var ve := _fc_view(i, issued, maxf(en - float(issued), 0.0), radio)
+	return [st + float(vs["shift"]), en + float(ve.get("shift", vs["shift"]))]
+
+
+## The start time a card shows for event `i` issued at `issued`, to the hour (-1 when not shown).
+func shown_start_h(i: int, issued: int) -> float:
+	var sp := fc_span(i, issued)
+	return -1.0 if sp.is_empty() else roundf(float(sp[0]))
+
+
+## One day card (the TV's, the computer's) from the forecast issued at hour `issued`. The hours of
+## the day already gone and the hour now are what is happening (what the HUD shows, what falls);
+## the rest is the forecast. Polish 5 §8 adds the strength of the snow on the card ("tier") and
+## when it should start and end ("from_h" / "to_h", game hours; -1 without snow).
+func forecast_day(day: int, issued: int) -> Dictionary:
+	var entry := {"day": day, "date": Clock.date_string(day, true), "cond": C.CLEAR, "hi": -99.0, "lo": 99.0,
+		"snow_lo": 0.0, "snow_hi": 0.0, "wind": 0.0, "events": [], "issued": issued,
+		"tier": "", "from_h": -1.0, "to_h": -1.0}
+	var cloudy := 0
+	for h in range(day * 24, day * 24 + 24):
+		var hc := C.CLEAR
+		var hr := 0.0
+		var ht := 0.0
+		var hw := 0.0
+		var spread := 0.0
+		if h <= issued:
+			hc = cond[h]
+			hr = rate[h]
+			ht = temp[h]
+			hw = wind[h]
 		else:
-			s += ", snow expected"
+			var f := fc_hour(h, issued)
+			hc = f["cond"]
+			hr = f["rate"]
+			ht = f["temp"]
+			hw = f["wind"]
+			spread = minf(fc_error(float(h - issued)), 0.9)
+		entry["hi"] = maxf(entry["hi"], ht)
+		entry["lo"] = minf(entry["lo"], ht)
+		entry["wind"] = maxf(entry["wind"], hw)
+		entry["snow_lo"] += hr * (1.0 - spread)
+		entry["snow_hi"] += hr * (1.0 + spread)
+		if hc >= C.LIGHT:
+			entry["cond"] = maxi(entry["cond"], hc)
+		elif hc == C.CLOUDY and h % 24 >= 8 and h % 24 < 18:
+			cloudy += 1
+	if entry["cond"] == C.CLEAR and cloudy > 4:
+		entry["cond"] = C.CLOUDY
+	# The snow systems on the card: what has fallen today and is falling now, then every system the
+	# forecast puts snow on the rest of the day in (the same hours the hourly forecast above uses).
+	var d0 := day * 24
+	var d1 := d0 + 24
+	for i in range(events.size()):
+		var ev: Dictionary = events[i]
+		var st: float = ev["start"]
+		var en: float = ev["end"]
+		if en + 12.0 < float(d0) or st - 12.0 > float(d1):
+			continue
+		var hrs: Dictionary = ev["hours"]
+		var on := false
+		for h in range(d0, mini(d1, issued + 1)):
+			if hrs.has(h):
+				on = true
+				break
+		if not on:
+			for h in range(maxi(d0, issued + 1), d1):
+				var v := _fc_view(i, issued, float(h - issued), false)
+				if v["visible"] and hrs.has(int(floor(float(h) - float(v["shift"]) + 0.5))):
+					on = true
+					break
+		if not on:
+			continue
+		var t := fc_tier(i, issued)
+		var sp := fc_span(i, issued)
+		if t == "":
+			# An unforecast major event in the hour it starts: the TV names what is falling now only
+			# (it isn't on the TV before it starts — Decision 7; the next issue has it).
+			t = cond_tier(int((ev["hcond"] as Dictionary).get(issued, C.LIGHT)))
+			sp = [st, float(issued + 1)]
+		if TIER_RANK[t] > TIER_RANK[entry["tier"]]:
+			entry["tier"] = t
+		entry["from_h"] = float(sp[0]) if entry["from_h"] < 0.0 else minf(entry["from_h"], float(sp[0]))
+		entry["to_h"] = maxf(entry["to_h"], float(sp[1]))
+		# Forecast systems touching the day (the computer's radar detail).
+		entry["events"].append({"start": float(sp[0]), "end": float(sp[1]), "cond": TIER_COND[t], "tier": t})
+	# The icon follows the strength named.
+	entry["cond"] = maxi(entry["cond"], TIER_COND[entry["tier"]])
+	return entry
+
+
+## Polish 5 §8: a day card's words — the same on the TV and the computer: the date, the strength
+## (or the sky when no snow is due), the snow expected as a range, when it should start and end,
+## and the high and low. {date, title, amount, when, temps}
+static func card_text(entry: Dictionary) -> Dictionary:
+	var tier := str(entry.get("tier", ""))
+	if tier == "" and int(entry["cond"]) >= C.LIGHT:
+		tier = cond_tier(int(entry["cond"]))
+	var title: String = tier_name(tier) if tier != "" else NAMES[int(entry["cond"])]
+	var amount := snow_range_text(entry)
+	if tier != "" and amount == "":
+		amount = "Under 1 cm"
+	return {"date": str(entry["date"]), "title": title, "amount": amount if tier != "" else "",
+		"when": when_text(entry, float(entry.get("from_h", -1.0)), float(entry.get("to_h", -1.0))) if tier != "" else "",
+		"temps": "High %d°  ·  Low %d°" % [int(entry["hi"]), int(entry["lo"])]}
+
+
+## "from about 2 p.m.", "from about 2 p.m. to 10 p.m.", "until about 10 a.m.", "all day" — when the
+## snow on a day card starts and ends, to the hour. A midnight that would read as the wrong end of
+## the day is said in words: "overnight" (starting late that night), "until just after midnight".
+static func when_text(entry: Dictionary, a: float, b: float) -> String:
+	if a < 0.0 or b < 0.0:
+		return ""
+	var d0 := int(entry["day"]) * 24
+	var ha := int(roundf(a))
+	var hb := int(roundf(b))
+	var starts := ha >= d0
+	var ends := hb <= d0 + 24
+	if starts and ha >= d0 + 24:
+		return "overnight"
+	if ends and hb <= d0:
+		return "until just after midnight"
+	if starts and ends:
+		if hb <= ha:
+			return "around %s" % hour_name(ha)
+		return "from about %s to %s" % [hour_name(ha), hour_name(hb)]
+	if starts:
+		return "from about %s" % hour_name(ha)
+	if ends:
+		return "until about %s" % hour_name(hb)
+	return "all day"
+
+
+## One line for a card: "Snowstorm · 15–25 cm · from about 2 p.m."
+static func card_line(entry: Dictionary) -> String:
+	var c := card_text(entry)
+	var parts := [c["title"]]
+	for k in ["amount", "when"]:
+		if str(c[k]) != "":
+			parts.append(c[k])
+	return "  ·  ".join(parts)
+
+
+## The computer's card for a day: the TV's card, then the weather apps' detail (wind; the radar's
+## systems hour by hour).
+func forecast_text(entry: Dictionary, detail: int) -> String:
+	var c := card_text(entry)
+	var s := "%s  ·  %s" % [c["date"], card_line(entry)]
+	s += "\n" + str(c["temps"])
 	if detail >= 1:
-		s += ", wind %d km/h" % int(entry["wind"])
+		s += "  ·  wind %d km/h" % int(entry["wind"])
 	if detail >= 2:
 		for e in entry["events"]:
-			s += "\n    %s from %s to %s" % [NAMES[e["cond"]], Clock.format_time(maxf(e["start"], 0.0) * 60.0), Clock.format_time(e["end"] * 60.0)]
+			s += "\n    %s from %s to %s" % [tier_name(str(e.get("tier", cond_tier(int(e["cond"]))))), Clock.format_time(maxf(e["start"], 0.0) * 60.0), Clock.format_time(e["end"] * 60.0)]
 	return s
 
 
@@ -653,7 +799,9 @@ static func hour_name(h: int) -> String:
 ## The radio's bulletin: what is happening now if it's snowing, then the next three game hours —
 ## the hour, the condition, the temperature (on the first hour and when it changes), the snowfall
 ## rate when it's heavy, rising wind. "2 p.m. light snow, −9°. 3 p.m. moderate snow, wind picking
-## up. 4 p.m. heavy snow, 3 to 5 cm an hour."
+## up. 4 p.m. heavy snow, 3 to 5 cm an hour." Polish 5 §8: then, from start to end, the system
+## falling now or due in the window — its strength, when it should end and how much more is coming
+## ("Snowstorm ending around 10 p.m., another 8 to 12 cm.") — or "Snow has ended." once it's over.
 func radio_bulletin() -> String:
 	var issued := _hidx()
 	var parts := []
@@ -687,7 +835,101 @@ func radio_bulletin() -> String:
 			p += ", %d to %d cm an hour" % [lo, hi]
 		prev_w = float(f["wind"])
 		parts.append(p + ".")
+	var spell := radio_spell_text()
+	if spell != "":
+		parts.append(spell)
 	return " ".join(parts)
+
+
+## The radio's window: the rest of the hour now and the next three game hours.
+const RADIO_WINDOW_H := 3
+
+
+## The snow systems the radio follows now, as its forecast sees them: the one falling now, then the
+## next one due to start in its window (at most two, in that order). [] when there are none.
+func radio_spells(issued: int) -> Array:
+	var now_h := Clock.minutes / 60.0
+	var falling_i := -1
+	var due := []
+	for i in range(events.size()):
+		var ev: Dictionary = events[i]
+		if float(ev["end"]) + 6.0 < now_h or float(ev["start"]) - 6.0 > float(issued + RADIO_WINDOW_H + 1):
+			continue
+		var sp := fc_span(i, issued, true)
+		if sp.is_empty():
+			continue
+		if falling_i < 0 and (ev["hours"] as Dictionary).has(issued) and rate[issued] > 0.01:
+			falling_i = i
+			continue
+		if float(sp[1]) <= now_h or float(sp[0]) >= float(issued + RADIO_WINDOW_H + 1):
+			continue
+		due.append([float(sp[0]), i])
+	due.sort()
+	var out := []
+	if falling_i >= 0:
+		out.append(falling_i)
+	for d in due:
+		if out.size() < 2:
+			out.append(int(d[1]))
+	return out
+
+
+## The first of them (-1 when there is none).
+func radio_spell(issued: int) -> int:
+	var sp := radio_spells(issued)
+	return int(sp[0]) if not sp.is_empty() else -1
+
+
+## "Snowstorm ending around 10 p.m., another 8 to 12 cm." while a system falls, "Snowstorm ending
+## around 10 p.m., 15 to 25 cm in all." for one due in the radio's window (both when one follows
+## the other); "Snow has ended." in the hours after the last one ended; "" otherwise.
+func radio_spell_text() -> String:
+	var issued := _hidx()
+	var spells := radio_spells(issued)
+	if spells.is_empty():
+		var ended := last_snow_end_minutes()
+		if ended >= 0.0 and Clock.minutes - ended <= RADIO_WINDOW_H * 60.0 and Clock.minutes >= ended:
+			return "Snow has ended."
+		return ""
+	var out := []
+	for i in spells:
+		out.append(_spell_line(int(i), issued))
+	return " ".join(out)
+
+
+func _spell_line(i: int, issued: int) -> String:
+	var ev: Dictionary = events[i]
+	var sp := fc_span(i, issued, true)
+	var hrs: Dictionary = ev["hours"]
+	var falling := hrs.has(issued) and rate[issued] > 0.01
+	# How much more: the rest of the hour now (what is falling), then the radio's forecast of the
+	# system hour by hour to its end (the same hours the hourly forecast uses).
+	var now_h := Clock.minutes / 60.0
+	var more := 0.0
+	if hrs.has(issued):
+		more += float(hrs[issued]) * clampf(float(issued + 1) - now_h, 0.0, 1.0)
+	var lead_sum := 0.0
+	var lead_w := 0.0
+	for h in range(issued + 1, mini(int(ceil(float(sp[1]))) + 2, HOURS)):
+		var v := _fc_view(i, issued, float(h - issued), true)
+		if not v["visible"]:
+			continue
+		var r := float(hrs.get(int(floor(float(h) - float(v["shift"]) + 0.5)), 0.0)) * float(v["scale"])
+		more += r
+		lead_sum += r * float(h - issued)
+		lead_w += r
+	var e := minf(fc_error(lead_sum / lead_w if lead_w > 0.0 else 0.0), 0.9)
+	var lo := int(floor(more * (1.0 - e)))
+	var hi := maxi(int(ceil(more * (1.0 + e))), lo + 1)
+	var end_h := int(roundf(float(sp[1])))
+	@warning_ignore("integer_division")
+	var later := (end_h - 1) / 24 > issued / 24
+	var s := "%s ending around %s%s" % [tier_name(fc_tier(i, issued, true)), hour_name(end_h), " tomorrow" if later else ""]
+	if more * (1.0 + e) < 1.0:
+		return s if s.ends_with(".") else s + "."
+	if lo <= 0:
+		return s + (", up to %d cm more." % hi if falling else ", up to %d cm." % hi)
+	return s + (", another %d to %d cm." % [lo, hi] if falling else ", %d to %d cm in all." % [lo, hi])
 
 
 static func _deg(t: float) -> String:
@@ -752,8 +994,10 @@ func serialize() -> Dictionary:
 	var ev := []
 	for e in events:
 		ev.append({"start": e["start"], "alerted": e["alerted"], "warned": e["warned"]})
+	# Polish 5 §8: the recent alerts too (optional key), so the TV's "Latest alert" and the
+	# computer's list read the same after a reload.
 	return {"year": year, "seed": seed_value, "events": ev, "override_cond": override_cond,
-		"override_rate": override_rate, "override_until": override_until}
+		"override_rate": override_rate, "override_until": override_until, "alerts": alerts.duplicate(true)}
 
 
 func deserialize(d: Dictionary) -> void:
@@ -768,3 +1012,9 @@ func deserialize(d: Dictionary) -> void:
 	override_cond = int(d.get("override_cond", -1))
 	override_rate = float(d.get("override_rate", -1.0))
 	override_until = float(d.get("override_until", -1.0))
+	alerts.clear()
+	for a in d.get("alerts", []):
+		if a is Dictionary and a.has("text"):
+			alerts.append({"time": float(a.get("time", 0.0)), "text": str(a["text"])})
+	while alerts.size() > 20:
+		alerts.pop_front()

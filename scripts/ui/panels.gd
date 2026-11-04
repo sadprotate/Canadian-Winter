@@ -156,7 +156,7 @@ static func sleep(parent: Control, on_pick: Callable, on_cancel: Callable) -> Co
 const TV_SCREEN := Vector2(1280, 720)
 
 
-static func tv(parent: Control, on_close: Callable) -> Control:
+static func tv(parent: Control, on_close: Callable, jingle := true) -> Control:
 	var root := _dim(parent, 0.55)
 	var center := CenterContainer.new()
 	UIKit.full_rect(center)
@@ -210,21 +210,30 @@ static func tv(parent: Control, on_close: Callable) -> Control:
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	v.add_child(row)
 	for e in Weather.forecast(3):
-		var card := UIKit.panel(UIKit.sb(Color(1, 1, 1, 0.07), 10, 0, Color.TRANSPARENT, 18))
+		# Polish 5 §8: one line more per card (when the snow starts and ends) in the same screen —
+		# a smaller icon (88 → 72 px) and tighter spacing inside the card.
+		var csb := UIKit.sb(Color(1, 1, 1, 0.07), 10, 0, Color.TRANSPARENT, 18)
+		csb.content_margin_top = 8
+		csb.content_margin_bottom = 8
+		var card := UIKit.panel(csb)
 		card.custom_minimum_size = Vector2(368, 0)
 		row.add_child(card)
-		var cv := UIKit.vbox(6)
+		var cv := UIKit.vbox(2)
 		cv.alignment = BoxContainer.ALIGNMENT_CENTER
 		card.add_child(cv)
-		cv.add_child(UIKit.label(str(e["date"]), 28, gold, HORIZONTAL_ALIGNMENT_CENTER))
+		# Polish 5 §8: the card's words come from Weather.card_text (the computer shows the same):
+		# the strength, the snow as a range, when it should start and end, the high and low.
+		var ct := Weather.card_text(e)
+		cv.add_child(UIKit.label(ct["date"], 28, gold, HORIZONTAL_ALIGNMENT_CENTER))
 		var ic := CenterContainer.new()
-		ic.add_child(Icons.weather(e["cond"], 88))
+		ic.add_child(Icons.weather(e["cond"], 72))
 		cv.add_child(ic)
-		cv.add_child(UIKit.label(Weather.NAMES[e["cond"]], 32, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER))
-		cv.add_child(UIKit.label("High %d°  ·  Low %d°" % [int(e["hi"]), int(e["lo"])], 26, Color(0.88, 0.92, 1.0), HORIZONTAL_ALIGNMENT_CENTER))
-		var snow := Weather.snow_range_text(e)
-		if snow != "":
-			cv.add_child(UIKit.label("Snow " + snow, 24, Color(0.75, 0.9, 1.0), HORIZONTAL_ALIGNMENT_CENTER))
+		cv.add_child(UIKit.label(ct["title"], 32, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER))
+		if ct["amount"] != "":
+			cv.add_child(UIKit.label(ct["amount"], 26, Color(0.75, 0.9, 1.0), HORIZONTAL_ALIGNMENT_CENTER))
+		if ct["when"] != "":
+			cv.add_child(UIKit.label(ct["when"], 22, Color(0.75, 0.9, 1.0), HORIZONTAL_ALIGNMENT_CENTER))
+		cv.add_child(UIKit.label(ct["temps"], 24, Color(0.88, 0.92, 1.0), HORIZONTAL_ALIGNMENT_CENTER))
 	if not Weather.alerts.is_empty():
 		var a: Dictionary = Weather.alerts[Weather.alerts.size() - 1]
 		var al := UIKit.label("Latest alert: " + str(a["text"]), 24, UIKit.WARN, HORIZONTAL_ALIGNMENT_CENTER)
@@ -250,7 +259,8 @@ static func tv(parent: Control, on_close: Callable) -> Control:
 		on_close.call(), 22, 240)
 	b.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	col.add_child(b)
-	AudioMgr.play("radio_jingle", -6.0)
+	if jingle:
+		AudioMgr.play("radio_jingle", -6.0)
 	return root
 
 
