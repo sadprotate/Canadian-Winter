@@ -12,7 +12,7 @@ static func explanation(survival: bool) -> Array:
 	else:
 		out.append({"speaker": "Gerry", "text": "Cold winter, eh? Good thing you're a tough one. Dress warm and enjoy the snow."})
 	out.append({"speaker": "Gerry", "text": "Now, come look at my computer. Everything for the business goes through one of these: ordering equipment, finding work, the forecast, paying your bills. You've got one at home too — I've set it up for you, so it's unlocked now."})
-	out.append({"speaker": "Gerry", "text": "Need a tool or a machine? Order it on the computer from Northern Supply Co. up on Cedar Lane. They put your order out in their parking lot — you have to go pick it up yourself. They're open 7 in the morning till 9 at night."})
+	out.append({"speaker": "Gerry", "text": "Need a tool or a machine? Order it on the computer from Northern Supply Co. at %s. They put your order out in their parking lot — you have to go pick it up yourself. They're open 7 in the morning till 9 at night." % Layout.building_by_id("store")["address"]})
 	out.append({"speaker": "Gerry", "text": "You can buy upgrades there too: bigger shovel blades, better throws, warmer jackets, even a fancy weather app."})
 	out.append({"speaker": "Gerry", "text": "The contract board lists people who need snow cleared. You put in a bid; other outfits bid too, so price it right. Jobs near your other clients are easier to win. Some are one-time, some want you all winter, every time it snows."})
 	if survival:

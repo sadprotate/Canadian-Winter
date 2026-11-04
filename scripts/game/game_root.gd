@@ -631,7 +631,7 @@ func open_mailbox() -> void:
 		body = "Dear Customer,\n\nA reminder that your residential hydro and heating service at %s must be paid every month.\n\nYour monthly hydro/heating bill of $%d is due on the 15th of every month. Unpaid accounts will be disconnected.\n\nThank you for choosing Maple Ridge Hydro. Stay warm this winter!\n\n— Customer Accounts" % [Layout.player_lot["address"], Catalog.balance.hydro_bill]
 	else:
 		title = "Welcome to Winter in Maple Ridge!"
-		body = "Neighbours!\n\nThe Maple Ridge Community Association wishes everyone a safe and cozy winter.\n\n• Please keep snow off the streets — the city grader needs the room.\n• Check on your neighbours after big storms.\n• The Northern Supply Co. on Cedar Lane is open 7:00–21:00 for all your winter needs.\n\nHappy shovelling!\n— Your Community Association"
+		body = "Neighbours!\n\nThe Maple Ridge Community Association wishes everyone a safe and cozy winter.\n\n• Please keep snow off the streets — the city grader needs the room.\n• Check on your neighbours after big storms.\n• Northern Supply Co. at %s is open 7:00–21:00 for all your winter needs.\n\nHappy shovelling!\n— Your Community Association" % Layout.building_by_id("store")["address"]
 	var first: bool = not Game.flags.get("mail_read", false)
 	Game.flags["mail_read"] = true
 	var root := Panels.letter(hud, title, body, func():
@@ -675,7 +675,7 @@ func neighbor_dialogue(n: Neighbor) -> void:
 				var pay := int(Game.flags.get("tutorial_pay", 45))
 				Contracts.create_tutorial_contract(pay)
 				Game.set_stage(Game.Stage.NEIGHBOR_TALKED)
-				Notify.push("Contract accepted: Gerry's path — %s. Clear the outlined path from his steps down to his mailbox." % UIKit.money(pay), Notify.GOOD)
+				Notify.push("Contract accepted: Gerry's path, %s — %s. Clear the outlined path from his steps down to his mailbox." % [Layout.neighbor_lot["address"], UIKit.money(pay)], Notify.GOOD)
 				# Polish 5 §4: then, on the HUD (you keep walking), the two ways to move snow.
 				say_gerry(HelpText.snow_tips()))
 		open_modal(root, "dialogue")

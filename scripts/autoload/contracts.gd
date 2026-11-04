@@ -428,7 +428,7 @@ func _add_area_listing(a: Dictionary, day: int, rng: RandomNumberGenerator) -> v
 	var vol := zone_estimate(zones[0])
 	var est := vol if not recurring else zone_area(zones[0]) * 0.07
 	var budget := int(_price(est, recurring) * 1.25)
-	listings.append({"lid": _next_id, "target": "area:" + a["id"], "address": a["name"], "client": a["name"].split(" parking")[0],
+	listings.append({"lid": _next_id, "target": "area:" + a["id"], "address": a["place"], "client": a["name"].split(" parking")[0],
 		"type": "recurring" if recurring else "one_time", "zones": zones, "est_volume": est, "budget": budget,
 		"expires": day + rng.randi_range(2, 4), "pos": [r.get_center().x, r.get_center().y], "large": true})
 	_next_id += 1
@@ -649,6 +649,19 @@ func deserialize(d: Dictionary) -> void:
 		for z in l["zones"]:
 			if not z.has("boxes"):
 				z["boxes"] = _migrate_zone_boxes(l, z)
+	# Polish 5 §5: every place is named as the layout names it now (a parking lot saved before §5
+	# was "<building> parking lot"; it is "<building>, <address>").
+	for c in active + listings:
+		var place := Layout.place_name(str(c.get("target", "")))
+		if place != "":
+			c["address"] = place
+	for bd in bids:
+		var bl: Dictionary = bd.get("listing", {})
+		var bplace := Layout.place_name(str(bl.get("target", "")))
+		if bplace != "":
+			bl["address"] = bplace
+	for h in history:
+		h["address"] = Layout.current_place(str(h.get("address", "")))
 	changed.emit()
 
 

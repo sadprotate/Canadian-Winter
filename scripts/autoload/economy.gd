@@ -138,7 +138,7 @@ func buy(item_id: String) -> Dictionary:
 	orders_changed.emit()
 	Game.dirty_since_save = true
 	if open:
-		Notify.push("Order placed: %s — ready for pickup at Northern Supply Co." % item_label, Notify.GOOD)
+		Notify.push("Order placed: %s — ready for pickup at %s." % [item_label, Layout.building_by_id("store")["place"]], Notify.GOOD)
 		return {"ok": true, "msg": "%s is ready for pickup at the store lot." % item_label}
 	Notify.push("Order placed: %s — ready at 7:00 when the store opens." % item_label, Notify.INFO)
 	return {"ok": true, "msg": "%s will be ready at 7:00." % item_label}
@@ -265,6 +265,8 @@ func deserialize(d: Dictionary) -> void:
 		bl["month"] = int(bl["month"])
 		bl["due_day"] = int(bl["due_day"])
 	transactions = d.get("tx", [])
+	for t in transactions:
+		t["text"] = Layout.current_place(str(t.get("text", "")))   # polish 5 §5: places as named now
 	_next_order = int(d.get("next_order", 1))
 	orders_changed.emit()
 	bills_changed.emit()

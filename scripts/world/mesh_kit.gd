@@ -264,6 +264,43 @@ func pillow(mat: Material, xf: Transform3D, sx: float, sz: float, thickness: flo
 			tri(mat, xf * p00, xf * p11, xf * p01, w00, w11, w01, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, _xn(xf, Vector3.UP))
 
 
+## Polish 5 §5: flat text in the game's font (the UI's font, ThemeDB.fallback_font, through
+## TextMesh's glyph outlines): the glyphs' height (digits and capitals) is `height`, centred on
+## xf's origin, reading along xf's +X and facing its +Z. Returns the text's width.
+func text(mat: Material, xf: Transform3D, s: String, height: float) -> float:
+	var tm := TextMesh.new()
+	tm.font = ThemeDB.fallback_font
+	tm.font_size = 32
+	tm.curve_step = 1.0
+	tm.depth = 0.0
+	tm.text = s
+	var arr := tm.get_mesh_arrays()
+	if arr.is_empty():
+		return 0.0
+	var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+	var nrm: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
+	var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX] if arr[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
+	if idx.is_empty():
+		for i in range(v.size()):
+			idx.append(i)
+	var lo := Vector3(INF, INF, INF)
+	var hi := -lo
+	for p in v:
+		lo = lo.min(p)
+		hi = hi.max(p)
+	var k := height / maxf(hi.y - lo.y, 0.0001)
+	var mid := (lo + hi) * 0.5
+	var n := _xn(xf, Vector3.BACK)
+	for t in range(0, idx.size() - 2, 3):
+		if nrm[idx[t]].z < 0.5:
+			continue   # only the front face of the glyphs
+		var a := xf * Vector3((v[idx[t]].x - mid.x) * k, (v[idx[t]].y - mid.y) * k, 0.0)
+		var b := xf * Vector3((v[idx[t + 1]].x - mid.x) * k, (v[idx[t + 1]].y - mid.y) * k, 0.0)
+		var c := xf * Vector3((v[idx[t + 2]].x - mid.x) * k, (v[idx[t + 2]].y - mid.y) * k, 0.0)
+		tri(mat, a, b, c, n, n, n, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, n)
+	return (hi.x - lo.x) * k
+
+
 static func _grid_normal(pts: Array, ix: int, iz: int, nx: int, nz: int) -> Vector3:
 	var l: Vector3 = pts[iz][maxi(ix - 1, 0)]
 	var r: Vector3 = pts[iz][mini(ix + 1, nx)]

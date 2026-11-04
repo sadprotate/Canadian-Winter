@@ -2150,3 +2150,314 @@ func test_s4_photo_hint_and_view() -> void:
 	await _frames(2)
 	runner.check(world.modal == null and not _tree().paused, "§4 Esc puts it down too")
 	await _unload()
+
+
+# =============================================================================
+# §5 House and building numbers
+# =============================================================================
+
+## Where along its street a place is, and on which side ([along, side]: side +1 = the left side going
+## the way the numbers rise). A lot by its centre; a building by its property (building + parking
+## lot) along the lane.
+static func _s5_along(p: Vector2, street: String) -> Array:
+	for r in Layout.roads:
+		if r["name"] != street:
+			continue
+		var c := (r["rect"] as Rect2).get_center()
+		if r["horizontal"]:
+			return [p.x, 1.0 if p.y < c.y else -1.0]    # going east (+x), the left is north (-z)
+		return [p.y, 1.0 if p.x > c.x else -1.0]         # going south (+z), the left is east (+x)
+	return [0.0, 0.0]
+
+
+static func _s5_property_center(b: Dictionary) -> Vector2:
+	var r: Rect2 = b["rect"]
+	for a in Layout.big_areas:
+		if a.get("building", "") == b["id"]:
+			r = r.merge(a["rect"])
+	return r.get_center()
+
+
+## Every place's address comes from the layout: the houses keep theirs (24 and 28 Maple Street are
+## the playtest's), the school, the store and the church have one in the same scheme — on each
+## street odd numbers on one side and even on the other, unique, rising along it — and place_name()
+## names every contract target from it.
+func test_s5_addresses_from_the_layout() -> void:
+	Layout.ensure()
+	var l24 := Layout.lot_by_address(24, Layout.STREET_MAPLE)
+	var l28 := Layout.lot_by_address(28, Layout.STREET_MAPLE)
+	runner.check(not l24.is_empty() and not l28.is_empty() and int(l24["index"]) == 9 and int(l28["index"]) == 10 and not l24["vacant"] and not l28["vacant"], "§5 24 and 28 Maple Street are lots 9 and 10, as before")
+	var by_street := {}
+	var bad := []
+	for lot in Layout.lots:
+		if lot["address"] != "%d %s" % [lot["number"], lot["street"]]:
+			bad.append(lot["address"])
+		var a := _s5_along(Vector2(lot["center_x"], lot["front_z"]), lot["street"])
+		by_street.get_or_add(lot["street"], []).append([a[0], a[1], int(lot["number"]), str(lot["address"])])
+	for b in Layout.buildings:
+		if not b.has("number") or b["address"] != "%d %s" % [b["number"], b["street"]] or b["place"] != "%s, %s" % [b["name"], b["address"]]:
+			bad.append(str(b["id"]))
+			continue
+		var a2 := _s5_along(_s5_property_center(b), b["street"])
+		by_street.get_or_add(b["street"], []).append([a2[0], a2[1], int(b["number"]), str(b["address"])])
+	runner.check(bad.is_empty(), "§5 every house and building has an address, number + street %s" % str(bad))
+	for street in by_street.keys():
+		var rows: Array = by_street[street]
+		var nums := {}
+		var probs := []
+		for r in rows:
+			if nums.has(r[2]):
+				probs.append("%d twice" % r[2])
+			nums[r[2]] = true
+			# The left side going up is odd (Maple and Birch: the north side, as the layout has it).
+			if (int(r[2]) % 2 == 1) != (float(r[1]) > 0.0):
+				probs.append("%s on the wrong side" % r[3])
+		for side in [1.0, -1.0]:
+			var on := rows.filter(func(x): return float(x[1]) == side)
+			on.sort_custom(func(x, y): return float(x[0]) < float(y[0]))
+			for k in range(1, on.size()):
+				if int(on[k][2]) <= int(on[k - 1][2]):
+					probs.append("%s before %s" % [on[k - 1][3], on[k][3]])
+		runner.check(probs.is_empty(), "§5 %s: %d numbers, unique, odd on one side and even on the other, rising along it %s" % [street, rows.size(), str(probs)])
+	runner.info("§5 the buildings: " + ", ".join(Layout.buildings.map(func(b): return "%s %s" % [b["name"], b["address"]])))
+	# One name per place, from the layout.
+	var names := []
+	for lot in Layout.lots:
+		if Layout.place_name("lot:%d" % lot["index"]) != lot["address"]:
+			names.append(lot["address"])
+	for a in Layout.big_areas:
+		var want: String = a["name"] if a["id"] == "dump_lot" else "%s, %s" % [Layout.building_by_id(a["building"])["name"], Layout.building_by_id(a["building"])["address"]]
+		if Layout.place_name("area:%s" % a["id"]) != want or a["place"] != want:
+			names.append(a["id"])
+	for seg in Layout.road_segments:
+		if Layout.place_name("road:%s" % seg["id"]) != seg["name"]:
+			names.append(seg["id"])
+	runner.check(names.is_empty() and Layout.place_name("nowhere") == "", "§5 place_name() names every lot, parking lot and street section from the layout %s" % str(names))
+	runner.check(Layout.current_place("Contract payment: Northern Supply Co. parking lot") == "Contract payment: Northern Supply Co., 11 Cedar Lane" and Layout.current_place("24 Maple Street") == "24 Maple Street", "§5 a parking lot's old name reads as its address now")
+
+
+## The pixels a height `h` m covers at `dist` m on a 1080-line screen with the default field of view.
+static func _s5_px(h: float, dist: float) -> float:
+	return h / (2.0 * dist * tan(deg_to_rad(75.0) * 0.5)) * 1080.0
+
+
+## Every house has its number on a plate by the front door, facing the street, readable from the
+## sidewalk (in view, big enough) by day and at night (the porch lantern lights it), and on its
+## mailbox's door; every other building has larger numbers by its main entrance, facing the street.
+## All of them match the layout and are drawn only within reading range.
+func test_s5_numbers_on_every_house_and_building() -> void:
+	await _s3_world()
+	var space := (world as Node3D).get_world_3d().direct_space_state
+	var houses := 0
+	var bad := []
+	var min_px := INF
+	for lot in Layout.lots:
+		if lot["vacant"]:
+			continue
+		houses += 1
+		var h: Dictionary = world.refs["houses"][lot["index"]]
+		var plate: MeshInstance3D = h.get("number")
+		var addr: String = lot["address"]
+		if plate == null or not is_instance_valid(plate) or int(plate.get_meta("number", -1)) != int(lot["number"]) or plate.get_meta("address", "") != addr:
+			bad.append("%s: no plate with its number" % addr)
+			continue
+		var hi := Layout.house_info(lot)
+		var f: Vector2 = hi["facing"]
+		var z := plate.global_transform.basis.z.normalized()
+		var x := plate.global_transform.basis.x.normalized()
+		if Vector2(z.x, z.z).dot(f) < 0.99 or x.cross(Vector3.UP).dot(z) < 0.99:
+			bad.append("%s: the plate doesn't face the street (or is mirrored)" % addr)
+		var hollow: bool = lot["is_player"] or lot["is_neighbor"]
+		var L := HouseBuilder.lot_transform(lot)
+		var local := L.affine_inverse() * plate.global_position
+		var face := float(lot["setback"]) - (0.055 if hollow else 0.0)
+		if absf(local.z - face) > 0.03 or Vector2(local.x, local.y).distance_to(Vector2(-1.5, 1.6)) > 1.2:
+			bad.append("%s: not on the front wall by the door %s" % [addr, str(local)])
+		# The porch lantern just above it lights it at night.
+		var lamp := L * Vector3(-0.55, 2.0, float(lot["setback"]) - 0.15)
+		var mats := []
+		for s in plate.mesh.get_surface_count():
+			mats.append(plate.mesh.surface_get_material(s))
+		var lit := mats.size() == 2
+		for m in mats:
+			lit = lit and m is ShaderMaterial and (m as ShaderMaterial).shader.resource_path.ends_with("address_plate.gdshader") and float((m as ShaderMaterial).get_shader_parameter("lamp")) > 0.0
+		var to_lamp := lamp - plate.global_position
+		if not lit or to_lamp.y < 0.2 or to_lamp.length() > 0.6:
+			bad.append("%s: not lit by the porch lantern (%s)" % [addr, str(to_lamp)])
+		if plate.visibility_range_end <= 0.0 or plate.visibility_range_end > 60.0 or plate.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+			bad.append("%s: drawn at any distance" % addr)
+		# From the sidewalk at the foot of the walk (eye 1.6 m over the snow there): in view, readable.
+		var foot := Layout.lot_to_world(lot, Layout.gu(lot, -1.5), -0.75)
+		var eye := Vector3(foot.x, Snow.surface_height(foot.x, foot.y) + 1.6, foot.y)
+		var tgt := plate.global_position
+		var hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(eye, tgt - (tgt - eye).normalized() * 0.05, 1))
+		var d := eye.distance_to(tgt)
+		var px := _s5_px(AddressSigns.PLATE_DIGIT_H, d) * (tgt - eye).normalized().dot(-z)
+		min_px = minf(min_px, px)
+		if not hit.is_empty() or px < 10.0:
+			bad.append("%s: not readable from the sidewalk (%s, %.1f px at %.1f m)" % [addr, "blocked" if not hit.is_empty() else "clear", px, d])
+		# The mailbox's door.
+		var mb: Node3D = world.refs["mailboxes"][lot["index"]]
+		var mn: MeshInstance3D = mb.get_node_or_null("MailboxNumber")
+		if mn == null or int(mn.get_meta("number", -1)) != int(lot["number"]) or mn.visibility_range_end <= 0.0:
+			bad.append("%s: no number on the mailbox" % addr)
+		elif Vector2(-mb.global_transform.basis.z.x, -mb.global_transform.basis.z.z).normalized().dot(f) < 0.99 or mn.mesh.get_surface_count() != 1:
+			bad.append("%s: the mailbox's number doesn't face the street" % addr)
+	runner.check(bad.is_empty(), "§5 all %d houses: the number on a plate by the front door, under the porch lantern, facing the street, readable from the sidewalk (≥ %.1f px at 1080p), and on the mailbox %s" % [houses, min_px, str(bad)])
+	runner.check(world.refs["mailboxes"].size() == houses, "§5 still one mailbox per house (%d)" % world.refs["mailboxes"].size())
+	# The other buildings: from the street, at the entrance to their lot.
+	var bb := []
+	for b in Layout.buildings:
+		var l: Label3D = world.refs["building_numbers"].get(b["id"])
+		if l == null or l.text != str(b["number"]) or l.get_meta("address", "") != b["address"]:
+			bb.append("%s: no number" % b["id"])
+			continue
+		var r: Rect2 = b["rect"]
+		var z2 := l.global_transform.basis.z.normalized()
+		var p2 := Vector2(l.global_position.x, l.global_position.z)
+		var on_wall := r.grow(0.1).has_point(p2) and not r.grow(-0.1).has_point(p2)
+		var outward := not r.has_point(p2 + Vector2(z2.x, z2.z) * 0.5)
+		var apron: Rect2 = Layout.big_areas.filter(func(a): return a.get("building", "") == b["id"])[0]["apron"]
+		var eye2 := Vector3(apron.get_center().x, 1.6, apron.get_center().y)
+		var to_eye := (eye2 - l.global_position).normalized()
+		var hit2 := space.intersect_ray(PhysicsRayQueryParameters3D.create(eye2, l.global_position + to_eye * 0.1, 1))
+		var px2 := _s5_px(AddressSigns.BUILDING_DIGIT_H, eye2.distance_to(l.global_position)) * to_eye.dot(z2)
+		var digit_h := l.font_size * l.pixel_size * 0.72
+		if not on_wall or not outward or to_eye.dot(z2) < cos(deg_to_rad(60.0)) or not hit2.is_empty() or px2 < 10.0:
+			bb.append("%s: on the wall %s, outward %s, %.0f° off the street, %s, %.1f px" % [b["id"], on_wall, outward, rad_to_deg(acos(clampf(to_eye.dot(z2), -1.0, 1.0))), "blocked" if not hit2.is_empty() else "clear", px2])
+		elif digit_h < 3.0 * AddressSigns.PLATE_DIGIT_H or l.visibility_range_end <= 0.0:
+			bb.append("%s: not larger than a house's, or drawn at any distance" % b["id"])
+		else:
+			runner.info("§5 %s: %s on its %s, %.0f° off the way to its lot's entrance, %.0f px from there" % [b["name"], b["address"], "front" if absf(z2.z) > 0.5 else "end wall", rad_to_deg(acos(clampf(to_eye.dot(z2), -1.0, 1.0))), px2])
+	runner.check(bb.is_empty(), "§5 the school, the store and the church: larger numbers by the main entrance, facing the street, readable from the entrance to their lot %s" % str(bb))
+	await _unload()
+
+
+## The same address wherever a place is named: the clearing boxes (the HUD box line), the contract
+## board, contracts and their notifications, the history, the store's texts; old saves read the same.
+func test_s5_same_addresses_everywhere() -> void:
+	await _s3_world()
+	var bad := []
+	for b in Boxes.boxes:
+		var want := Layout.place_name(str(b["owner"]))
+		if b["place"] != want:
+			bad.append("%s: %s" % [b["id"], b["place"]])
+	runner.check(bad.is_empty(), "§5 every clearing box is named by its owner's address %s" % str(bad))
+	# The HUD box line, in a parking lot and on a driveway.
+	var pl: Player = world.player
+	var spots := [[(Layout.big_areas[1]["rect"] as Rect2).get_center(), Layout.big_areas[1]["place"]],
+		[(Layout.house_info(Layout.lots[9])["driveway_private"] as Rect2).get_center(), "24 Maple Street"]]
+	for s in spots:
+		var p: Vector2 = s[0]
+		pl.teleport(Vector3(p.x, Snow.surface_height(p.x, p.y) + 0.05, p.y))
+		await _frames(30)
+		var t: String = world.hud.contract_l.text
+		runner.check(world.hud.contract_panel.visible and t.begins_with(str(s[1]) + " — "), "§5 the HUD box line: \"%s\"" % t.split("\n")[0])
+	# The board, a contract, its notifications and the history.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	Contracts._add_area_listing(Layout.big_areas[0], Clock.day_index(), rng)
+	Contracts._add_lot_listing(Layout.lots[10], Clock.day_index(), rng)
+	Contracts.listings[-1]["type"] = "one_time"
+	var lb := []
+	for l in Contracts.listings:
+		if l["address"] != Layout.place_name(str(l["target"])):
+			lb.append(l["address"])
+	runner.check(lb.is_empty() and Contracts.listings.size() >= 2, "§5 every listing on the board is named by its address (%d) %s" % [Contracts.listings.size(), str(lb)])
+	world.open_computer()
+	await _frames(2)
+	var comp = world.modal
+	comp._open_app(0)
+	await _frames(2)
+	var board := _s2_texts(comp)
+	runner.check(board.contains("Maple Ridge School, 12 Cedar Lane") and board.contains("28 Maple Street"), "§5 the contract board shows them so")
+	world.close_modal()
+	await _frames(2)
+	var la: Dictionary = Contracts.listings[Contracts.listings.size() - 2]
+	var n0 := Notify.history.size()
+	Contracts.place_bid(int(la["lid"]), 1)
+	var c := Contracts.force_award(int(Contracts.listings[Contracts.listings.size() - 1]["lid"]))
+	runner.check(c["address"] == "28 Maple Street" and Notify.history[n0]["text"].contains("Maple Ridge School, 12 Cedar Lane"), "§5 the contract and the bid's notification name the place by its address")
+	for z in c["zones"]:
+		for id in z["boxes"]:
+			for r in Boxes.get_box(id)["rects"]:
+				Snow.set_rect(r, 0.0)
+			Boxes.measure(Boxes.get_box(id), true)
+	await _frames(5)
+	runner.check(not Contracts.history.is_empty() and Contracts.history[-1]["address"] == "28 Maple Street" and Notify.history[-1]["text"].contains("28 Maple Street"), "§5 …done: in the history and the notification by its address")
+	# The store's address in the texts that say where it is.
+	world.open_computer()
+	await _frames(2)
+	comp = world.modal
+	var store_txt := ""
+	for i in range(ComputerUI.APPS.size()):
+		comp._open_app(i)
+		await _frames(1)
+		store_txt += _s2_texts(comp)
+	world.close_modal()
+	runner.check(store_txt.contains("parking lot at 11 Cedar Lane") and store_txt.contains("Northern Supply Co., 11 Cedar Lane"), "§5 the store and orders apps give the store's address")
+	runner.check(HelpText.explanation(false).any(func(ln): return str(ln["text"]).contains("Northern Supply Co. at 11 Cedar Lane")), "§5 Gerry gives the store's address")
+	await _unload()
+	# An old save: its board has the store lot, saved as "Northern Supply Co. parking lot".
+	var ok: bool = await _load_save_file("res://tests/fixtures/polish5/fun_1_contracts.json")
+	var store_l := Contracts.listings.filter(func(l): return str(l["target"]) == "area:store_lot")
+	runner.check(ok and store_l.size() == 1 and store_l[0]["address"] == "Northern Supply Co., 11 Cedar Lane", "§5 an old save's store-lot listing reads \"%s\"" % (store_l[0]["address"] if store_l.size() == 1 else "?"))
+	var all_ok := true
+	for x in Contracts.active + Contracts.listings:
+		all_ok = all_ok and x["address"] == Layout.place_name(str(x["target"]))
+	runner.check(all_ok, "§5 …and every contract and listing in it is named by its address")
+	var d := Contracts.serialize().duplicate(true)
+	d["history"] = [{"id": 1, "address": "St. Andrew's Church parking lot", "pay": 10, "time": 0.0}]
+	Contracts.deserialize(d)
+	var e := Economy.serialize().duplicate(true)
+	e["tx"] = [{"time": 0.0, "text": "Contract payment: St. Andrew's Church parking lot", "amount": 10}]
+	Economy.deserialize(e)
+	runner.check(Contracts.history[0]["address"] == "St. Andrew's Church, 40 Cedar Lane" and Economy.transactions[0]["text"] == "Contract payment: St. Andrew's Church, 40 Cedar Lane", "§5 …its history and transactions too")
+	Saves.delete_save("fun")
+
+
+## The map: every house's and building's number on its lot, the street names, readable at the
+## default zoom (the 1920 × 1080 canvas, and 4:3 and 21:9 screens), no label over another.
+func test_s5_map_shows_every_number() -> void:
+	await _s3_world()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 9
+	Contracts._add_lot_listing(Layout.lots[9], Clock.day_index(), rng)
+	Contracts.listings[-1]["type"] = "one_time"
+	Contracts.force_award(int(Contracts.listings[-1]["lid"]))
+	var m := MapUI.new()
+	world.ui.add_child(m)
+	world.open_modal(m, "map")
+	await _frames(2)
+	for vs in [Vector2(1920, 1080), Vector2(1920, 1440), Vector2(2520, 1080)]:
+		var ls: Array = m.labels(vs)
+		var probs := []
+		for lot in Layout.lots:
+			var lr := Rect2(m._to_px((lot["rect"] as Rect2).position), (lot["rect"] as Rect2).size * m.scale_px)
+			var nl := ls.filter(func(l): return l["kind"] == "number" and l["key"] == str(lot["index"]))
+			if nl.size() != 1 or nl[0]["text"] != str(lot["number"]) or not lr.encloses(nl[0]["rect"]) or int(nl[0]["size"]) < 18:
+				probs.append(lot["address"])
+			for t in ls.filter(func(l): return l["kind"] == "tag" and l["key"] == str(lot["index"])):
+				if not lr.encloses(t["rect"]):
+					probs.append("%s: its %s off the lot" % [lot["address"], t["text"]])
+		for b in Layout.buildings:
+			var br := Rect2(m._to_px((b["rect"] as Rect2).position), (b["rect"] as Rect2).size * m.scale_px)
+			var al := ls.filter(func(l): return l["kind"] == "building_address" and l["key"] == b["id"])
+			var nm := ls.filter(func(l): return l["kind"] == "building" and l["key"] == b["id"])
+			var name_in: bool = " ".join(nm.map(func(l): return l["text"])) == b["name"] and nm.all(func(l): return br.encloses(l["rect"]) and int(l["size"]) >= 12)
+			if al.size() != 1 or al[0]["text"] != b["address"] or not br.encloses(al[0]["rect"]) or not name_in or int(al[0]["size"]) < 13:
+				probs.append(b["address"])
+		for r in Layout.roads:
+			var sl := ls.filter(func(l): return l["kind"] == "street" and l["text"] == str(r["name"]).to_upper())
+			if sl.size() != 1 or not Rect2(m._to_px((r["rect"] as Rect2).position), (r["rect"] as Rect2).size * m.scale_px).encloses(sl[0]["rect"]):
+				probs.append(r["name"])
+		var over := []
+		for i in range(ls.size()):
+			for j in range(i + 1, ls.size()):
+				if (ls[i]["rect"] as Rect2).intersects(ls[j]["rect"]):
+					over.append("%s / %s" % [ls[i]["text"], ls[j]["text"]])
+		var tags := ls.filter(func(l): return l["kind"] == "tag").map(func(l): return l["text"])
+		runner.check(probs.is_empty() and over.is_empty(), "§5 the map at %dx%d: %d labels — every house number on its lot (18 px), every building's address on it, the three street names, none overlapping %s %s" % [vs.x, vs.y, ls.size(), str(probs), str(over)])
+		runner.check("HOME" in tags and "vacant" in tags and tags.any(func(t): return str(t).ends_with("h")), "§5 …with HOME, vacant and a contract's hours under their numbers %s" % str(tags))
+	world.close_modal()
+	await _unload()

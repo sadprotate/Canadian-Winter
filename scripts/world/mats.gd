@@ -127,6 +127,12 @@ static func interior_wall(origin: Vector2, paper: Rect2) -> ShaderMaterial:
 	return shader_mat("interior_wall", {"origin": origin, "paper_rect": Vector4(paper.position.x, paper.position.y, paper.end.x, paper.end.y)})
 
 
+## Polish 5 §5: house numbers — matte paint (a plate with a painted border, or the digits) that the
+## porch lantern above lights at night (`lamp` > 0; shaders/address_plate.gdshader).
+static func address_paint(color: Color, border_color := Color.BLACK, border_uv := Vector2.ZERO, lamp := 0.0) -> ShaderMaterial:
+	return shader_mat("address_plate", {"albedo": color, "border_color": border_color, "border": border_uv, "lamp": lamp})
+
+
 ## Polish 5 §3: painted interior trim (baseboards, door and window casings).
 static func interior_trim() -> StandardMaterial3D:
 	return std(Color(0.9, 0.88, 0.83), 0.55)

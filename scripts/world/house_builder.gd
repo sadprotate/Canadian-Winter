@@ -203,7 +203,9 @@ static func build(lot: Dictionary, parent: Node3D, hollow: bool) -> Dictionary:
 	gcs.shape = gbox
 	catcher.add_child(gcs)
 	gcs.global_transform = L * Transform3D(Basis(), Vector3(gxc, gh + g_rise * 0.5, gzm))
-	var out := {"root": root, "roof_snow": rs, "L": L, "wall_h": wall_h, "mesh": mi}
+	# Polish 5 §5: the house number, on a plate under the lantern by the front door.
+	var number := AddressSigns.house_plate(lot, root, hollow)
+	var out := {"root": root, "roof_snow": rs, "L": L, "wall_h": wall_h, "mesh": mi, "number": number}
 	if hollow:
 		out["door_xf"] = L * Transform3D(Basis(), Vector3(-1.5, Layout.PORCH_H, z0))
 	return out

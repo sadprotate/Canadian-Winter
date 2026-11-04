@@ -321,7 +321,7 @@ func _store_card(id: String, title: String, price: int, desc: String, stats: Str
 func _store() -> void:
 	_h1("Northern Supply Co. — Equipment Store")
 	var open := Economy.store_open()
-	_p("Orders appear in the store's parking lot on Cedar Lane: tools on the yellow pickup pad, vehicles in the bays. Store hours 7:00–21:00 — %s." % ("open now: your order will be ready right away" if open else "closed now: orders will be ready at 7:00"), UIKit.GOOD if open else UIKit.WARN)
+	_p("Orders appear in the store's parking lot at %s: tools on the yellow pickup pad, vehicles in the bays. Store hours 7:00–21:00 — %s." % [Layout.building_by_id("store")["address"], "open now: your order will be ready right away" if open else "closed now: orders will be ready at 7:00"], UIKit.GOOD if open else UIKit.WARN)
 	content.add_child(UIKit.label("Hand tools & machines", 26, UIKit.ACCENT))
 	for t in Catalog.store_tools():
 		var td: ToolData = t
@@ -465,7 +465,7 @@ func _weather() -> void:
 
 func _orders() -> void:
 	_h1("Orders")
-	_p("Pick up your orders at Northern Supply Co. (Cedar Lane, north end). Store hours 7:00–21:00.")
+	_p("Pick up your orders at %s (north end). Store hours 7:00–21:00." % Layout.building_by_id("store")["place"])
 	if Economy.orders.is_empty():
 		_p("No orders yet.")
 	var list := Economy.orders.duplicate()

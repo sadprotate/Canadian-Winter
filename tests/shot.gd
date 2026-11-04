@@ -62,6 +62,12 @@ extends Node
 ##                            the morning subtitle to finish); with --hour < 8 on day 0
 ##   --gerry_tips=k           (§4) take Gerry's job through his dialogue ($55) standing at the foot
 ##                            of his walk, then move his snow tips on to line k (0-3)
+##   --views="x,y,z>lx,ly,lz;…"  (§5) several free-camera views in one run (world coords, camera >
+##                            look-at point), each captured to <out>_00.png, _01.png …; waits
+##                            --views_frames (default 20) per view; --fov as for --cam
+##   --hud=0                  (§5) hide the HUD and the rest of the game's UI layer
+##   --award=n                (§5) win the first n listings on the board (as F1's "Win first
+##                            listing" does), so contracts show on the map
 
 var args := {}
 var game: Node = null
@@ -115,9 +121,21 @@ func _ready() -> void:
 			await get_tree().process_frame
 	else:
 		await _wait(int(args.get("frames", "40")))
+	if args.has("award"):
+		# Polish 5 §5: contracts on the board, won outright (F1's "Win first listing").
+		for k in range(int(args["award"])):
+			if Contracts.listings.is_empty():
+				break
+			Contracts.force_award(int(Contracts.listings[0]["lid"]))
+	if args.get("hud", "1") == "0":
+		game.ui.visible = false
 	if args.has("ui"):
 		_open_ui(str(args["ui"]))
 		await _wait(int(args.get("ui_frames", "6")))
+	if args.has("views"):
+		await _capture_views()
+		get_tree().quit()
+		return
 	if args.has("photo_out") and game.interior.has("photo"):
 		# Polish 4 §5: the photograph's own texture, saved at full size.
 		var ph = game.interior["photo"]
@@ -506,6 +524,30 @@ func _scroll_settings(sm: SettingsMenu, px: int) -> void:
 	var sc := sm.tabs.get_current_tab_control() as ScrollContainer
 	if sc:
 		sc.scroll_vertical = px
+
+
+## --views="x,y,z>lx,ly,lz;…" (polish 5 §5): one free camera moved through several views, each
+## captured to <out>_NN.png after --views_frames frames (the snow chunks around it built first).
+func _capture_views() -> void:
+	var cam := Camera3D.new()
+	cam.fov = float(args.get("fov", "62"))
+	cam.far = 500.0
+	add_child(cam)
+	cam.current = true
+	var out: String = args.get("out", "user://shot.png")
+	var views := str(args["views"]).split(";", false)
+	for k in range(views.size()):
+		var pair := views[k].split(">")
+		var cpos := _v3(pair[0])
+		cam.global_position = cpos
+		cam.look_at(_v3(pair[1]))
+		game.snow_renderer.build_all(cpos)
+		await _wait(int(args.get("views_frames", "20")))
+		await RenderingServer.frame_post_draw
+		var img := get_viewport().get_texture().get_image()
+		var p := out.get_basename() + "_%02d.png" % k
+		img.save_png(p)
+		print("saved ", p, " ", img.get_size())
 
 
 ## --seq=N --every=F: a short series of frames (menu camera path, Gerry walking…).

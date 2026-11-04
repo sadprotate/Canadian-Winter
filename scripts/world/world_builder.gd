@@ -13,7 +13,7 @@ func build(parent: Node3D, minimal := false) -> Dictionary:
 	root = Node3D.new()
 	root.name = "World"
 	parent.add_child(root)
-	refs = {"houses": {}, "roof_snows": [], "mailboxes": {}, "streetlights": [], "tree_points": []}
+	refs = {"houses": {}, "roof_snows": [], "mailboxes": {}, "streetlights": [], "tree_points": [], "building_numbers": {}}
 	_ground()
 	_pavement()
 	_houses(minimal)
@@ -164,6 +164,7 @@ func _houses(_minimal: bool) -> void:
 		mb.transform = Transform3D(Basis.looking_at(Vector3(mf.x, 0, mf.y), Vector3.UP), Vector3(mp.x, 0, mp.y))
 		houses_node.add_child(mb)
 		refs["mailboxes"][lot["index"]] = mb
+		AddressSigns.mailbox_number(lot, mb)   # polish 5 §5: the number on its door
 		MeshKit.collider_box(houses_node, Vector3(mp.x, 0.7, mp.y), Vector3(0.3, 1.4, 0.3))
 		# Shrubs either side of the porch.
 		for u in [-3.6, 0.6]:
@@ -414,6 +415,8 @@ func _commercial() -> void:
 				_label(Vector3(c.x, 3.0, front_z + 0.1), "ST. ANDREW'S", 64, Color(0.95, 0.95, 0.9))
 		# Roof snow (flat roofs carry a pillow).
 		kit.pillow(Mats.snow_soft(), Transform3D(Basis(), Vector3(c.x, h + 0.3, c.z)), r.size.x + 0.2, r.size.y + 0.2, 0.55, 0.15, 12, 4.0)
+		# Polish 5 §5: its number by the main entrance.
+		refs["building_numbers"][b["id"]] = AddressSigns.building_number(b, root)
 	# Snow dump sign and barriers.
 	var dr := Layout.dump_rect
 	_label(Vector3(dr.position.x - 2.0, 2.4, dr.position.y + 3), "MUNICIPAL\nSNOW DUMP", 64, Color(1, 0.85, 0.2))

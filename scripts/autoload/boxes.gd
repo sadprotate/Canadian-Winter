@@ -55,7 +55,7 @@ func build() -> void:
 	for a in Layout.big_areas:
 		if a["id"] == "dump_lot":
 			continue
-		_add("area_" + str(a["id"]), "parking", "Parking lot", "area:" + str(a["id"]), [a["rect"], a["apron"]], a["name"])
+		_add("area_" + str(a["id"]), "parking", "Parking lot", "area:" + str(a["id"]), [a["rect"], a["apron"]], a["place"])
 	for seg in Layout.road_segments:
 		_add("road_" + str(seg["id"]), "street", "Street", "road:" + str(seg["id"]), [seg["rect"]], seg["name"])
 	_built = true
@@ -357,7 +357,9 @@ func deserialize(d: Dictionary) -> void:
 		var rects := []
 		for a in e.get("rects", []):
 			rects.append(Rect2(a[0], a[1], a[2], a[3]))
-		_add(str(e["id"]), str(e.get("kind", "path")), str(e.get("name", "Box")), str(e.get("owner", "")), rects, str(e.get("place", "")), true)
+		# Polish 5 §5: its place is read from the layout (its owner's address), not the saved text.
+		var place := Layout.place_name(str(e.get("owner", "")))
+		_add(str(e["id"]), str(e.get("kind", "path")), str(e.get("name", "Box")), str(e.get("owner", "")), rects, place if place != "" else str(e.get("place", "")), true)
 	# Polish 3 §4 / polish 4 §4: Gerry's mailbox moved (beside his walk, then to its foot), so his
 	# trail is the steps and the walk down to it. A saved trail with older rectangles is rebuilt —
 	# unless it was already done (or the tutorial is past it): the stage wins, the trail stays done
