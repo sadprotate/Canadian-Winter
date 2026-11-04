@@ -82,6 +82,15 @@ var _ind_glide := 1.0
 var _ind_shown := false
 static var _ring_pick: Mesh
 var vm_clip_y := -1000.0           # snow surface the first-person tool is clipped at (-1000: none)   # the landing ring is amber: the throw would land in the box being cleared
+## Polish 5 §3: no snow work from inside a building. False while the player stands inside one (its
+## footprint or its walls: Buildings.indoors) — then nothing is cut, pushed or taken in, nothing is
+## thrown and no indicator shows. Outdoors, snow behind a building (the line from the eye to it
+## crosses one: Buildings.blocks) is left alone too.
+var work_ok := true
+var _near_bld: Array = []          # buildings within a few metres (the short list the line test uses)
+## A blade or intake pressed against a wall from outside reaches this far past the wall's line and
+## still works the snow at its foot (the line test ignores that last stretch).
+const REACH_SKIN := 0.35
 
 
 func setup(p: Player) -> void:
@@ -252,6 +261,10 @@ func _sync_tool() -> void:
 		dump_at_feet(true)
 	tool_id = id
 	data = Catalog.tool(StringName(id)) if id != "" and id != "__carry__" else Catalog.tool(&"hands")
+	# Polish 5 §3: a new tool works out its own landing at once (the electric shovel used to throw its
+	# first bite to wherever the previous tool's last throw was aimed).
+	landing = {}
+	_land_timer = 0.0
 	blade_angle = 0.0
 	filling = false
 	pushing = false
@@ -308,7 +321,10 @@ func _physics_process(delta: float) -> void:
 	var travel := (pos2 - _prev_pos)
 	_prev_pos = pos2
 	if player.state != "foot":
-		indicator.visible = false
+		# Polish 5 §3: a walk-behind blower shows its chute's landing on this indicator (it runs
+		# before the player each frame, so hiding it here used to hide the blower's ring too).
+		if player.state != "machine":
+			indicator.visible = false
 		_ind_shown = false
 		ind_state = ""
 		engaged = false
@@ -354,6 +370,9 @@ func _physics_process(delta: float) -> void:
 		return
 	var ui_block := not Game.input_captured()
 	var fwd := player.forward2()
+	# Polish 5 §3: indoors (in any building) the tools don't touch the snow.
+	_near_bld = Buildings.near(pos2, 4.0)
+	work_ok = not Buildings.indoors(player.global_position)
 	if pose_override != "":
 		filling = pose_override == "scoop" or pose_override == "hold"
 		pushing = pose_override == "push"
@@ -458,7 +477,7 @@ func _next_cut_center(fwd: Vector2) -> Vector2:
 	var n := 0
 	for i in cells:
 		var c := _cell_center(i)
-		if Snow.depth_at(c.x, c.y) > data.scrape_floor + 0.01:
+		if Snow.depth_at(c.x, c.y) > data.scrape_floor + 0.01 and not _behind_building(c):
 			sum += c
 			n += 1
 	return sum / n if n > 0 else Vector2(INF, INF)
@@ -546,6 +565,21 @@ func _shovel_type(delta: float, pos2: Vector2, fwd: Vector2, travel: Vector2, ui
 	# Speed: carrying a heavy load slows you a little (a full sleigh a lot).
 	var load_frac := clampf(load / maxf(_capacity(), 0.0001), 0.0, 1.0)
 	var carry_mult := 1.0 - (0.45 if data.kind == ToolData.Kind.SLEIGH else 0.12) * load_frac
+	if not work_ok:
+		# Polish 5 §3: inside a building — no cut, no push, no indicator. A load carried in stays in
+		# the hands (a release here keeps it: _release_throw).
+		if filling or pushing:
+			_hint("You can't work the snow from inside.")
+		filling = false
+		pushing = false
+		engaged = false
+		_stroke_valid = false
+		landing = {}
+		sweep_speed = lerpf(sweep_speed, 0.0, 1.0 - exp(-delta * 10.0))
+		_indicate("", Vector3.ZERO, null, 1.0)
+		player.speed_mult_tool = carry_mult
+		_fade_loop(delta, -80.0)
+		return
 	if filling:
 		_fill(delta, pos2, fwd)
 		player.speed_mult_tool = 0.85 * carry_mult
@@ -570,7 +604,7 @@ func _shovel_type(delta: float, pos2: Vector2, fwd: Vector2, travel: Vector2, ui
 		_stroke_valid = false
 		sweep_speed = lerpf(sweep_speed, 0.0, 1.0 - exp(-delta * 10.0))
 		if load > 0.0 and not landing.is_empty():
-			# A throw onto the street was refused and the load kept: show where it would land.
+			# A throw was refused (nowhere to land) and the load kept: show where it would land.
 			_indicate("landing", landing.get("pos", indicator.global_position) + Vector3(0, 0.04, 0), _landing_mesh(landing), 1.0)
 		else:
 			_indicate("", Vector3.ZERO, null, 1.0)
@@ -658,6 +692,9 @@ func _fill(delta: float, _pos2: Vector2, fwd: Vector2) -> void:
 			e = [_clock, data.bite]     # a fresh pass over this cell
 		bites[k] = float(e[1])
 		_cut_time[i] = e
+		# Polish 5 §3: snow the eye can only reach through a building isn't cut.
+		if not _near_bld.is_empty() and _behind_building(_cell_center(i)):
+			bites[k] = 0.0
 	if _cut_time.size() > 600:
 		for key in _cut_time.keys():
 			if _clock - float(_cut_time[key][0]) > 1.0:
@@ -697,6 +734,25 @@ func _fill(delta: float, _pos2: Vector2, fwd: Vector2) -> void:
 		_hint("Full — release to throw." if data.kind != ToolData.Kind.HANDS else "Hands full — release to toss.")
 
 
+## Polish 5 §3: is the snow at cell centre c behind a building — does the line from the player's eye
+## to its surface cross one?
+func _behind_building(c: Vector2) -> bool:
+	if _near_bld.is_empty():
+		return false
+	return Buildings.blocks(player.head.global_position, Vector3(c.x, Snow.surface_height(c.x, c.y), c.y), _near_bld)
+
+
+## Polish 5 §3: may a blade or an intake whose near edge is at `p` (world XZ) work the snow — the
+## player outdoors and the line from the eye to it clear of buildings (a blade pressed against a
+## wall from outside still works at its foot: REACH_SKIN)?
+func can_work_at(p: Vector2) -> bool:
+	if not work_ok:
+		return false
+	if _near_bld.is_empty():
+		return true
+	return not Buildings.blocks(player.head.global_position, Vector3(p.x, Snow.surface_height(p.x, p.y), p.y), _near_bld, REACH_SKIN)
+
+
 ## Look down for a short drop at your feet, level or up for the full throw.
 func _pitch_factor() -> float:
 	var pitch := player.pitch
@@ -704,10 +760,15 @@ func _pitch_factor() -> float:
 
 
 func _release_throw() -> void:
+	if not work_ok:
+		# Polish 5 §3: no throwing from inside a building; the load stays in the hands.
+		_hint("You can't throw snow from inside.")
+		AudioMgr.play("ui_error", -12.0)
+		return
 	landing = _landing(_throw_dist() * _pitch_factor(), data.throw_angle_deg)
 	_landing_flags(landing)
 	if not landing["valid"]:
-		_hint("The landing spot is on the street — keep holding the snow and aim somewhere else.")
+		_hint("Nowhere for the snow to land — keep holding it and aim somewhere else.")
 		AudioMgr.play("ui_error", -12.0)
 		return
 	_indicate("", Vector3.ZERO, null, 1.0)
@@ -726,16 +787,14 @@ func _release_throw() -> void:
 
 
 ## Drop the load at your feet (tool switch, saving) — volume is never lost.
-func dump_at_feet(force: bool) -> void:
+func dump_at_feet(_force: bool) -> void:
 	if load <= 0.0:
 		return
 	var pos2 := Vector2(player.global_position.x, player.global_position.z)
 	var p := pos2 + player.forward2() * 0.6
-	if Snow.is_road(p.x, p.y) and not force:
-		_hint("You can't dump snow on the street.")
-		AudioMgr.play("ui_error", -12.0)
-		return
-	Snow.deposit(p, load, 0.35, load_road > 0.0 and Snow.is_road(p.x, p.y))
+	# Polish 5 §3 (Decision 12): no road rule — the street is a place like any other (it used to
+	# refuse a dump there unless forced). Indoors the cells are walls: it spills outside.
+	Snow.deposit(p, load, 0.35, true)
 	AudioMgr.play_at(AudioMgr.variant("snow_land", 3), player.global_position, -6.0)
 	SnowFX.burst(Vector3(p.x, player.global_position.y + 0.2, p.y), 10, 0.6)
 	load = 0.0
@@ -749,7 +808,13 @@ func _push(delta: float, pos2: Vector2, fwd: Vector2, travel: Vector2) -> void:
 	var center := pos2 + fwd * lead
 	var adv := maxf(travel.dot(fwd), 0.0)
 	var push_dist := 0.3 if data.kind == ToolData.Kind.HANDS else 0.38
-	var r := Snow.blade_push(center, face, hw, adv + 0.07, data.scrape_floor, true, push_dist)
+	if not can_work_at(center - fwd * (adv + 0.07)):
+		# Polish 5 §3: indoors, or the blade is on the far side of a building: nothing moves.
+		player.speed_mult_tool = data.engaged_speed_mult * Game.stat_value(&"push_speed", 1.0)
+		_fade_loop(delta, -80.0)
+		return
+	# Polish 5 §3 (Decision 12): no road rule — the berm carries over the curb onto the street.
+	var r := Snow.blade_push(center, face, hw, adv + 0.07, data.scrape_floor, false, push_dist)
 	_guard_behind(center, fwd, hw + 0.15)
 	var moved: float = r["moved"]
 	_record_moved(moved)
@@ -758,7 +823,7 @@ func _push(delta: float, pos2: Vector2, fwd: Vector2, travel: Vector2) -> void:
 	var ratio: float = r["berm"] / maxf(_push_strength(), 0.005)
 	player.speed_mult_tool = data.engaged_speed_mult * Game.stat_value(&"push_speed", 1.0) / (1.0 + ratio * ratio)
 	if r["kept"] > 0.002:
-		_hint("The snow stops at the curb.")
+		_hint("The snow can't go any further this way.")
 	elif ratio > 2.0 and player.current_speed < 0.3:
 		_hint("Too much snow to push — scoop some away or push from another side.")
 	var activity := clampf(moved / maxf(delta, 0.001) * 6.0, 0.0, 1.0)
@@ -799,6 +864,19 @@ func _electric(delta: float, pos2: Vector2, fwd: Vector2, travel: Vector2, ui_bl
 	filling = _held("primary", not ui_block and Input.is_action_pressed("primary"))
 	pushing = _held("secondary", not ui_block and Input.is_action_pressed("secondary")) and not filling
 	engaged = filling or pushing
+	if not work_ok:
+		# Polish 5 §3: inside a building the shovel doesn't touch the snow (no intake, no push, no
+		# indicator); what it already chewed is thrown where it was going.
+		if filling or pushing:
+			_hint("You can't work the snow from inside.")
+		filling = false
+		pushing = false
+		engaged = false
+		indicator.visible = false
+		player.speed_mult_tool = 1.0
+		_fade_loop(delta, -80.0)
+		_flush_stream()
+		return
 	if pushing:
 		indicator.visible = false
 		_push(delta, pos2, fwd, travel)
@@ -810,6 +888,12 @@ func _electric(delta: float, pos2: Vector2, fwd: Vector2, travel: Vector2, ui_bl
 		_flush_stream()
 		return
 	player.speed_mult_tool = data.engaged_speed_mult
+	if not can_work_at(pos2 + fwd * 0.3):
+		# Polish 5 §3: the intake is on the far side of a building: no intake, no indicator.
+		indicator.visible = false
+		_fade_loop(delta, -80.0)
+		_flush_stream()
+		return
 	_land_timer -= delta
 	if _land_timer <= 0.0:
 		_land_timer = 0.1
@@ -818,7 +902,7 @@ func _electric(delta: float, pos2: Vector2, fwd: Vector2, travel: Vector2, ui_bl
 	_set_loop("electric_motor")
 	_fade_loop(delta, -6.0)
 	if not landing.get("valid", false):
-		_hint("Aim away from the street — the shovel won't throw snow onto the road.")
+		_hint("Nowhere for the snow to land — aim somewhere else.")
 		return
 	var r := Snow.intake(pos2 + fwd * 0.3, fwd, data.width, data.reach, data.rate * delta, data.scrape_floor)
 	if float(r["volume"]) > 0.0:
@@ -838,7 +922,7 @@ func _flush_stream() -> void:
 		ThrownSnow.spawn(Game.world, _hand_pos() - Vector3(0, 0.6, 0), player.aim_dir(), landing, _stream_acc, data.throw_angle_deg, 0.45)
 	else:
 		var p := Vector2(player.global_position.x, player.global_position.z) + player.forward2() * 0.5
-		Snow.deposit(p, _stream_acc, 0.4, false)
+		Snow.deposit(p, _stream_acc, 0.4, true)
 	_stream_acc = 0.0
 
 

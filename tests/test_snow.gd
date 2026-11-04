@@ -61,18 +61,33 @@ func test_shallow_scoop_takes_all() -> void:
 	runner.check(Snow.depth_at(p.x, p.y) < 0.001, "Scooped cell is clean")
 
 
-func test_deposit_never_on_road() -> void:
+## Polish 5 §3 (Decision 12): the road rule is gone for snow the player moves (it was "deposit never
+## on road"): a player's deposit (allow_road = true, what thrown snow passes now) at the curb line
+## lands on the street where it was aimed, volume conserved. Relaxation is unchanged: yard snow
+## still doesn't slump over the curb on its own.
+func test_deposit_lands_on_road_where_aimed() -> void:
 	Snow.reset_for_winter(1)
 	var road_rect := Rect2(40, 79, 20, 8)
+	var area := Rect2(40, 75, 20, 18)
 	var road_before := Snow.volume_in_rect(road_rect)
+	var before := Snow.volume_in_rect(area)
 	# Throw right at the curb line from the boulevard side.
-	Snow.deposit(Vector2(50.0, 87.2), 0.5, 1.2, false)
-	Snow.relax_until_stable()
+	Snow.deposit(Vector2(50.0, 87.2), 0.5, 1.2, true)
 	var road_after := Snow.volume_in_rect(road_rect)
-	runner.near(road_after, road_before, 1e-5, "No snow entered the road from a deposit or its slump")
+	runner.check(road_after > road_before + 0.1, "The street side of the splat lands on the road where it was aimed (+%.3f m3)" % (road_after - road_before))
+	runner.near(Snow.volume_in_rect(area), before + 0.5, 1e-4, "Volume conserved")
+	# A pile thrown just on the yard side of the curb stays there: the curb is still a wall for slumping.
+	Snow.reset_for_winter(1)
+	var road0 := Snow.volume_in_rect(road_rect)
+	Snow.deposit(Vector2(50.0, 87.8), 0.5, 0.6, true)
+	runner.near(Snow.volume_in_rect(road_rect), road0, 1e-5, "A splat on the yard side puts nothing on the road")
+	Snow.relax_until_stable()
+	runner.near(Snow.volume_in_rect(road_rect), road0, 1e-5, "…and its slump doesn't cross the curb (relaxation unchanged)")
 
 
-func test_blade_push_moves_berm_and_respects_curb() -> void:
+## Polish 5 §3 (Decision 12): a player's push (player_rule = false, what every tool and vehicle
+## passes now) carries the berm over the curb onto the street (it was "respects curb").
+func test_blade_push_moves_berm_over_the_curb() -> void:
 	Snow.reset_for_winter(1)
 	var hi := Layout.house_info(Layout.player_lot)
 	var drv: Rect2 = hi["driveway"]
@@ -87,7 +102,7 @@ func test_blade_push_moves_berm_and_respects_curb() -> void:
 	var moved := 0.0
 	var steps := 0
 	while z > drv.position.y - 1.0:
-		var r: Dictionary = Snow.blade_push(Vector2(x, z), Vector2(0, -1), 0.45, 0.06, 0.0, true)
+		var r: Dictionary = Snow.blade_push(Vector2(x, z), Vector2(0, -1), 0.45, 0.06, 0.0, false)
 		moved += r["moved"]
 		z -= 0.05
 		steps += 1
@@ -96,9 +111,9 @@ func test_blade_push_moves_berm_and_respects_curb() -> void:
 	var road_after := Snow.volume_in_rect(road_rect)
 	runner.check(moved > 0.05, "Blade moved snow (%.3f m3 over %d steps)" % [moved, steps])
 	runner.near(after, before, 2e-3, "Push conserves volume")
-	runner.check(road_after <= road_before + 1e-5, "Pushed snow stopped at the curb (no snow entered the road: %.4f -> %.4f)" % [road_before, road_after])
-	var curb_d := Snow.depth_at(x, 87.2)
-	runner.check(curb_d > 0.1, "A pile formed at the curb line (%.2f m)" % curb_d)
+	runner.check(road_after > road_before + 0.05, "Pushed snow carried over the curb onto the road (%.4f -> %.4f)" % [road_before, road_after])
+	var street_d := Snow.depth_at(x, 85.6)
+	runner.check(street_d > 0.1, "The berm ends up on the street, where it was pushed (%.2f m)" % street_d)
 	var cleared := Snow.depth_at(x, drv.get_center().y)
 	runner.check(cleared < 0.01, "Driveway path cleared to pavement (%.3f m)" % cleared)
 

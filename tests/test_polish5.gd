@@ -791,3 +791,912 @@ func _s2_texts(n: Node) -> String:
 	for c in n.get_children():
 		out += _s2_texts(c)
 	return out
+
+
+# =============================================================================
+# §3 The house, and where snow can go
+# =============================================================================
+
+const S3_HAND_TOOLS := ["", "small_shovel", "standard_shovel", "wide_pusher", "snow_scraper", "large_scraper", "snow_sleigh", "electric_shovel"]
+const S3_BLOWERS := ["small_blower", "large_blower"]
+
+
+## A game on Dec 2 at noon with the tutorial done (Gerry is home, out of the way), the clock stopped
+## and every chunk's snowfall applied, so the snow changes only when something moves it.
+func _s3_world(mode := "fun") -> void:
+	await _unload()
+	Game.force_input = true
+	Game.new_game(mode, 2024)
+	Game.flags["mail_read"] = true
+	Game.set_stage(Game.Stage.COMPLETE)
+	Clock.reset(Clock.at(1, 12.0))
+	await _spawn_world()
+	Clock.running = false
+	Snow.sync_all()
+	Snow.relax_until_stable()
+
+
+## A point of a house's frame (HouseBuilder: x along the street, z inward, y up) in the world.
+static func _s3_h(lot: Dictionary, x: float, y: float, z: float) -> Vector3:
+	return HouseBuilder.lot_transform(lot) * Vector3(x, y, z)
+
+
+## A house-frame direction in the world (XZ, normalized).
+static func _s3_dir(lot: Dictionary, x: float, z: float) -> Vector2:
+	var d := HouseBuilder.lot_transform(lot).basis * Vector3(x, 0, z)
+	return Vector2(d.x, d.z).normalized()
+
+
+## The world rect of a house-frame rect (x0..x1, z0..z1).
+static func _s3_rect(lot: Dictionary, xa: float, xb: float, za: float, zb: float) -> Rect2:
+	return HouseBuilder._world_rect(HouseBuilder.lot_transform(lot), xa, xb, za, zb)
+
+
+## The yaw that faces a world XZ direction.
+static func _s3_yaw(d: Vector2) -> float:
+	return atan2(-d.x, -d.y)
+
+
+## Put the player at `at` (world) looking at `look`.
+func _s3_stand(at: Vector3, look: Vector3, pitch_deg := INF) -> void:
+	var pl: Player = world.player
+	pl.teleport(at + Vector3(0, 0.05, 0))
+	var d := Vector2(look.x - at.x, look.z - at.z)
+	pl.set_yaw(_s3_yaw(d))
+	var eye_y := at.y + Player.HEAD_H
+	pl.pitch = deg_to_rad(pitch_deg) if pitch_deg < INF else atan2(look.y - eye_y, d.length())
+	pl.head.rotation.x = pl.pitch
+
+
+## Snapshot of the depths in a world rect (to diff against).
+static func _s3_snap(r: Rect2) -> Dictionary:
+	var x0 := Snow.cell_x(r.position.x)
+	var z0 := Snow.cell_z(r.position.y)
+	var x1 := Snow.cell_x(r.end.x)
+	var z1 := Snow.cell_z(r.end.y)
+	var d := PackedFloat32Array()
+	d.resize((x1 - x0 + 1) * (z1 - z0 + 1))
+	var k := 0
+	for z in range(z0, z1 + 1):
+		for x in range(x0, x1 + 1):
+			d[k] = Snow.depth[z * Snow.W + x]
+			k += 1
+	return {"x0": x0, "z0": z0, "x1": x1, "z1": z1, "d": d}
+
+
+## What changed since a snapshot (m3): the net change, the snow added (with its centroid, the part
+## added inside a building and on the street) and the snow removed.
+static func _s3_diff(s: Dictionary) -> Dictionary:
+	var d: PackedFloat32Array = s["d"]
+	var k := 0
+	var net := 0.0
+	var added := 0.0
+	var removed := 0.0
+	var inside := 0.0
+	var road := 0.0
+	var c := Vector2.ZERO
+	for z in range(int(s["z0"]), int(s["z1"]) + 1):
+		for x in range(int(s["x0"]), int(s["x1"]) + 1):
+			var i := z * Snow.W + x
+			var dd := float(Snow.depth[i]) - float(d[k])
+			k += 1
+			if dd == 0.0:
+				continue
+			net += dd
+			if dd > 0.0:
+				var p := Vector2((x + 0.5) * Snow.CELL, (z + 0.5) * Snow.CELL)
+				added += dd
+				c += p * dd
+				if Snow.surf[i] == Snow.S_BLOCKED:
+					inside += dd
+				if Snow.surf[i] == Snow.S_ROAD:
+					road += dd
+			else:
+				removed -= dd
+	var a := Snow.CELL_AREA
+	return {"net": net * a, "added": added * a, "removed": removed * a, "inside": inside * a, "road": road * a,
+		"centroid": c / added if added > 0.0 else Vector2.INF}
+
+
+## Snow lying inside any building's footprint — there must never be any.
+static func _s3_indoor_snow() -> float:
+	var v := 0.0
+	for b in Buildings.all():
+		v += Snow.volume_in_rect(b["rect"])
+	return v
+
+
+## Re-baseline every clearing box in `r` to the snow it holds now (as if this much had fallen), so
+## laying thin test snow doesn't put a box past the 90 % rule (whose snap removes snow).
+static func _s3_rebase_boxes(r: Rect2) -> void:
+	for b in Boxes.boxes:
+		for rr in b["rects"]:
+			if (rr as Rect2).intersects(r):
+				if b["complete"]:
+					for r2 in b["rects"]:
+						Snow.set_hold_rect(r2, false)
+					b["complete"] = false
+				b["peak"] = Boxes.snow_volume(b, true)
+				b["vol"] = b["peak"]
+				b["progress"] = 0.0
+				break
+
+
+## Wait until every clump of thrown snow has landed (a release throws on the next frame).
+func _s3_settle() -> void:
+	await _frames(3)
+	for i in range(240):
+		if world.find_children("*", "ThrownSnow", true, false).is_empty():
+			break
+		await _tree().physics_frame
+	await _frames(2)
+
+
+# --- §3 Walls -----------------------------------------------------------------------------------
+
+## The probes that pass through a gap in a hollow house's interior: along each wall just in front of
+## it, across every wall it meets at an interior corner (at the floor, at eye height, under the
+## ceiling); down through every wall-to-floor seam and up through every wall-to-ceiling seam, and
+## across the wall just above the floor and just below the ceiling. Each must hit the house's mesh.
+## `faces`: the house's interior triangles in world space (_s3_house_faces).
+static func s3_seam_gaps(faces: PackedVector3Array, lot: Dictionary) -> Array:
+	var xf := Transform3D()
+	var tris := PackedVector3Array()
+	tris.resize(faces.size())
+	var grid := {}
+	@warning_ignore("integer_division")
+	for t in range(faces.size() / 3):
+		var a := xf * faces[t * 3]
+		var b := xf * faces[t * 3 + 1]
+		var c := xf * faces[t * 3 + 2]
+		tris[t * 3] = a
+		tris[t * 3 + 1] = b
+		tris[t * 3 + 2] = c
+		var mn := a.min(b).min(c)
+		var mx := a.max(b).max(c)
+		for gx in range(floori(mn.x * 2.0), floori(mx.x * 2.0) + 1):
+			for gz in range(floori(mn.z * 2.0), floori(mx.z * 2.0) + 1):
+				var key := Vector2i(gx, gz)
+				if not grid.has(key):
+					grid[key] = []
+				(grid[key] as Array).append(t)
+	var L := HouseBuilder.lot_transform(lot)
+	var sb: float = lot["setback"]
+	var fy := Layout.PORCH_H
+	var wh := 3.0
+	var z0 := sb
+	var z1 := sb + HouseBuilder.DEPTH
+	var f := HouseBuilder.IN_FACE
+	var xl := HouseBuilder.BODY_X0 + f
+	var xr := HouseBuilder.BODY_X1 - f
+	var zf := z0 + f
+	var zb := z1 - f
+	var pz := z0 + 5.0
+	var xw := -2.8
+	var probes := []   # [name, a (house frame), b (house frame)]
+	# Interior corners [name, x, z, into the room along x, along z].
+	var corners := [["living front-left", xl, zf, 1, 1], ["living front-right", xr, zf, -1, 1], ["office back-right", xr, zb, -1, -1],
+		["office back-left", xw + 0.06, zb, 1, -1], ["living by the partition", xl, pz - 0.06, 1, -1],
+		["bedroom front-left", xl, pz + 0.06, 1, 1], ["bedroom front-right", xw - 0.06, pz + 0.06, -1, 1],
+		["bedroom back-right", xw - 0.06, zb, -1, -1], ["bedroom back-left", xl, zb, 1, -1]]
+	for c in corners:
+		var cx: float = c[1]
+		var cz: float = c[2]
+		var sx: float = c[3]
+		var sz: float = c[4]
+		for y in [fy + 0.05, fy + 1.3, wh - 0.05]:
+			probes.append(["%s corner, along the x wall, y %.2f" % [c[0], y], Vector3(cx + sx * 0.02, y, cz + sz * 0.3), Vector3(cx + sx * 0.02, y, cz - sz * 0.3)])
+			probes.append(["%s corner, along the z wall, y %.2f" % [c[0], y], Vector3(cx + sx * 0.3, y, cz + sz * 0.02), Vector3(cx - sx * 0.3, y, cz + sz * 0.02)])
+	# Wall faces [name, fixed coordinate axis, value, room normal, samples along].
+	var walls := [["front", "z", zf, 1.0, [-8.5, -3.0, 1.8]], ["back", "z", zb, -1.0, [-8.5, -4.5, -1.8, 1.5]],
+		["left", "x", xl, 1.0, [z0 + 1.0, z0 + 4.0, z0 + 8.5]], ["right", "x", xr, -1.0, [z0 + 1.0, z0 + 4.5, z0 + 8.0]],
+		["partition (living)", "z", pz - 0.06, -1.0, [-8.0, -5.0, -3.0]], ["partition (bedroom)", "z", pz + 0.06, 1.0, [-8.0, -5.0, -3.0]],
+		["bedroom wall (bedroom)", "x", xw - 0.06, -1.0, [pz + 1.0, pz + 3.0]], ["bedroom wall (office)", "x", xw + 0.06, 1.0, [pz + 1.0, pz + 3.0]]]
+	for w in walls:
+		for s in w[4]:
+			var p: Vector3
+			var n: Vector3
+			if w[1] == "z":
+				p = Vector3(s, 0, w[2])
+				n = Vector3(0, 0, w[3])
+			else:
+				p = Vector3(w[2], 0, s)
+				n = Vector3(w[3], 0, 0)
+			var tag := "%s wall at %.1f" % [w[0], s]
+			probes.append([tag + ": floor seam", p + n * 0.02 + Vector3(0, fy + 0.03, 0), p + n * 0.02 + Vector3(0, fy - 0.08, 0)])
+			probes.append([tag + ": wall foot", p + n * 0.1 + Vector3(0, fy + 0.01, 0), p - n * 0.1 + Vector3(0, fy + 0.01, 0)])
+			probes.append([tag + ": ceiling seam", p + n * 0.02 + Vector3(0, wh - 0.03, 0), p + n * 0.02 + Vector3(0, wh + 0.08, 0)])
+			probes.append([tag + ": wall top", p + n * 0.1 + Vector3(0, wh - 0.01, 0), p - n * 0.1 + Vector3(0, wh - 0.01, 0)])
+	var gaps := []
+	for pr in probes:
+		var a: Vector3 = L * (pr[1] as Vector3)
+		var b: Vector3 = L * (pr[2] as Vector3)
+		var mn := a.min(b)
+		var mx := a.max(b)
+		var hit := false
+		var seen := {}
+		for gx in range(floori(mn.x * 2.0), floori(mx.x * 2.0) + 1):
+			for gz in range(floori(mn.z * 2.0), floori(mx.z * 2.0) + 1):
+				var key := Vector2i(gx, gz)
+				if hit or not grid.has(key):
+					continue
+				for t in grid[key]:
+					if seen.has(t):
+						continue
+					seen[t] = true
+					if Geometry3D.segment_intersects_triangle(a, b, tris[t * 3], tris[t * 3 + 1], tris[t * 3 + 2]) != null:
+						hit = true
+						break
+		if not hit:
+			gaps.append(pr[0])
+	return gaps
+
+
+## The triangles HouseBuilder builds for a hollow house's walls, floor, ceiling and interior finish
+## (the game's own builder, run again: a headless renderer keeps no mesh data to read back).
+static func _s3_house_faces(lot: Dictionary) -> PackedVector3Array:
+	var kit := MeshKit.new()
+	var sb: float = lot["setback"]
+	HouseBuilder._hollow_walls(kit, HouseBuilder.lot_transform(lot), Mats.siding(lot["siding"]), 3.0, sb, sb + HouseBuilder.DEPTH, lot)
+	var out := PackedVector3Array()
+	for key in kit._order:
+		var arr: Array = (kit._st[key] as SurfaceTool).commit_to_arrays()
+		out.append_array(arr[Mesh.ARRAY_VERTEX])
+	return out
+
+
+## The house-frame points of this house's roof-snow pillows (drawn at roof depth `depth`) that lie
+## inside its rooms: between the walls' inner faces, under the ceiling.
+static func _s3_roof_snow_inside(h: Dictionary, lot: Dictionary, depth: float) -> Array:
+	var rs: RoofSnow = h["roof_snow"]
+	var inv: Transform3D = (h["L"] as Transform3D).affine_inverse()
+	var kit := MeshKit.new()
+	RoofSnow.build(kit, rs.planes, depth)
+	var sb: float = lot["setback"]
+	var lo := Vector3(HouseBuilder.BODY_X0 + 0.165, 0.3, sb + 0.165)
+	var hi := Vector3(HouseBuilder.BODY_X1 - 0.165, 3.0, sb + HouseBuilder.DEPTH - 0.165)
+	var out := []
+	for key in kit._order:
+		var arr: Array = (kit._st[key] as SurfaceTool).commit_to_arrays()
+		for v in arr[Mesh.ARRAY_VERTEX]:
+			var p: Vector3 = inv * v
+			if p.x > lo.x and p.x < hi.x and p.y > lo.y and p.y < hi.y and p.z > lo.z and p.z < hi.z:
+				out.append(p.snapped(Vector3.ONE * 0.01))
+	return out
+
+
+## Both enterable houses: no gap at any interior corner or wall-to-floor / wall-to-ceiling seam (the
+## bedroom's two corner slots are closed), the walls carry the finished material with the old
+## paint's average colour, and there are baseboards and casings.
+func test_s3_walls_closed_and_finished() -> void:
+	await _s3_world()
+	for lot in [Layout.player_lot, Layout.neighbor_lot]:
+		var h: Dictionary = world.refs["houses"][lot["index"]]
+		var mi: MeshInstance3D = h["mesh"]
+		var gaps := s3_seam_gaps(_s3_house_faces(lot), lot)
+		runner.check(gaps.is_empty(), "§3 %s: every interior corner and wall-to-floor / wall-to-ceiling seam is closed %s" % [lot["address"], str(gaps)])
+		var poke := []
+		for depth in [0.2, 0.6, 1.5]:
+			poke.append_array(_s3_roof_snow_inside(h, lot, depth))
+		runner.check(poke.is_empty(), "§3 %s: the garage's and the porch's roof snow stays outside the rooms at any depth %s" % [lot["address"], str(poke.slice(0, 3))])
+		var wall_mat: ShaderMaterial = null
+		var trim_found := false
+		for si in range(mi.mesh.get_surface_count()):
+			var m := mi.mesh.surface_get_material(si)
+			if m is ShaderMaterial and (m as ShaderMaterial).shader.resource_path == "res://shaders/interior_wall.gdshader":
+				wall_mat = m
+			if m == Mats.interior_trim():
+				trim_found = true
+		runner.check(wall_mat != null and trim_found, "§3 %s: the interior walls are finished (drywall / wallpaper) with baseboards and casings" % lot["address"])
+		if wall_mat:
+			var pr: Vector4 = wall_mat.get_shader_parameter("paper_rect")
+			var bed := _s3_rect(lot, HouseBuilder.BODY_X0, -2.8, float(lot["setback"]) + 5.0, float(lot["setback"]) + HouseBuilder.DEPTH)
+			runner.check(pr.is_equal_approx(Vector4(bed.position.x, bed.position.y, bed.end.x, bed.end.y)), "§3 %s: the wallpaper is the bedroom's" % lot["address"])
+	# The paint's average is the plain colour the walls had (the lighting test of pass 4 runs as is).
+	var sh: Shader = load("res://shaders/interior_wall.gdshader")
+	runner.check(sh.code.contains("vec3 albedo : source_color = vec3(0.86, 0.8, 0.7)") and sh.code.contains("float roughness_v = 0.9"), "§3 the wall finish averages the old paint (0.86, 0.8, 0.7), roughness 0.9")
+	await _unload()
+
+
+# --- §3 No snow work from inside ------------------------------------------------------------------
+
+## Snow a blower took in but hadn't thrown yet when it stopped (it carries it to its next run).
+var _s3_held := 0.0
+
+
+func _s3_blower(tool: String, at: Vector3) -> WalkBehind:
+	var e := {"uid": Game.uid(), "tool": tool, "pos": at, "yaw": 0.0}
+	Game.machines.append(e)
+	return world.spawn_machine_node(e)
+
+
+## Work the snow with `tool` for `frames` from where the player stands: LMB swept (then released:
+## any load is thrown), then RMB (standing, or walking if `walk`); a blower is run instead. Returns
+## whether the indicator showed at any point.
+func _s3_work(tool: String, frames: int, walk := false, wb: WalkBehind = null) -> bool:
+	var pl: Player = world.player
+	var tc: ToolController = pl.tools
+	var seen := false
+	_s3_held = 0.0
+	var base := pl.yaw
+	if wb != null:
+		wb.interact(pl)
+		await _frames(2)
+		Input.action_press("primary")
+		for k in range(frames):
+			await _tree().physics_frame
+			seen = seen or tc.indicator.visible
+		_release_all()
+		await _frames(2)
+		_s3_held = wb._acc
+		wb.release()
+		await _s3_settle()
+		return seen
+	Game.carried = ""
+	Game.slots = [tool, "", "", ""]
+	Game.select_slot(0)
+	await _frames(2)
+	Input.action_press("primary")
+	for k in range(frames):
+		pl.set_yaw(base + 0.3 * sin(k * 0.25))
+		await _tree().physics_frame
+		seen = seen or tc.indicator.visible
+	pl.set_yaw(base)
+	Input.action_release("primary")
+	await _frames(6)
+	seen = seen or tc.indicator.visible
+	await _s3_settle()
+	Input.action_press("secondary")
+	if walk:
+		Input.action_press("move_forward")
+	for k in range(frames):
+		await _tree().physics_frame
+		seen = seen or tc.indicator.visible
+	_release_all()
+	await _frames(3)
+	return seen
+
+
+## From inside both houses — at every window and at the open door, and standing in the doorway —
+## no hand tool, the electric shovel or a blower changes any snow or shows an indicator; outside,
+## next to a wall, every one of them works.
+func test_s3_no_snow_work_from_inside() -> void:
+	await _s3_world()
+	Game.money = 100000
+	var pl: Player = world.player
+	var fy := Layout.PORCH_H
+	for lot in [Layout.player_lot, Layout.neighbor_lot]:
+		var sb: float = lot["setback"]
+		var z1 := sb + HouseBuilder.DEPTH
+		var x0 := HouseBuilder.BODY_X0
+		var door: Door = world.player_door if lot == Layout.player_lot else world.neighbor_door
+		door.set_open(true)
+		await _frames(40)
+		# Snow outside every opening, and on the porch: [name, inside spot (x, z), look at, snow rect (house frame)]
+		var spots := [
+			["the living-room window", Vector2(-4.45, sb + 0.75), Vector3(-6.2, 1.6, sb), [-8.2, -4.2, sb - 2.5, sb]],
+			["the bedroom window", Vector2(-5.2, sb + 8.3), Vector3(-6.3, 1.75, z1), [-8.3, -4.3, z1, z1 + 2.5]],
+			["the kitchen window", Vector2(-0.5, sb + 7.9), Vector3(-0.5, 1.75, z1), [-2.5, 1.5, z1, z1 + 2.5]],
+			["the bedroom side window", Vector2(x0 + 0.72, sb + 6.3), Vector3(x0, 1.75, sb + 6.3), [x0 - 2.5, x0, sb + 4.3, sb + 8.3]],
+			["the open door", Vector2(-1.5, sb + 0.8), Vector3(-1.5, 0.9, sb - 1.0), [-2.9, -0.1, sb - 2.4, sb]],
+			["the doorway", Vector2(-1.5, sb + 0.05), Vector3(-1.5, 0.7, sb - 1.0), [-2.9, -0.1, sb - 2.4, sb]],
+		]
+		for s in spots:
+			var sr: Array = s[3]
+			var snow_r := _s3_rect(lot, sr[0], sr[1], sr[2], sr[3])
+			Snow.set_rect(snow_r, 0.45 if s[0].contains("door") else 0.8)
+			Snow.relax_until_stable()
+			var spot: Vector2 = s[1]
+			var look: Vector3 = s[2]
+			var bad := []
+			var shown := []
+			for tool in S3_HAND_TOOLS + S3_BLOWERS:
+				var wb: WalkBehind = null
+				if tool in S3_BLOWERS:
+					wb = _s3_blower(tool, _s3_h(lot, spot.x, fy, spot.y))
+				_s3_stand(_s3_h(lot, spot.x, fy, spot.y), _s3_h(lot, look.x, look.y, look.z), -30.0 if not s[0].contains("door") else INF)
+				await _frames(3)
+				var snap := _s3_snap(snow_r.grow(2.0))
+				var v_before := Snow.stat_player_moved
+				var seen: bool = await _s3_work(tool, 20, false, wb)
+				var df := _s3_diff(snap)
+				var name: String = tool if tool != "" else "hands"
+				if df["added"] > 0.0 or df["removed"] > 0.0 or Snow.stat_player_moved != v_before or pl.tools.load > 0.0:
+					bad.append("%s (%.4f m3 moved)" % [name, df["removed"]])
+				if seen:
+					shown.append(name)
+				if wb:
+					wb.queue_free()
+				pl.tools.load = 0.0
+			runner.check(bad.is_empty(), "§3 %s, inside at %s: no tool changes any snow %s" % [lot["address"], s[0], str(bad)])
+			runner.check(shown.is_empty(), "§3 %s, inside at %s: no indicator %s" % [lot["address"], s[0], str(shown)])
+		door.set_open(false)
+		await _frames(30)
+		# Outside, next to the back wall: every tool works, as before.
+		var out_r := _s3_rect(lot, -9.0, -3.0, z1, z1 + 3.0)
+		Snow.set_rect(out_r, 0.45)
+		Snow.relax_until_stable()
+		var works := []
+		for tool in S3_HAND_TOOLS + S3_BLOWERS:
+			var name2: String = tool if tool != "" else "hands"
+			var snap2 := _s3_snap(out_r.grow(14.0))
+			var seen2 := false
+			if tool in S3_BLOWERS:
+				# Walking along the wall, 0.9 m out, the chute away from it.
+				var at := _s3_h(lot, -8.6, 0.0, z1 + 0.9)
+				var wb2 := _s3_blower(tool, at)
+				_s3_stand(at, _s3_h(lot, -3.0, 0.0, z1 + 0.9), 0.0)
+				wb2.chute_angle = rad_to_deg(pl.forward2().angle_to(_s3_dir(lot, 0, 1)))
+				seen2 = await _s3_work(tool, 30, false, wb2)
+				wb2.queue_free()
+			else:
+				# Facing the wall from 0.6 m out, scooping the snow at its foot; then pushing along it.
+				_s3_stand(_s3_h(lot, -6.0, 0.0, z1 + 0.6), _s3_h(lot, -6.0, 0.0, z1), -70.0)
+				await _frames(3)
+				seen2 = await _s3_work(tool, 20, false)
+				_s3_stand(_s3_h(lot, -8.6, 0.0, z1 + 0.6), _s3_h(lot, -3.0, 0.0, z1 + 0.6), -30.0)
+				await _frames(2)
+				Input.action_press("secondary")
+				Input.action_press("move_forward")
+				await _frames(30)
+				_release_all()
+				await _frames(3)
+			await _s3_settle()
+			var df2 := _s3_diff(snap2)
+			if df2["removed"] > 0.002 and absf(float(df2["net"]) + _s3_held) < 1e-5 and seen2:
+				works.append(name2)
+			else:
+				runner.info("%s outside: removed %.4f, net %.6f, indicator %s" % [name2, df2["removed"], df2["net"], str(seen2)])
+			pl.tools.load = 0.0
+			Snow.set_rect(out_r, 0.45)
+			Snow.relax_until_stable()
+		runner.check(works.size() == S3_HAND_TOOLS.size() + S3_BLOWERS.size(), "§3 %s, outside next to the wall: every tool works the snow, volume conserved %s" % [lot["address"], str(works)])
+	runner.check(_s3_indoor_snow() == 0.0, "§3 no snow inside any building")
+	_release_all()
+	await _unload()
+
+
+# --- §3 Thrown snow and buildings ------------------------------------------------------------------
+
+## Throw `vol` from `start` toward `aim` (world) the way every tool does (Throw.compute, then a
+## ThrownSnow carrying the volume) and land it at once (flush runs the same landing code).
+func _s3_throw(start: Vector3, aim: Vector3, dist: float, ang: float, vol: float) -> Dictionary:
+	var d2 := Vector2(aim.x - start.x, aim.z - start.z).normalized()
+	var land := Throw.compute(world.get_world_3d(), start, d2, dist, ang, [])
+	if land.get("valid", false):
+		var ts := ThrownSnow.spawn(world, start, d2, land, vol, ang, 0.35)
+		ts.flush()
+	return land
+
+
+## What's wrong with a throw that met building `bl` (empty: nothing): it landed outside, at the foot
+## of the face it came at, all of it (exactly), none inside, where its landing (the indicator) said.
+static func _s3_throw_problems(land: Dictionary, df: Dictionary, vol: float, bl: Dictionary, start: Vector3, ind: Vector3) -> Array:
+	var bad := []
+	if not land.get("valid", false) or land.get("kind", "") != "ground":
+		return ["no ground landing (%s)" % str(land.get("kind", "?"))]
+	var p: Vector3 = land["pos"]
+	var p2 := Vector2(p.x, p.z)
+	var r: Rect2 = bl["rect"]
+	var q := Vector2(clampf(p2.x, r.position.x, r.end.x), clampf(p2.y, r.position.y, r.end.y))
+	var d := q.distance_to(p2)
+	if not Buildings.at(p2).is_empty() or d < 0.1 or d > Buildings.FOOT_OUT + 0.15:
+		bad.append("landing %.2f m from the wall" % d)
+	if (p2 - q).dot(Vector2(start.x, start.z) - q) <= 0.0:
+		bad.append("landed on the far side")
+	if absf(float(df["added"]) - vol) > 1e-5 or absf(float(df["net"]) - vol) > 1e-5:
+		bad.append("volume %.6f of %.6f" % [df["net"], vol])
+	if float(df["inside"]) > 0.0:
+		bad.append("%.5f m3 inside" % df["inside"])
+	var c: Vector2 = df["centroid"]
+	if c.x == INF or c.distance_to(Vector2(ind.x, ind.z)) > 0.25:
+		bad.append("landed %.2f m from the indicator" % c.distance_to(Vector2(ind.x, ind.z)))
+	return bad
+
+
+## Thrown snow (hands, every tool, the electric shovel, blower chutes) aimed at the walls, the
+## windows, the open door and the roof of every building, from every side: it lands outside at the
+## foot of the wall, volume conserved exactly, no snow inside, the indicator within 25 cm of it.
+func test_s3_thrown_snow_stops_at_buildings() -> void:
+	await _s3_world()
+	world.player_door.set_open(true)
+	world.neighbor_door.set_open(true)
+	await _frames(40)
+	var pl: Player = world.player
+	pl.teleport(Vector3(10, 0.05, 120))      # out of the way
+	var v_all0 := Snow.total_volume()
+	var thrown := 0.0
+	var fy := Layout.PORCH_H
+	var n := 0
+	var bad := []
+	for lot in [Layout.player_lot, Layout.neighbor_lot]:
+		var sb: float = lot["setback"]
+		var z0 := sb
+		var z1 := sb + HouseBuilder.DEPTH
+		var x0 := HouseBuilder.BODY_X0
+		var x1 := HouseBuilder.BODY_X1
+		var gx1 := HouseBuilder.GAR_X1
+		var body := Buildings.at(Vector2(_s3_h(lot, -4.0, 0, sb + 4.0).x, _s3_h(lot, -4.0, 0, sb + 4.0).z))
+		var gar := Buildings.at(Vector2(_s3_h(lot, 6.0, 0, sb + 3.0).x, _s3_h(lot, 6.0, 0, sb + 3.0).z))
+		# [name, building, start (house frame), aim (house frame), distance, angle]
+		var cases := [
+			["front wall", body, Vector3(-3.2, 1.3, z0 - 2.5), Vector3(-3.2, 1.3, z0), 4.0, 38.0],
+			["front window", body, Vector3(-6.2, 1.5, z0 - 2.5), Vector3(-6.2, 1.5, z0), 4.0, 30.0],
+			["open front door", body, Vector3(-1.5, fy + 1.2, z0 - 1.2), Vector3(-1.5, fy + 1.2, z0), 3.0, 20.0],
+			["roof from the front", body, Vector3(-4.5, 1.3, z0 - 3.0), Vector3(-4.5, 1.3, z0), 9.0, 55.0],
+			["garage door", gar, Vector3(6.0, 1.3, z0 - 3.0), Vector3(6.0, 1.3, z0), 4.0, 30.0],
+			["back wall", body, Vector3(-8.2, 1.3, z1 + 2.5), Vector3(-8.2, 1.3, z1), 4.0, 38.0],
+			["bedroom window", body, Vector3(-6.3, 1.3, z1 + 2.5), Vector3(-6.3, 1.3, z1), 4.0, 30.0],
+			["kitchen window", body, Vector3(-0.5, 1.3, z1 + 2.5), Vector3(-0.5, 1.3, z1), 4.0, 30.0],
+			["roof from the back", body, Vector3(-4.5, 1.3, z1 + 3.0), Vector3(-4.5, 1.3, z1), 9.0, 55.0],
+			["garage back wall", gar, Vector3(6.0, 1.3, sb + 9.5), Vector3(6.0, 1.3, sb + 7.0), 4.0, 30.0],
+			["side wall", body, Vector3(x0 - 2.5, 1.3, sb + 3.0), Vector3(x0, 1.3, sb + 3.0), 4.0, 38.0],
+			["side window", body, Vector3(x0 - 2.5, 1.3, sb + 6.3), Vector3(x0, 1.3, sb + 6.3), 4.0, 30.0],
+			["roof from the side", body, Vector3(x0 - 3.0, 1.3, sb + 4.5), Vector3(x0, 1.3, sb + 4.5), 9.0, 55.0],
+			["garage side wall", gar, Vector3(gx1 + 2.5, 1.3, sb + 3.0), Vector3(gx1, 1.3, sb + 3.0), 4.0, 38.0],
+			["garage roof from the side", gar, Vector3(gx1 + 3.0, 1.3, sb + 3.0), Vector3(gx1, 1.3, sb + 3.0), 9.0, 55.0],
+			["house wall behind the garage", body, Vector3(x1 + 2.5, 1.3, sb + 8.2), Vector3(x1, 1.3, sb + 8.2), 4.0, 38.0],
+		]
+		for c in cases:
+			var st := _s3_h(lot, c[2].x, c[2].y, c[2].z)
+			var aim := _s3_h(lot, c[3].x, c[3].y, c[3].z)
+			var bl: Dictionary = c[1]
+			var snap := _s3_snap((bl["rect"] as Rect2).grow(4.0))
+			var vol := 0.04
+			var land := _s3_throw(st, aim, c[4], c[5], vol)
+			thrown += vol if land.get("valid", false) else 0.0
+			var prob := _s3_throw_problems(land, _s3_diff(snap), vol, bl, st, land.get("pos", Vector3.INF))
+			n += 1
+			if not prob.is_empty():
+				bad.append("%s %s: %s" % [lot["address"], c[0], ", ".join(prob)])
+	for b in Layout.buildings:
+		var bl2 := Buildings.at((b["rect"] as Rect2).get_center())
+		var r: Rect2 = b["rect"]
+		var top: float = b["height"]
+		var cc := r.get_center()
+		# [name, start, aim]: every side's wall, and a lob onto the roof from a high bank on every side.
+		var sides := [["north", Vector2(cc.x, r.position.y - 2.5), Vector2(cc.x, r.position.y)], ["south", Vector2(cc.x, r.end.y + 2.5), Vector2(cc.x, r.end.y)],
+			["west", Vector2(r.position.x - 2.5, cc.y), Vector2(r.position.x, cc.y)], ["east", Vector2(r.end.x + 2.5, cc.y), Vector2(r.end.x, cc.y)]]
+		for sd in sides:
+			for what in ["wall", "roof"]:
+				var a2: Vector2 = sd[1]
+				var t2: Vector2 = sd[2]
+				var st2 := Vector3(a2.x, 1.3 if what == "wall" else top + 0.6, a2.y)
+				var snap2 := _s3_snap(r.grow(4.0))
+				var land2 := _s3_throw(st2, Vector3(t2.x, st2.y, t2.y), 4.0 if what == "wall" else 5.0, 30.0 if what == "wall" else 60.0, 0.04)
+				thrown += 0.04 if land2.get("valid", false) else 0.0
+				var prob2 := _s3_throw_problems(land2, _s3_diff(snap2), 0.04, bl2, st2, land2.get("pos", Vector3.INF))
+				n += 1
+				if not prob2.is_empty():
+					bad.append("%s %s %s: %s" % [b["id"], sd[0], what, ", ".join(prob2)])
+	runner.check(bad.is_empty(), "§3 %d throws at walls, windows, open doors and roofs from every side of every building: each lands outside at the foot of the wall, all of it, none inside, where the landing said %s" % [n, str(bad)])
+	Snow.relax_until_stable()
+	runner.near(Snow.total_volume(), v_all0 + thrown, 1e-4, "§3 …total snow volume conserved exactly (%.3f m3 thrown)" % thrown)
+	runner.check(_s3_indoor_snow() == 0.0, "§3 …and no snow inside any building")
+	# With the real tools and their indicator: [tool, house-frame stand, house-frame target, load or
+	# snow to work, chute direction (house frame) for a blower]
+	var lot2 := Layout.player_lot
+	var sb2: float = lot2["setback"]
+	var tool_cases := [
+		["standard_shovel", "the living-room window", Vector3(-6.2, 0, sb2 - 1.5), Vector3(-6.2, 1.6, sb2)],
+		["", "the open door", Vector3(-1.5, fy, sb2 - 1.2), Vector3(-1.5, fy + 1.5, sb2)],
+		["electric_shovel", "the bedroom window", Vector3(-6.3, 0, sb2 + HouseBuilder.DEPTH + 2.0), Vector3(-6.3, 1.0, sb2 + HouseBuilder.DEPTH)],
+		["small_blower", "the side wall", Vector3(HouseBuilder.BODY_X0 - 3.0, 0, sb2 + 2.5), Vector3(HouseBuilder.BODY_X0 - 3.0, 0, sb2 + 8.0)],
+		["large_blower", "the roof", Vector3(-6.0, 0, sb2 - 4.0), Vector3(-1.0, 0, sb2 - 4.0)],
+	]
+	var tbad := []
+	for tc_ in tool_cases:
+		var tool: String = tc_[0]
+		var at := _s3_h(lot2, tc_[2].x, tc_[2].y, tc_[2].z)
+		var look := _s3_h(lot2, tc_[3].x, tc_[3].y, tc_[3].z)
+		var work := Rect2(Vector2(at.x, at.z) - Vector2(2.5, 2.5), Vector2(5, 5))
+		var body2 := Buildings.at(Vector2(_s3_h(lot2, -4.0, 0, sb2 + 4.0).x, _s3_h(lot2, -4.0, 0, sb2 + 4.0).z))
+		Snow.set_rect(work, 0.0 if tool in ["standard_shovel", ""] else 0.4)
+		Snow.relax_until_stable()
+		var snap3 := _s3_snap((body2["rect"] as Rect2).grow(6.0))
+		# Relaxation held still while measuring: the snow is measured where it landed, before a
+		# pile of it slides.
+		Snow.auto_process = false
+		var tcl: ToolController = pl.tools
+		var inds := []
+		var held := 0.0
+		if tool in S3_BLOWERS:
+			var wb := _s3_blower(tool, at)
+			_s3_stand(at, look, 0.0)
+			wb.chute_angle = rad_to_deg(pl.forward2().angle_to(_s3_dir(lot2, 1, 0) if tool == "small_blower" else _s3_dir(lot2, 0, 1)))
+			wb.interact(pl)
+			await _frames(2)
+			Input.action_press("primary")
+			for k in range(40):
+				await _tree().physics_frame
+				if tcl.indicator.visible and k > 10:
+					inds.append(tcl.indicator.global_position)
+			_release_all()
+			await _frames(2)
+			held = wb._acc
+			wb.release()
+			wb.queue_free()
+		else:
+			Game.carried = ""
+			Game.slots = [tool, "", "", ""]
+			Game.select_slot(0)
+			_s3_stand(at, look, 0.0 if tool != "electric_shovel" else -20.0)
+			await _frames(3)
+			if tool != "electric_shovel":
+				tcl.load = tcl._capacity() * 0.8
+				thrown += tcl.load
+			Input.action_press("primary")
+			for k in range(30):
+				await _tree().physics_frame
+				if tcl.indicator.visible and k > 20:
+					inds.append(tcl.indicator.global_position)
+			Input.action_release("primary")
+		await _s3_settle()
+		var df3 := _s3_diff(snap3)
+		Snow.auto_process = true
+		Snow.relax_until_stable()
+		var ind := Vector3.ZERO
+		for v in inds:
+			ind += v
+		ind = ind / maxf(inds.size(), 1)
+		var lp: Dictionary = {"valid": not inds.is_empty(), "kind": "ground", "pos": ind}
+		var vol3: float = df3["added"] if tool in ["electric_shovel", "small_blower", "large_blower"] else df3["net"]
+		var prob3 := _s3_throw_problems(lp, {"added": vol3, "net": vol3, "inside": df3["inside"], "centroid": df3["centroid"]}, vol3, body2, at, ind)
+		if tool in ["electric_shovel", "small_blower", "large_blower"] and absf(float(df3["net"]) + held) > 1e-5:
+			prob3.append("not conserved (%.6f m3)" % (float(df3["net"]) + held))
+		if float(df3["added"]) < 0.005:
+			prob3.append("nothing thrown")
+		if not prob3.is_empty():
+			tbad.append("%s at %s: %s" % [tool if tool != "" else "hands", tc_[1], ", ".join(prob3)])
+		else:
+			runner.info("%s at %s: %.1f L landed at the wall foot, %.2f m from the indicator" % [tool if tool != "" else "hands", tc_[1], float(df3["added"]) * 1000.0, (df3["centroid"] as Vector2).distance_to(Vector2(ind.x, ind.z))])
+		pl.tools.load = 0.0
+	runner.check(tbad.is_empty(), "§3 with the real tools (hands at the open door, a shovel at a window, the electric shovel, both blowers' chutes at a wall and the roof): the snow lands at the wall's foot, where the indicator showed %s" % str(tbad))
+	runner.check(_s3_indoor_snow() == 0.0, "§3 …still no snow inside")
+	_release_all()
+	await _unload()
+
+
+## The building list behind both rules: every house and its garage (§15's garage is that one),
+## the school, the store and the church, each footprint a wall for the snow; a building added with
+## register() (as §16's will be) is indoors for the tools and stops thrown snow at once.
+func test_s3_buildings_registry() -> void:
+	await _s3_world()
+	var built := 0
+	for lot in Layout.lots:
+		if not lot["vacant"]:
+			built += 1
+	var all := Buildings.all()
+	runner.check(all.size() == built * 2 + Layout.buildings.size(), "§3 %d buildings: %d houses, their garages, %d others" % [all.size(), built, Layout.buildings.size()])
+	var not_blocked := []
+	for b in all:
+		var c := (b["rect"] as Rect2).get_center()
+		if Snow.surface_at(c.x, c.y) != Snow.S_BLOCKED:
+			not_blocked.append(b["id"])
+	runner.check(not_blocked.is_empty(), "§3 every building's footprint is a wall for the snow %s" % str(not_blocked))
+	var gar: Rect2 = Layout.house_info(Layout.player_lot)["garage"]
+	runner.check(Buildings.indoors(Vector3(gar.get_center().x, 0.05, gar.get_center().y)), "§3 the garage counts as indoors")
+	# A new building on the empty lot at 11 Birch Avenue.
+	var vac: Dictionary = Layout.lot_by_address(11, Layout.STREET_BIRCH)
+	var r := Layout.lot_rect_world(vac, -4.0, 4.0, 10.0, 16.0)
+	Buildings.register("s3_test_building", r, 5.0, "test")
+	runner.check(Buildings.indoors(Vector3(r.get_center().x, 0.05, r.get_center().y)) and not Buildings.indoors(Vector3(r.position.x - 1.0, 0.05, r.position.y - 1.0)), "§3 a registered building is indoors inside, outdoors outside")
+	var st := Vector3(r.get_center().x, 1.3, r.position.y - 2.5)
+	var snap := _s3_snap(r.grow(4.0))
+	var land := _s3_throw(st, Vector3(st.x, 1.3, r.position.y), 4.0, 30.0, 0.04)
+	var prob := _s3_throw_problems(land, _s3_diff(snap), 0.04, Buildings.at(r.get_center()), st, land.get("pos", Vector3.INF))
+	runner.check(prob.is_empty(), "§3 …and snow thrown at it stops at its wall and falls at its foot %s" % str(prob))
+	Buildings.unregister("s3_test_building")
+	runner.check(Buildings.at(r.get_center()).is_empty(), "§3 …unregistered again")
+	await _unload()
+
+
+# --- §3 The road rule removed (Decision 12) -------------------------------------------------------
+
+## Yard snow thrown (a shovel), pushed (a pusher), blown (the electric shovel and a blower) and plowed
+## (an ATV blade and the pickup's plow) lands on the street where it was aimed: volume conserved
+## exactly, the indicator shows the street landing like any other and agrees with it, and the
+## street's clearing box counts the snow.
+func test_s3_road_rule_removed() -> void:
+	await _s3_world()
+	Game.money = 100000
+	var pl: Player = world.player
+	var tcl: ToolController = pl.tools
+	var lot := Layout.player_lot
+	var road_r := Rect2(0, 79, Layout.MAP_W, 8)
+	var sbox := Boxes.box_at(Vector2(Layout.lot_to_world(lot, 0.0, -6.0)))
+	runner.check(sbox.get("kind", "") == "street", "§3 the street in front of the house is a clearing box (%s)" % sbox.get("id", "?"))
+	var res: float = Catalog.balance.contract_residual_depth
+	var to_street := -Vector2(lot["inward"]).normalized()
+	var along := Vector2(to_street.y, -to_street.x)
+	# Thrown, blown: [tool, stand (lot u, v), snow on the yard]
+	for c in [["standard_shovel", Vector2(-5.0, 1.0)], ["electric_shovel", Vector2(-9.0, 1.0)], ["small_blower", Vector2(4.0, 1.5)], ["large_blower", Vector2(-1.0, 4.5)]]:
+		var tool: String = c[0]
+		var uv: Vector2 = c[1]
+		Snow.set_rect(road_r, res + 0.03)
+		Snow.set_rect(Layout.lot_rect_world(lot, -13.0, 13.0, -3.0, 6.0), 0.3)
+		Snow.relax_until_stable()
+		_s3_rebase_boxes(Rect2(0, 76, Layout.MAP_W, 20))
+		var at2 := Layout.lot_to_world(lot, uv.x, uv.y)
+		var at := Vector3(at2.x, 0.0, at2.y)
+		var win := Rect2(at2 - Vector2(16, 16), Vector2(32, 32))
+		var snap := _s3_snap(win)
+		var box0 := Boxes.snow_volume(sbox, true)
+		var inds := []
+		var ring_ok := true
+		var held := 0.0
+		Snow.auto_process = false     # measured where it lands, before a pile slides
+		if tool in S3_BLOWERS:
+			var wb := _s3_blower(tool, at)
+			_s3_stand(at, at + Vector3(along.x, 0, along.y), 0.0)
+			wb.chute_angle = rad_to_deg(pl.forward2().angle_to(to_street))
+			wb.interact(pl)
+			await _frames(2)
+			Input.action_press("primary")
+			for k in range(60):
+				await _tree().physics_frame
+				if tcl.indicator.visible and k > 10:
+					inds.append(tcl.indicator.global_position)
+					ring_ok = ring_ok and tcl.indicator.mesh != tcl._ring_bad
+			_release_all()
+			await _frames(2)
+			held = wb._acc
+			wb.release()
+			wb.queue_free()
+		else:
+			Game.carried = ""
+			Game.slots = [tool, "", "", ""]
+			Game.select_slot(0)
+			_s3_stand(at, at + Vector3(to_street.x, 0, to_street.y), -50.0)
+			await _frames(3)
+			Input.action_press("primary")
+			var base := pl.yaw
+			if tool == "standard_shovel":
+				for k in range(30):
+					pl.set_yaw(base + 0.3 * sin(k * 0.2))
+					await _tree().physics_frame
+				pl.set_yaw(base)
+				pl.pitch = 0.0
+				pl.head.rotation.x = 0.0
+			for k in range(40):
+				await _tree().physics_frame
+				if tcl.indicator.visible and k > 25 and (tool != "standard_shovel" or tcl.ind_state == "landing"):
+					inds.append(tcl.indicator.global_position)
+					ring_ok = ring_ok and tcl.indicator.mesh != tcl._ring_bad
+			Input.action_release("primary")
+		await _s3_settle()
+		var df := _s3_diff(snap)
+		Snow.auto_process = true
+		var ind := Vector3.ZERO
+		for v in inds:
+			ind += v
+		ind /= maxf(inds.size(), 1)
+		var box1 := Boxes.snow_volume(sbox, true)
+		var cdist := (df["centroid"] as Vector2).distance_to(Vector2(ind.x, ind.z))
+		runner.check(not inds.is_empty() and ring_ok and Snow.is_road(ind.x, ind.z), "§3 %s aimed at the street from the yard: the indicator shows the street landing like any other" % tool)
+		if absf(float(df["road"]) - float(df["added"])) >= 1e-5:
+			runner.info("%s: added %.5f, on the street %.5f, removed %.5f" % [tool, df["added"], df["road"], df["removed"]])
+		runner.check(float(df["road"]) > 0.01 and absf(float(df["road"]) - float(df["added"])) < 1e-5 and cdist < 0.25, "§3 …the snow lands on the street where it was aimed (%.1f L, %.2f m from the indicator)" % [float(df["road"]) * 1000.0, cdist])
+		runner.check(absf(float(df["net"]) + held) < 1e-5, "§3 …volume conserved exactly (%.7f m3)" % (float(df["net"]) + held))
+		runner.check(absf((box1 - box0) - float(df["road"])) < 1e-4, "§3 …and the street box counts it (+%.1f L)" % ((box1 - box0) * 1000.0))
+		pl.tools.load = 0.0
+	# Pushed: a wide pusher walking from the lawn toward the street carries the snow over the curb.
+	Snow.set_rect(road_r, res + 0.03)
+	Snow.set_rect(Layout.lot_rect_world(lot, -13.0, 13.0, -3.0, 4.0), 0.08)
+	Snow.relax_until_stable()
+	_s3_rebase_boxes(Rect2(0, 76, Layout.MAP_W, 20))
+	var p0 := Layout.lot_to_world(lot, -5.0, 2.5)
+	var win2 := Rect2(p0 - Vector2(10, 14), Vector2(20, 28))
+	var snap2 := _s3_snap(win2)
+	var box2 := Boxes.snow_volume(sbox, true)
+	Game.slots = ["wide_pusher", "", "", ""]
+	Game.select_slot(0)
+	_s3_stand(Vector3(p0.x, 0, p0.y), Vector3(p0.x + to_street.x, 0, p0.y + to_street.y), -30.0)
+	await _frames(3)
+	Input.action_press("secondary")
+	Input.action_press("move_forward")
+	var tz := Layout.lot_to_world(lot, -5.0, -4.5)
+	for k in range(900):
+		await _tree().physics_frame
+		if Vector2(pl.global_position.x, pl.global_position.z).distance_to(p0) > p0.distance_to(tz):
+			break
+	_release_all()
+	await _frames(5)
+	var df2 := _s3_diff(snap2)
+	var box3 := Boxes.snow_volume(sbox, true)
+	var lane_x := (df2["centroid"] as Vector2)
+	runner.check(float(df2["road"]) > 0.05, "§3 pushed: the pusher carries the yard snow over the curb onto the street (+%.3f m3 on the street)" % df2["road"])
+	runner.check(absf(lane_x.dot(along) - p0.dot(along)) < 0.6, "§3 …in the lane it was pushed along (%.2f m off)" % absf(lane_x.dot(along) - p0.dot(along)))
+	runner.check(absf(float(df2["net"])) < 1e-5 and box3 > box2 + 0.05, "§3 …volume conserved exactly (%.7f m3) and the street box counts it" % df2["net"])
+	# Plowed: an ATV blade and the pickup's plow push a driveway's snow onto the street.
+	for vid in ["atv_blade", "pickup_plow"]:
+		var vlot: Dictionary = Layout.lots[9] if vid == "atv_blade" else Layout.lots[10]
+		var drv: Rect2 = Layout.house_info(vlot)["driveway"]
+		var vbox := Boxes.box_at(Vector2(drv.get_center().x, 83.0))
+		Snow.set_rect(road_r, res + 0.03)
+		Snow.set_rect(Rect2(drv.position.x - 4, 87, drv.size.x + 8, 20), 0.2)
+		Snow.relax_until_stable()
+		_s3_rebase_boxes(Rect2(0, 76, Layout.MAP_W, 34))
+		var win3 := Rect2(drv.position.x - 10, 60, drv.size.x + 20, 52)
+		var snap3 := _s3_snap(win3)
+		var vb0 := Boxes.snow_volume(vbox, true)
+		var e := {"uid": Game.uid(), "id": vid, "pos": Vector3(drv.get_center().x, 0, drv.end.y - 1.0), "yaw": 0.0, "snow": 0.0}
+		Game.vehicles.append(e)
+		var v: Vehicle = world.spawn_vehicle_node(e)
+		await _frames(2)
+		v.enter_vehicle(pl)
+		v._toggle_tool()
+		Input.action_press("veh_accelerate")
+		for k in range(400):
+			await _tree().physics_frame
+			if (v.global_transform * Vector3(0, 0, float(v.info["blade_z"]))).z < 83.0:
+				break      # the blade has carried the snow out to the middle of the street
+		_release_all()
+		await _frames(5)
+		v.exit_vehicle()
+		await _frames(2)
+		var df3 := _s3_diff(snap3)
+		var vb1 := Boxes.snow_volume(vbox, true)
+		var on_lane := absf((df3["centroid"] as Vector2).x - drv.get_center().x) < drv.size.x
+		runner.check(float(df3["road"]) > 0.1 and on_lane, "§3 plowed (%s): the yard snow goes over the curb onto the street in front of the driveway (+%.2f m3)" % [vid, df3["road"]])
+		runner.check(absf(float(df3["net"])) < 1e-4 and vb1 > vb0 + 0.1, "§3 …volume conserved exactly (%.6f m3) and the street box counts it" % df3["net"])
+		v.queue_free()
+		await _frames(2)
+	_release_all()
+	await _unload()
+
+
+# --- §3 The money plant ---------------------------------------------------------------------------
+
+## The living-room plant, a testing aid: "[E] Plant (+$1,000)" with the bound key; each Interact
+## adds exactly $1,000 to the money (both modes), ten add $10,000, the money survives save → load,
+## and the earnings (stats, lifetime, the end-of-winter summary's "Money earned") don't move.
+func test_s3_money_plant() -> void:
+	for mode in ["fun", "survival"]:
+		await _s3_world(mode)
+		var pl: Player = world.player
+		var plant: Node3D = world.interior.get("plant")
+		runner.check(plant != null, "§3 %s: the living-room plant is interactable" % mode)
+		if plant == null:
+			continue
+		var lot := Layout.player_lot
+		var sb: float = lot["setback"]
+		var L := HouseBuilder.lot_transform(lot)
+		var local := L.affine_inverse() * plant.global_position
+		var clear := local.x < -4.2 and local.z < sb + 5.0 - 0.5 and local.z > sb      # in the living room
+		for thing in [Vector2(-1.5, sb), Vector2(-3.7, sb + 5.0), Vector2(-2.7, sb + 0.165), Vector2(1.75, sb + 8.45), Vector2(-6.6, sb + 7.9)]:
+			clear = clear and Vector2(local.x, local.z).distance_to(thing) > 1.5   # the doors, the photo, the computer, the bed
+		runner.check(clear, "§3 %s: the plant stands in the living room, clear of the doors, the photo, the computer and the bed (%.2f, %.2f)" % [mode, local.x, local.z - sb])
+		_s3_stand(_s3_h(lot, -7.6, Layout.PORCH_H, sb + 1.25), _s3_h(lot, InteriorBuilder.PLANT_AT.x, Layout.PORCH_H + 0.45, sb + InteriorBuilder.PLANT_AT.y))
+		await _frames(4)
+		var want := "[%s] Plant (+$1,000)" % Settings.action_label("interact")
+		runner.check(pl.focus == plant and pl.focus_prompt == want, "§3 %s: looking at it shows \"%s\" (%s)" % [mode, want, pl.focus_prompt])
+		var m0 := Game.money
+		var earned0 = Game.stats.get("money_earned", 0)
+		var life0 = Game.lifetime.get("money_earned", 0)
+		var steps := []
+		for k in range(10):
+			var ev := InputEventAction.new()
+			ev.action = "interact"
+			ev.pressed = true
+			Input.parse_input_event(ev)
+			await _frames(2)
+			var up := InputEventAction.new()
+			up.action = "interact"
+			up.pressed = false
+			Input.parse_input_event(up)
+			await _frames(12)     # five a second: under the press cap
+			steps.append(Game.money - m0)
+		var each := true
+		for k in range(10):
+			each = each and int(steps[k]) == 1000 * (k + 1)
+		var last: Dictionary = Notify.history[Notify.history.size() - 1] if not Notify.history.is_empty() else {}
+		runner.check(each and Game.money == m0 + 10000, "§3 %s: each press adds exactly $1,000; ten add $10,000 (%s)" % [mode, str(steps)])
+		runner.check(str(last.get("text", "")) == "+$1,000", "§3 %s: it shows \"+$1,000\"" % mode)
+		runner.check(Game.stats.get("money_earned", 0) == earned0 and Game.lifetime.get("money_earned", 0) == life0, "§3 %s: the earnings stats are unchanged" % mode)
+		runner.check(Saves.save_game(), "§3 %s: saved" % mode)
+		var m1 := Game.money
+		await _unload()
+		runner.check(Saves.load_game(mode) and Game.money == m1 and Game.stats.get("money_earned", 0) == earned0, "§3 %s: the money survives save → load ($%d)" % [mode, Game.money])
+		Saves.delete_save(mode)
+	await _unload()

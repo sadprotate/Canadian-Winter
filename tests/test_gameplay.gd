@@ -349,7 +349,9 @@ func test_shovel_load_grows_and_throws_farther() -> void:
 	await _frames(100)
 
 
-func test_shovel_refuses_to_throw_on_road() -> void:
+## Polish 5 §3 (Decision 12): the road rule is gone — a shovelful thrown at the street lands on it,
+## where the indicator shows (it used to be refused and kept in the shovel).
+func test_shovel_throws_onto_road() -> void:
 	await _load_world("fun")
 	var pl: Player = world.player
 	Game.add_tool("standard_shovel")
@@ -359,7 +361,9 @@ func test_shovel_refuses_to_throw_on_road() -> void:
 	Snow.set_rect(Rect2(spot - Vector2(1, 1), Vector2(2, 2)), 0.3)
 	Snow.set_rect(Rect2(spot - Vector2(1, -0.2), Vector2(2, 2)), 0.3)
 	var road := Rect2(spot.x - 8, 79, 16, 8)
+	var region := Rect2(spot.x - 8, 75, 16, 20)
 	var road_before := Snow.volume_in_rect(road)
+	var region_before := Snow.volume_in_rect(region)
 	_place(spot, PI)
 	_look_down(-45.0)
 	await _frames(2)
@@ -370,12 +374,14 @@ func test_shovel_refuses_to_throw_on_road() -> void:
 	pl.set_yaw(0.0)   # face the street
 	_look_down(0.0)
 	await _frames(10)
-	runner.check(not tc.landing.get("valid", true), "Landing indicator is red over the street")
+	var lp: Vector3 = tc.landing.get("pos", Vector3.ZERO)
+	runner.check(tc.landing.get("valid", false) and Snow.is_road(lp.x, lp.z) and tc.indicator.mesh != tc._ring_bad, "The landing over the street is shown like any other")
 	var l1 := tc.load
 	Input.action_release("primary")
-	await _frames(60)
-	runner.near(tc.load, l1, 1e-6, "Releasing over the street keeps the snow in the shovel")
-	runner.near(Snow.volume_in_rect(road), road_before, 1e-5, "No snow deposited on the road")
+	await _frames(150)
+	runner.near(tc.load, 0.0, 1e-6, "Releasing over the street throws the snow")
+	runner.near(Snow.volume_in_rect(road) - road_before, l1, 1e-4, "All of it lands on the road (%.1f L)" % (l1 * 1000.0))
+	runner.near(Snow.volume_in_rect(region), region_before, 1e-4, "Volume conserved")
 	dump_safely(tc)
 
 
@@ -383,7 +389,9 @@ func dump_safely(tc: ToolController) -> void:
 	tc.dump_at_feet(true)
 
 
-func test_pusher_stops_at_curb() -> void:
+## Polish 5 §3 (Decision 12): a pusher carries the snow over the curb onto the street (it used to
+## stop at the curb).
+func test_pusher_pushes_over_the_curb() -> void:
 	await _load_world("fun")
 	Game.add_tool("wide_pusher")
 	await _frames(2)
@@ -392,18 +400,22 @@ func test_pusher_stops_at_curb() -> void:
 	Snow.set_rect(drv, 0.08)
 	var road := Rect2(drv.position.x - 3, 79, drv.size.x + 6, 8)
 	Snow.set_rect(Rect2(0, 79, Layout.MAP_W, 8), 0.0)   # whole street clear (no road-to-road slump)
+	var region := Rect2(drv.position.x - 3, 75, drv.size.x + 6, drv.end.y - 75 + 3)
+	var region_before := Snow.volume_in_rect(region)
 	var start := Vector2(drv.get_center().x, drv.end.y - 1.5)
 	_place(start, 0.0)   # facing north, toward the street
 	await _frames(2)
 	Input.action_press("secondary")
 	Input.action_press("move_forward")
-	await _frames(600)
+	for k in range(900):
+		await _tree().physics_frame
+		if world.player.global_position.z < 84.0:
+			break         # out to the middle of the street
 	_release_all()
 	await _frames(2)
 	runner.check(Snow.stat_player_moved > 0.05, "Pusher moved %.3f m3" % Snow.stat_player_moved)
-	runner.near(Snow.volume_in_rect(road), 0.0, 0.0005, "Pushed snow stops at the curb (road stays clear)")
-	var curb_band := Rect2(drv.position.x - 1, 87.0, drv.size.x + 2, 1.5)
-	runner.check(Snow.volume_in_rect(curb_band) > 0.1, "A berm piles up at the curb line")
+	runner.check(Snow.volume_in_rect(road) > 0.1, "Pushed snow goes over the curb onto the street (%.3f m3 on the road)" % Snow.volume_in_rect(road))
+	runner.near(Snow.volume_in_rect(region), region_before, 1e-4, "Volume conserved")
 	var strip := Rect2(start.x - 0.3, drv.position.y + 2.0, 0.6, drv.size.y - 5.0)
 	runner.check(Snow.volume_in_rect(strip) < 0.06, "The pusher cleared its strip down the driveway (%.3f m3 left, 1 cm scrape residue)" % Snow.volume_in_rect(strip))
 
@@ -504,8 +516,9 @@ func test_walk_behind_blower() -> void:
 	Snow.relax_until_stable()
 	var lost := before - Snow.volume_in_rect(region) - _flying() - _roof_vol()
 	runner.check(absf(lost) < 0.01, "Blower discharge lands in the world (Δ %.4f)" % lost)
-	# Chute aimed at the street from the boulevard: discharge is blocked.
-	# On the boulevard walking east, chute turned left (north): the 8 m throw would land on the street.
+	# Polish 5 §3 (Decision 12): a chute aimed at the street from the boulevard discharges onto it
+	# (it used to be refused). On the boulevard walking east, chute turned left (north): the 8 m
+	# throw lands on the street.
 	var b2 := _lot_pt(-9.0, -2.0)
 	_place(b2, -PI * 0.5)
 	wb.chute_angle = -90.0
@@ -516,8 +529,9 @@ func test_walk_behind_blower() -> void:
 	await _frames(60)
 	_release_all()
 	await _frames(60)
-	runner.check(not wb._landing.get("valid", true), "Chute aimed at the street is refused")
-	runner.check(Snow.volume_in_rect(road) <= rb + 1e-4, "No blower snow on the road")
+	var wl: Vector3 = wb._landing.get("pos", Vector3.ZERO)
+	runner.check(wb._landing.get("valid", false) and Snow.is_road(wl.x, wl.z), "Chute aimed at the street discharges onto it")
+	runner.check(Snow.volume_in_rect(road) > rb + 0.005, "Blower snow lands on the road (+%.1f L)" % ((Snow.volume_in_rect(road) - rb) * 1000.0))
 	wb.release()
 	runner.check(pl.state == "foot", "Released the blower")
 
@@ -564,7 +578,9 @@ func test_vehicle_plow_and_stuck_pickup() -> void:
 	runner.check(pl.state == "foot", "Exited the vehicle")
 
 
-func test_plow_cannot_push_yard_snow_onto_road() -> void:
+## Polish 5 §3 (Decision 12): a plow pushes yard snow over the curb onto the street (it used to stop
+## at the curb).
+func test_plow_pushes_yard_snow_onto_road() -> void:
 	await _load_world("fun", 2024, 10.0)
 	var pl: Player = world.player
 	var hi := Layout.house_info(Layout.lots[9])
@@ -572,6 +588,8 @@ func test_plow_cannot_push_yard_snow_onto_road() -> void:
 	Snow.set_rect(Rect2(drv.position.x - 4, 87, drv.size.x + 8, 20), 0.2)
 	var road := Rect2(drv.position.x - 6, 79, drv.size.x + 12, 8)
 	Snow.set_rect(Rect2(0, 79, Layout.MAP_W, 8), 0.0)
+	var region := Rect2(drv.position.x - 6, 70, drv.size.x + 12, 40)
+	var region_before := Snow.volume_in_rect(region)
 	var e := {"uid": Game.uid(), "id": "atv_blade", "pos": Vector3(drv.get_center().x, 0, drv.end.y - 1.0), "yaw": 0.0, "snow": 0.0}
 	Game.vehicles.append(e)
 	var v: Vehicle = world.spawn_vehicle_node(e)
@@ -579,11 +597,15 @@ func test_plow_cannot_push_yard_snow_onto_road() -> void:
 	v.enter_vehicle(pl)
 	v._toggle_tool()
 	Input.action_press("veh_accelerate")
-	await _frames(300)
+	for k in range(300):
+		await _tree().physics_frame
+		if (v.global_transform * Vector3(0, 0, float(v.info["blade_z"]))).z < 83.0:
+			break         # the blade is out in the middle of the street
 	_release_all()
 	await _frames(5)
 	runner.check(Snow.stat_player_moved > 0.2, "ATV blade pushed snow (%.2f m3)" % Snow.stat_player_moved)
-	runner.near(Snow.volume_in_rect(road), 0.0, 0.001, "Yard snow stops at the curb, never on the street")
+	runner.check(Snow.volume_in_rect(road) > 0.1, "Yard snow goes over the curb onto the street (%.2f m3)" % Snow.volume_in_rect(road))
+	runner.near(Snow.volume_in_rect(region), region_before, 1e-3, "Volume conserved")
 	v.exit_vehicle()
 
 

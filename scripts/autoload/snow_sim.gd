@@ -7,9 +7,12 @@ extends Node
 ## exceptions (dump truck disposal, clearing-box completion — up to the last 10 % of a box's snow
 ## since polish 3 — and debug commands).
 ##
-## Road rule (Part 8.9): a player operation may only put snow into a ROAD cell if that snow
-## came out of a ROAD cell. Relaxation treats the curb line as a wall. Snowfall and the city
-## grader are exempt.
+## Road rule (Part 8.9): removed in polish 5 §3 (Decision 12) for every bit of snow the player
+## moves — tools, blowers and vehicles now pass allow_road = true / player_rule = false, so their
+## snow lands on (or is pushed onto) the street where it's aimed. The flags stay for what still
+## keeps to the curb: wading never shoulders yard snow onto the road, and relaxation still treats
+## the curb line as a wall (yard snow doesn't slump onto the street by itself). Snowfall and the
+## city grader are exempt as before.
 ##
 ## Ceiling: the snow surface never rises above `ceiling` (street-lamp height). Snowfall stops
 ## adding at the ceiling; operations spill the excess into neighbouring cells (volume conserved).

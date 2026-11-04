@@ -61,7 +61,7 @@ static func build_player(world: Node, root: Node3D, lot: Dictionary) -> Dictiona
 			kit.box(wood, L * Transform3D(Basis(), Vector3(-6.0 + lx, FY + 0.1, sb + 2.7 + lz)), Vector3(0.05, 0.2, 0.05))
 	_floor_lamp_base(kit, L, Vector3(-3.6, FY, sb + 0.6))
 	kit.cylinder(Mats.emissive(Color(1.0, 0.85, 0.6), 1.3), L * Transform3D(Basis(), Vector3(-3.6, FY + 1.35, sb + 0.6)), 0.25, 0.15, 0.3, 10, true)
-	_house_plant(kit, L, Vector3(-8.6, FY, sb + 0.5))
+	_house_plant(kit, L, Vector3(PLANT_AT.x, FY, sb + PLANT_AT.y))
 	# Kitchen counter along the back wall, radio on it
 	kit.box(Mats.std(Color(0.88, 0.86, 0.82), 0.6), L * Transform3D(Basis(), Vector3(-1.1, FY + 0.45, sb + 8.55)), Vector3(3.0, 0.9, 0.6))
 	kit.box(Mats.std(Color(0.25, 0.25, 0.27), 0.4), L * Transform3D(Basis(), Vector3(-1.1, FY + 0.92, sb + 8.55)), Vector3(3.1, 0.05, 0.65))
@@ -166,7 +166,17 @@ static func build_player(world: Node, root: Node3D, lot: Dictionary) -> Dictiona
 		func(_p): return "[E] Listen to the radio forecast", func(_p): world.radio_forecast())
 	out["fireplace"] = Interactable.make(root, L * Vector3(fx + 0.2, FY + 0.7, fz), Vector3(0.8, 1.4, 1.7),
 		func(_p): return "Fireplace — stand close to warm up" if Survival.power_on else "Fireplace (the furnace fan and igniter are off — no power)", func(_p): pass)
+	# Polish 5 §3: the money plant, a testing aid (HANDOFF §13: remove or hide it before release) —
+	# the living-room plant above, in the corner by the front window.
+	out["plant"] = Interactable.make(root, L * Vector3(PLANT_AT.x, FY + 0.45, sb + PLANT_AT.y), Vector3(0.7, 0.9, 0.7),
+		func(_p): return "[E] Plant (+%s)" % UIKit.money(PLANT_MONEY), func(_p): world.plant_money())
 	return out
+
+
+## Where the living-room plant stands (house frame x, z - setback).
+const PLANT_AT := Vector2(-8.6, 0.5)
+## Polish 5 §3: what each Interact on the plant adds to the money (a testing aid).
+const PLANT_MONEY := 1000
 
 
 # -----------------------------------------------------------------------------

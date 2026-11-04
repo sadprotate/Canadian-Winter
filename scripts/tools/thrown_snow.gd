@@ -51,7 +51,15 @@ func _physics_process(delta: float) -> void:
 	if t >= flight:
 		_land()
 		return
-	global_position = Throw.arc_point(start, dir2, v0, angle, t)
+	if landing.has("stop") and t >= float(landing["stop_time"]):
+		# Polish 5 §3: stopped at a building's outer face — it falls down the wall to the foot.
+		var st: Vector3 = landing["stop"]
+		var lp: Vector3 = landing["pos"]
+		var ts := float(landing["stop_time"])
+		var u := clampf((t - ts) / maxf(flight - ts, 0.001), 0.0, 1.0)
+		global_position = Vector3(lerpf(st.x, lp.x, u), lerpf(st.y, lp.y, u * u), lerpf(st.z, lp.z, u))
+	else:
+		global_position = Throw.arc_point(start, dir2, v0, angle, t)
 	_mesh.rotation += Vector3(3.0, 2.0, 1.0) * delta
 
 
@@ -68,9 +76,11 @@ func _land() -> void:
 			if is_instance_valid(bed) and bed.has_method("add_load"):
 				var over: float = bed.add_load(volume)
 				if over > 0.0:
-					Snow.deposit(Vector2(p.x, p.z), over, spread)
+					Snow.deposit(Vector2(p.x, p.z), over, spread, true)
 		_:
-			Snow.deposit(Vector2(p.x, p.z), volume, spread, false)
+			# Polish 5 §3 (Decision 12): no road rule — the snow lands where it was aimed, the
+			# street included.
+			Snow.deposit(Vector2(p.x, p.z), volume, spread, true)
 	SnowFX.burst(p, clampi(int(volume * 300.0) + 6, 6, 40), 1.0 + volume * 6.0)
 	SnowFX.puff(p + Vector3(0, 0.1, 0), clampf(0.25 + volume * 4.0, 0.25, 1.2))
 	var big := volume > 0.06

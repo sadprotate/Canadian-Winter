@@ -1,7 +1,8 @@
 class_name WalkBehind
 extends StaticBody3D
 ## Walk-behind snowblower (Part 9.7): grab with E, hold left mouse to run, Z/C turn the chute,
-## E to let go. Intake removes snow in front; the chute throws it to a landing point (never the street).
+## E to let go. Intake removes snow in front; the chute throws it to a landing point (the street
+## too, since polish 5 §3: no road rule). Nothing works from inside a building.
 
 var tool_id := "small_blower"
 var data: ToolData
@@ -96,6 +97,8 @@ func release() -> void:
 	if player:
 		player.state = "foot"
 		player.machine = null
+	if player and player.tools:
+		player.tools.indicator.visible = false
 	player = null
 	cs.disabled = false
 	engine_snd.stop()
@@ -136,9 +139,24 @@ func _physics_process(delta: float) -> void:
 		engine_snd.volume_db = move_toward(engine_snd.volume_db, -14.0, delta * 30.0)
 		disc_snd.volume_db = move_toward(disc_snd.volume_db, -80.0, delta * 60.0)
 		stream_fx.emitting = false
+		if player.tools:
+			player.tools.indicator.visible = false
 		_resist = 1.0
 		return
 	engine_snd.volume_db = move_toward(engine_snd.volume_db, -2.0, delta * 30.0)
+	# Polish 5 §3: no snow work from inside a building — the player indoors, or the intake on the far
+	# side of a building from the player's eye: no intake, no discharge, no indicator.
+	var mouth := Vector2(global_position.x, global_position.z) + fwd * 0.15
+	var inside := Buildings.indoors(pp)
+	if inside or Buildings.blocks(player.head.global_position, Vector3(mouth.x, Snow.surface_height(mouth.x, mouth.y), mouth.y),
+			Buildings.near(mouth, 4.0), ToolController.REACH_SKIN):
+		stream_fx.emitting = false
+		disc_snd.volume_db = -80.0
+		hint = "You can't work the snow from inside." if inside else ""
+		if player.tools:
+			player.tools.indicator.visible = false
+		_resist = 1.0
+		return
 	var cd := fwd.rotated(deg_to_rad(chute_angle))
 	var cp := chute.global_position + Vector3(0, 0.3, 0)
 	_land_timer -= delta
@@ -150,7 +168,7 @@ func _physics_process(delta: float) -> void:
 	if not _landing.get("valid", false):
 		stream_fx.emitting = false
 		disc_snd.volume_db = -80.0
-		hint = "The chute is aimed at the street — turn it with %s / %s." % [Settings.action_label("veh_aim_left"), Settings.action_label("veh_aim_right")]
+		hint = "Nowhere for the snow to land — turn the chute with %s / %s." % [Settings.action_label("veh_aim_left"), Settings.action_label("veh_aim_right")]
 		if _warn <= 0.0:
 			_warn = 2.5
 			AudioMgr.play("ui_error", -10.0)

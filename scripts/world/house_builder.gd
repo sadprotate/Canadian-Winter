@@ -177,10 +177,12 @@ static func build(lot: Dictionary, parent: Node3D, hollow: bool) -> Dictionary:
 	var planes := []
 	planes.append([L * Vector3(ex0, wall_h - 0.12, z0 - ov), L * Vector3(ex1, wall_h - 0.12, z0 - ov), L * Vector3(ex1, ridge_y, zm), L * Vector3(ex0, ridge_y, zm)])
 	planes.append([L * Vector3(ex1, wall_h - 0.12, z1 + ov), L * Vector3(ex0, wall_h - 0.12, z1 + ov), L * Vector3(ex0, ridge_y, zm), L * Vector3(ex1, ridge_y, zm)])
-	planes.append([L * Vector3(GAR_X0, gh - 0.1, gz0 - 0.4), L * Vector3(gex1, gh - 0.1, gz0 - 0.4), L * Vector3(gex1, gh + g_rise, gzm), L * Vector3(GAR_X0, gh + g_rise, gzm)])
-	planes.append([L * Vector3(gex1, gh - 0.1, gz1 + 0.4), L * Vector3(GAR_X0, gh - 0.1, gz1 + 0.4), L * Vector3(GAR_X0, gh + g_rise, gzm), L * Vector3(gex1, gh + g_rise, gzm)])
-	planes.append([L * Vector3(pxl, pry - 0.15, prz1), L * Vector3(pxl, pry - 0.15, prz0), L * Vector3(-1.5, pry + pr, prz0), L * Vector3(-1.5, pry + pr, prz1)])
-	planes.append([L * Vector3(pxr, pry - 0.15, prz0), L * Vector3(pxr, pry - 0.15, prz1), L * Vector3(-1.5, pry + pr, prz1), L * Vector3(-1.5, pry + pr, prz0)])
+	# The garage's and the porch's snow stops at the house wall (5th entry: which end meets it), and
+	# the porch's starts at the wall's face, not where its roof slab ends inside the wall.
+	planes.append([L * Vector3(GAR_X0, gh - 0.1, gz0 - 0.4), L * Vector3(gex1, gh - 0.1, gz0 - 0.4), L * Vector3(gex1, gh + g_rise, gzm), L * Vector3(GAR_X0, gh + g_rise, gzm), 0])
+	planes.append([L * Vector3(gex1, gh - 0.1, gz1 + 0.4), L * Vector3(GAR_X0, gh - 0.1, gz1 + 0.4), L * Vector3(GAR_X0, gh + g_rise, gzm), L * Vector3(gex1, gh + g_rise, gzm), 1])
+	planes.append([L * Vector3(pxl, pry - 0.15, z0), L * Vector3(pxl, pry - 0.15, prz0), L * Vector3(-1.5, pry + pr, prz0), L * Vector3(-1.5, pry + pr, z0), 0])
+	planes.append([L * Vector3(pxr, pry - 0.15, prz0), L * Vector3(pxr, pry - 0.15, z0), L * Vector3(-1.5, pry + pr, z0), L * Vector3(-1.5, pry + pr, prz0), 1])
 	rs.setup(planes, lot["index"])
 	# Roof catch volume: thrown snow that hits this roof joins its snow layer.
 	var catcher := Area3D.new()
@@ -237,7 +239,10 @@ static func _side_window(kit: MeshKit, L: Transform3D, c: Vector3, size: Vector2
 
 ## Hollow body walls for houses with interiors: openings for the door and windows.
 static func _hollow_walls(kit: MeshKit, L: Transform3D, siding: Material, wall_h: float, z0: float, z1: float, _lot: Dictionary) -> void:
-	var paint := Mats.std(Color(0.86, 0.8, 0.7), 0.9)
+	# Polish 5 §3: the interior walls are finished — painted drywall, wallpaper in the bedroom (the
+	# same average colour as the plain paint they had: Color(0.86, 0.8, 0.7), roughness 0.9).
+	var mid := L * Vector3((BODY_X0 + BODY_X1) * 0.5, 0, (z0 + z1) * 0.5)
+	var paint := Mats.interior_wall(Vector2(mid.x, mid.z), _world_rect(L, BODY_X0, -2.8, z0 + 5.0, z1))
 	var t := WALL_T
 	var fy := Layout.PORCH_H
 	# Front wall (z = z0) openings: big window x[-7.7,-4.7] y[0.95,2.4], door x[-2.05,-0.95] y[fy, fy+2.1]
@@ -282,6 +287,93 @@ static func _hollow_walls(kit: MeshKit, L: Transform3D, siding: Material, wall_h
 	kit.box(paint, L * Transform3D(Basis(), Vector3(-3.7, fy + 2.35 + (wall_h - fy - 2.35) * 0.5, pz)), Vector3(1.0, wall_h - fy - 2.35, 0.12))
 	# Wall between bedroom and kitchen/office area (x = -2.8, from pz to back)
 	kit.box(paint, L * Transform3D(Basis(Vector3.UP, PI * 0.5), Vector3(-2.8, (fy + wall_h) * 0.5, (pz + z1) * 0.5)), Vector3(z1 - pz - t, wall_h - fy, 0.12))
+	_interior_finish(kit, L, paint, wall_h, z0, z1)
+
+
+## Axis-aligned world rect of a house-frame rect (x0..x1, z0..z1).
+static func _world_rect(L: Transform3D, xa: float, xb: float, za: float, zb: float) -> Rect2:
+	var a := L * Vector3(xa, 0, za)
+	var b := L * Vector3(xb, 0, zb)
+	return Rect2(Vector2(minf(a.x, b.x), minf(a.z, b.z)), Vector2(absf(a.x - b.x), absf(a.z - b.z)))
+
+
+# Polish 5 §3: interior finish of the hollow houses (both enterable houses use this builder).
+const IN_FACE := 0.165      # an outer wall's room face, from its line (the inner layer of _wall_x/_wall_z)
+const PART_T := 0.06        # half the partitions' thickness (0.12)
+const BASE_H := 0.09        # baseboard height above the floor
+const BASE_T := 0.016       # baseboard / casing thickness off the wall
+const CASE_W := 0.07        # door and window casing width
+
+## Close the two cracks where the bedroom's walls met, and add baseboards and the casings around
+## the door and window openings. Visual only: colliders, openings and walls are unchanged.
+static func _interior_finish(kit: MeshKit, L: Transform3D, paint: Material, wall_h: float, z0: float, z1: float) -> void:
+	var fy := Layout.PORCH_H
+	var pz := z0 + 5.0
+	var trim := Mats.interior_trim()
+	var h := wall_h - fy
+	var xl := BODY_X0 + IN_FACE            # room faces of the outer walls
+	var xr := BODY_X1 - IN_FACE
+	var zf := z0 + IN_FACE
+	var zb := z1 - IN_FACE
+	var xw := -2.8                          # the bedroom / office wall (0.12 thick)
+	# --- The cracks ---
+	# 1. The living-room / bedroom partition stopped 5.5 cm short of the outer wall's room face
+	#    (it starts at BODY_X0 + WALL_T, the face is at BODY_X0 + 0.165): a floor-to-ceiling slot
+	#    between the bedroom and the living room. Filled into the outer wall.
+	kit.box(paint, L * Transform3D(Basis(), Vector3((xl - 0.04 + BODY_X0 + WALL_T) * 0.5, fy + h * 0.5, pz)), Vector3(BODY_X0 + WALL_T - xl + 0.04, h, PART_T * 2.0))
+	# 2. The bedroom / office wall began 5 cm behind the partition's bedroom face, and the partition
+	#    ended at that wall's centre line: a 5 × 12 cm slot through the T where they meet. A post
+	#    fills the T from the partition's living-room face to the wall's start.
+	kit.box(paint, L * Transform3D(Basis(), Vector3(xw, fy + h * 0.5, (pz - PART_T + pz + WALL_T * 0.5) * 0.5)), Vector3(0.12, h, PART_T + WALL_T * 0.5))
+	# --- Baseboards: [axis, fixed coordinate, from, to, facing (+1/-1 along the other axis)] ---
+	var door := [-2.05, -0.95]
+	var pdoor := [-4.2, -3.2]
+	var runs := [
+		["x", zf, xl, door[0] - CASE_W, 1.0], ["x", zf, door[1] + CASE_W, xr, 1.0],          # front wall
+		["x", zb, xl, xw - 0.06, -1.0], ["x", zb, xw + 0.06, xr, -1.0],                   # back wall
+		["z", xl, zf, pz - PART_T, 1.0], ["z", xl, pz + PART_T, zb, 1.0],                 # left wall
+		["z", xr, zf, zb, -1.0],                                                          # right wall
+		["x", pz - PART_T, xl, pdoor[0] - CASE_W, -1.0], ["x", pz - PART_T, pdoor[1] + CASE_W, xw + 0.06, -1.0],   # partition, living room
+		["x", pz + PART_T, xl, pdoor[0] - CASE_W, 1.0], ["x", pz + PART_T, pdoor[1] + CASE_W, xw - 0.06, 1.0],    # partition, bedroom
+		["z", xw - 0.06, pz + PART_T, zb, -1.0], ["z", xw + 0.06, pz - PART_T - BASE_T, zb, 1.0],                 # bedroom / office wall
+	]
+	for r in runs:
+		var a: float = minf(r[2], r[3])
+		var b: float = maxf(r[2], r[3])
+		var off: float = float(r[1]) + float(r[4]) * BASE_T * 0.5
+		if r[0] == "x":
+			kit.box(trim, L * Transform3D(Basis(), Vector3((a + b) * 0.5, fy + BASE_H * 0.5, off)), Vector3(b - a, BASE_H, BASE_T))
+		else:
+			kit.box(trim, L * Transform3D(Basis(), Vector3(off, fy + BASE_H * 0.5, (a + b) * 0.5)), Vector3(BASE_T, BASE_H, b - a))
+	# --- Casings around the openings, on the room faces: [axis, face, facing, u0, u1, y0, y1, sill] ---
+	var opens := [
+		["x", zf, 1.0, door[0], door[1], fy, fy + 2.1, false],              # front door
+		["x", zf, 1.0, -7.7, -4.7, 0.95, 2.4, true],                       # living-room window
+		["x", zb, -1.0, -7.0, -5.6, 1.2, 2.3, true],                       # bedroom window
+		["x", zb, -1.0, -1.2, 0.2, 1.2, 2.3, true],                        # kitchen window
+		["z", xl, 1.0, z0 + 5.6, z0 + 7.0, 1.2, 2.3, true],                # bedroom side window
+		["x", pz - PART_T, -1.0, pdoor[0], pdoor[1], fy, fy + 2.35, false],  # bedroom doorway, both sides
+		["x", pz + PART_T, 1.0, pdoor[0], pdoor[1], fy, fy + 2.35, false],
+	]
+	for o in opens:
+		var u0: float = o[3]
+		var u1: float = o[4]
+		var y0: float = o[5]
+		var y1: float = o[6]
+		var off2: float = float(o[1]) + float(o[2]) * BASE_T * 0.5
+		var pieces := [[u0 - CASE_W * 0.5, (y0 + y1 + CASE_W) * 0.5, CASE_W, y1 - y0 + CASE_W],
+			[u1 + CASE_W * 0.5, (y0 + y1 + CASE_W) * 0.5, CASE_W, y1 - y0 + CASE_W],
+			[(u0 + u1) * 0.5, y1 + CASE_W * 0.5, u1 - u0 + CASE_W * 2.0, CASE_W]]
+		if o[7]:
+			# A window's apron under the opening.
+			pieces[0] = [u0 - CASE_W * 0.5, (y0 + y1) * 0.5, CASE_W, y1 - y0 + CASE_W * 2.0]
+			pieces[1] = [u1 + CASE_W * 0.5, (y0 + y1) * 0.5, CASE_W, y1 - y0 + CASE_W * 2.0]
+			pieces.append([(u0 + u1) * 0.5, y0 - CASE_W * 0.5, u1 - u0 + CASE_W * 2.0, CASE_W])
+		for pc in pieces:
+			if o[0] == "x":
+				kit.box(trim, L * Transform3D(Basis(), Vector3(pc[0], pc[1], off2)), Vector3(pc[2], pc[3], BASE_T))
+			else:
+				kit.box(trim, L * Transform3D(Basis(), Vector3(off2, pc[1], pc[0])), Vector3(BASE_T, pc[3], pc[2]))
 
 
 static func _frame(kit: MeshKit, L: Transform3D, trim: Material, o: Array, z: float, front: bool) -> void:

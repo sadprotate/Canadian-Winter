@@ -324,7 +324,8 @@ func _physics_process(delta: float) -> void:
 		var face := fwd.rotated(deg_to_rad(blade_angle))
 		var adv := maxf(travel.dot(fwd), 0.0)
 		var hw := data.blade_width * 0.5 * Game.stat_value(&"vehicle_blade_width", 1.0)
-		var r := Snow.blade_push(Vector2(bp.x, bp.z), face, hw, adv + 0.1, data.blade_floor, true, 0.6)
+		# Polish 5 §3 (Decision 12): no road rule — a plow carries yard snow over the curb.
+		var r := Snow.blade_push(Vector2(bp.x, bp.z), face, hw, adv + 0.1, data.blade_floor, false, 0.6)
 		player_guard(Vector2(bp.x, bp.z), fwd, hw + 0.2)
 		var ratio: float = r["berm"] / (data.blade_capacity * Game.stat_value(&"vehicle_clear_speed", 1.0))
 		work_drag = 1.0 / (1.0 + ratio * ratio)
@@ -448,8 +449,8 @@ func _blow(delta: float, fwd: Vector2) -> void:
 		if _warn_timer <= 0.0:
 			_warn_timer = 2.0
 			var keys := "%s / %s" % [Settings.action_label("veh_aim_left"), Settings.action_label("veh_aim_right")]
-			set_status("Chute aimed at the street — turn it (%s)!" % keys)
-			Notify.push("The blower won't discharge onto the street. Turn the chute with %s." % keys, Notify.WARN)
+			set_status("Nowhere for the snow to land — turn the chute (%s)!" % keys)
+			Notify.push("The blower has nowhere to put the snow. Turn the chute with %s." % keys, Notify.WARN)
 		return
 	var fp := Vector2(global_position.x, global_position.z) + fwd * absf(float(info["blade_z"]))
 	var r := Snow.intake(fp, fwd, data.blower_width, 0.6, data.blower_rate * Game.stat_value(&"vehicle_blower", 1.0) * delta, 0.01)
@@ -477,11 +478,8 @@ func _dump() -> void:
 		AudioMgr.play_at("snow_land_big", global_position, 0.0, 0.7)
 		return
 	var back := p + Vector2(global_transform.basis.z.x, global_transform.basis.z.z).normalized() * (data.length * 0.5 + 1.2)
-	if Snow.is_road(back.x, back.y):
-		set_status("You can't dump snow on the street. Use the snow dump lot.")
-		Notify.push("You can't dump snow on the street. Drive to the Municipal Snow Dump.", Notify.WARN)
-		return
-	Snow.deposit(back, bed_load, 1.6, false)
+	# Polish 5 §3 (Decision 12): no road rule — the load may be dumped on the street too.
+	Snow.deposit(back, bed_load, 1.6, true)
 	bed_load = 0.0
 	AudioMgr.play_at("snow_land_big", global_position, 0.0, 0.7)
 

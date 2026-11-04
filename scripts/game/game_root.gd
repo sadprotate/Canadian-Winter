@@ -762,6 +762,16 @@ func open_sleep() -> void:
 	open_modal(root, "sleep", true)
 
 
+## Polish 5 §3: the money plant in the living room, a testing aid (HANDOFF §13: remove or hide it
+## before release). Each Interact (capped per second like every press) adds to the money only — not
+## to the earnings in the stats or the end-of-winter summary.
+func plant_money() -> void:
+	Game.money += InteriorBuilder.PLANT_MONEY
+	Game.money_changed.emit(Game.money)
+	Game.dirty_since_save = true
+	Notify.push("+%s" % UIKit.money(InteriorBuilder.PLANT_MONEY), Notify.GOOD)
+
+
 func finish_grader_now() -> void:
 	if grader and grader.active:
 		grader.finish()

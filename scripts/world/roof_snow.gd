@@ -21,8 +21,14 @@ func refresh(force := false) -> void:
 		return
 	_shown = d
 	var kit := MeshKit.new()
+	build(kit, planes, d)
+	mesh = kit.commit() if not kit.is_empty() else null
+
+
+## The pillows for roof depth `d` over `p` (the planes setup() takes), added to `kit`.
+static func build(kit: MeshKit, p: Array, d: float) -> void:
 	var mat := Mats.snow_soft()
-	for pl in planes:
+	for pl in p:
 		var a: Vector3 = pl[0]
 		var b: Vector3 = pl[1]
 		var c: Vector3 = pl[2]
@@ -41,5 +47,12 @@ func refresh(force := false) -> void:
 		# A small plane (porch gable, dormer) can't carry a metre-deep pillow: deep roof snow is
 		# drawn no thicker than about a third of the plane's slope length.
 		var dv := minf(d, 0.15 + 0.3 * minf(sz, sx))
-		kit.pillow(mat, xf, sx + 0.1, sz + 0.25, dv, minf(0.12 + dv * 0.25, 0.35), 10, 2.6)
-	mesh = kit.commit() if not kit.is_empty() else null
+		var droop := minf(0.12 + dv * 0.25, 0.35)
+		var w := sx + 0.1
+		if pl.size() > 4:
+			# This edge (pl[4]: 0 = the a end, 1 = the b end) meets a house wall: the pillow ends at
+			# the wall instead of reaching through it into the rooms behind (pass 5 §3).
+			var ov := 0.05 + droop * 0.5 + 0.02
+			w -= ov
+			xf.origin += x_axis * (ov * 0.5 * (1.0 if int(pl[4]) == 0 else -1.0))
+		kit.pillow(mat, xf, w, sz + 0.25, dv, droop, 10, 2.6)

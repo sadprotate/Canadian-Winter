@@ -397,8 +397,9 @@ func test_indicator_at_pickup_then_landing_every_tool() -> void:
 	await _unload()
 
 
-## Red over the street (the load is kept), amber inside the box being cleared — on the one indicator.
-func test_indicator_red_over_street_amber_in_box() -> void:
+## Polish 5 §3 (Decision 12): over the street the indicator shows the landing like any other (it was
+## red there and the load was kept): released, the snow lands on the street where it showed.
+func test_indicator_over_street_like_any_other() -> void:
 	await _load_world("fun", 2024, 11.0, 1)
 	var pl: Player = world.player
 	var tc: ToolController = pl.tools
@@ -420,12 +421,16 @@ func test_indicator_red_over_street_amber_in_box() -> void:
 	pl.pitch = 0.0
 	pl.head.rotation.x = 0.0
 	await _frames(30)
-	runner.check(tc.ind_state == "landing" and tc.indicator.mesh == tc._ring_bad, "over the street: the indicator is out at the landing spot, red (%s)" % tc.ind_state)
-	var l1 := tc.load
+	var ring := tc.indicator.global_position
+	runner.check(tc.ind_state == "landing" and tc.indicator.mesh == tc._ring_ok and Snow.is_road(ring.x, ring.z), "over the street: the indicator is out at the landing spot, like any other (%s)" % tc.ind_state)
+	var n0 := world.find_children("*", "ThrownSnow", true, false).size()
 	Input.action_release("primary")
-	await _frames(10)
-	runner.check(tc.load > 0.0 and is_equal_approx(tc.load, l1) and tc.indicator.visible and tc.indicator.mesh == tc._ring_bad, "released over the street: the load is kept and the red marker stays")
-	tc.dump_at_feet(true)
+	await _tree().physics_frame
+	await _tree().physics_frame
+	var thrown := world.find_children("*", "ThrownSnow", true, false)
+	var lp: Vector3 = (thrown[thrown.size() - 1] as ThrownSnow).landing["pos"] if thrown.size() > n0 else Vector3.INF
+	runner.check(tc.load == 0.0 and thrown.size() > n0 and Vector2(ring.x - lp.x, ring.z - lp.z).length() < 0.25 and Snow.is_road(lp.x, lp.z), "released over the street: the snow is thrown and lands on the street where the indicator was")
+	await _frames(60)
 	_release_all()
 	await _unload()
 
