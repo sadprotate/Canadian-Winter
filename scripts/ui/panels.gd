@@ -248,8 +248,8 @@ static func inventory(parent: Control) -> Control:
 		var sel := " ◀" if i == Game.selected else ""
 		h.add_child(UIKit.label("%d.  %s%s" % [i + 1, Catalog.tool(StringName(id)).display_name if id != "" else "(empty — bare hands)", sel], 21, Color.WHITE if id != "" else UIKit.MUTED))
 	if Game.carried != "":
-		v.add_child(UIKit.label("Carrying: %s (Q to drop)" % Catalog.item_name(StringName(Game.carried)), 20, UIKit.WARN))
-	v.add_child(UIKit.label("Utility: %d heating pouch%s  (G to use)" % [Game.heat_pouches, "" if Game.heat_pouches == 1 else "es"], 20, UIKit.MUTED))
+		v.add_child(UIKit.label("Carrying: %s (%s to drop)" % [Catalog.item_name(StringName(Game.carried)), Settings.action_label("drop")], 20, UIKit.WARN))
+	v.add_child(UIKit.label("Utility: %d heating pouch%s  (%s to use)" % [Game.heat_pouches, "" if Game.heat_pouches == 1 else "es", Settings.action_label("use_pouch")], 20, UIKit.MUTED))
 	v.add_child(UIKit.label("Keys: %s" % ("pickup truck keys" if Game.flags.get("truck_keys", false) else "none found"), 20, UIKit.MUTED))
 	var ups := []
 	for id2 in Game.upgrades.keys():

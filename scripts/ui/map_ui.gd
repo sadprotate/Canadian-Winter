@@ -139,4 +139,4 @@ func _draw() -> void:
 			st2 += " — %d h left" % int(ceil(maxf(lh, 0.0)))
 		draw_string(font, Vector2(lx, list_y + 30 + k * 26), "• %s (%s)" % [c2["address"], st2], HORIZONTAL_ALIGNMENT_LEFT, 440, 17, Color(1.0, 0.6, 0.5) if lh <= 12.0 else Color.WHITE)
 		k += 1
-	draw_string(font, Vector2(lx, vs.y - 40), "M or Esc to close", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, UIKit.MUTED)
+	draw_string(font, Vector2(lx, vs.y - 40), "%s or %s to close" % [Settings.action_label("map"), Settings.action_label("pause")], HORIZONTAL_ALIGNMENT_LEFT, -1, 18, UIKit.MUTED)

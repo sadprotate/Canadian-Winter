@@ -8,6 +8,7 @@ const PATH := "user://settings.cfg"
 
 ## action -> [label, context, default events]. Context: "foot", "vehicle", "global".
 ## Events are encoded as "key:<keycode>", "mouse:<button>".
+## Polish 5 §2: drop Q -> G, the new store action on F (the garage rack, §15), use_pouch G -> H.
 const ACTIONS := {
 	"move_forward": ["Move forward", "foot", ["key:%d" % KEY_W]],
 	"move_back": ["Move back", "foot", ["key:%d" % KEY_S]],
@@ -25,8 +26,9 @@ const ACTIONS := {
 	"slot_4": ["Tool slot 4", "foot", ["key:%d" % KEY_4]],
 	"slot_next": ["Next tool", "foot", ["mouse:%d" % MOUSE_BUTTON_WHEEL_DOWN]],
 	"slot_prev": ["Previous tool", "foot", ["mouse:%d" % MOUSE_BUTTON_WHEEL_UP]],
-	"drop": ["Drop tool", "foot", ["key:%d" % KEY_Q]],
-	"use_pouch": ["Use heating pouch", "foot", ["key:%d" % KEY_G]],
+	"drop": ["Drop tool", "foot", ["key:%d" % KEY_G]],
+	"store": ["Put on the rack", "foot", ["key:%d" % KEY_F]],
+	"use_pouch": ["Use heating pouch", "foot", ["key:%d" % KEY_H]],
 	"interact": ["Interact / enter / exit", "global", ["key:%d" % KEY_E]],
 	"camera_toggle": ["Switch camera", "global", ["key:%d" % KEY_V]],
 	"map": ["Map", "global", ["key:%d" % KEY_M]],
@@ -55,20 +57,131 @@ const DEFAULTS := {
 
 const RESOLUTIONS := ["1280x720", "1366x768", "1600x900", "1920x1080", "2560x1440"]
 
+## Polish 5 §2: version of the default bindings, saved as [meta] controls_version (absent = 1).
+## OLD_DEFAULTS[v] holds the actions whose default changed after version v, with that old default:
+## on load, a binding still at its old default moves to the new one, unless another action already
+## uses that key (a binding the player set wins; the moved action then keeps its old key).
+const CONTROLS_VERSION := 2
+const OLD_DEFAULTS := {
+	1: {"drop": ["key:%d" % KEY_Q], "use_pouch": ["key:%d" % KEY_G]},
+}
+
+## Polish 5 §2: where actions are live together, for the conflict check (conflicts()). "foot" and
+## "vehicle" are the ACTIONS contexts plus the global ones. A walk-behind machine ("machine") is
+## steered on foot with the chute keys (the slot tool is stowed: the foot tool actions, jump,
+## sprint, crouch and the wheel do nothing there). At the computer and in menus the player is
+## frozen or the game paused: only Pause (close) is read; the rest is UI.
+const MACHINE_ACTIONS := ["move_forward", "move_back", "move_left", "move_right", "primary",
+	"slot_1", "slot_2", "slot_3", "slot_4", "veh_aim_left", "veh_aim_right"]
+const PLACES := ["foot", "vehicle", "machine", "computer", "menu"]
+
+## Polish 5 §2: world-changing presses, capped per action at Catalog.balance.input_max_presses_per_s
+## (accept_press). UI clicks, F1, movement, the camera, map, Tab, slots, horn and radio aren't.
+const RATE_LIMITED := ["primary", "secondary", "interact", "drop", "store", "use_pouch", "tool_angle", "veh_tool"]
+
 var cfg := ConfigFile.new()
 var bindings: Dictionary = {}   # action -> Array of encoded events
+var _presses: Dictionary = {}   # action -> physics frames of the presses accepted in the last second
 
 
 func _ready() -> void:
-	cfg.load(PATH)
-	for a in ACTIONS.keys():
-		var saved = cfg.get_value("controls", a) if cfg.has_section_key("controls", a) else null
-		if saved is Array and not saved.is_empty():
-			bindings[a] = saved
-		else:
-			bindings[a] = (ACTIONS[a][2] as Array).duplicate()
-	apply_input()
+	load_controls()
 	call_deferred("apply_all")
+
+
+## (Re)read user://settings.cfg and its bindings, migrating old ones (polish 5 §2); a migrated file
+## is written back at once (a fresh install writes nothing until something is changed).
+func load_controls() -> void:
+	cfg.clear()
+	cfg.load(PATH)
+	var ver := int(cfg.get_value("meta", "controls_version", 1))
+	bindings = controls_from(cfg)
+	apply_input()
+	if ver < CONTROLS_VERSION and cfg.has_section("controls"):
+		save()
+
+
+## The bindings stored in a settings file, migrated to the current defaults (polish 5 §2): every
+## action not stored gets its default; then each action still at an old default moves to its new
+## one if no other action it shares a context with holds that key, repeated until nothing moves
+## (so use_pouch leaves G before drop takes it, whatever the order). An action stored unbound ([],
+## which only the migration below produces) stays unbound.
+static func controls_from(c: ConfigFile) -> Dictionary:
+	var out := {}
+	var ver := int(c.get_value("meta", "controls_version", 1))
+	for a in ACTIONS.keys():
+		var saved = c.get_value("controls", a) if c.has_section_key("controls", a) else null
+		if saved is Array and (not saved.is_empty() or ver >= 2):   # [] = unbound from version 2 on
+			out[a] = (saved as Array).duplicate()
+		else:
+			out[a] = (ACTIONS[a][2] as Array).duplicate()
+	if not c.has_section("controls"):
+		return out
+	for v in range(ver, CONTROLS_VERSION):
+		var old: Dictionary = OLD_DEFAULTS.get(v, {})
+		var moved := true
+		while moved:
+			moved = false
+			for a in old.keys():
+				var want: Array = ACTIONS[a][2]
+				if out[a] == old[a] and out[a] != want and holder(out, a, want[0]) == "":
+					out[a] = want.duplicate()
+					moved = true
+	# A new action whose default key a player's binding already holds starts unbound.
+	for a in ACTIONS.keys():
+		if not c.has_section_key("controls", a):
+			var code: String = (ACTIONS[a][2] as Array)[0]
+			if holder(out, a, code) != "":
+				out[a] = []
+	return out
+
+
+## True when two actions can be live at the same time (the rule rebind() refuses conflicts by).
+static func shares(a: String, b: String) -> bool:
+	var ca: String = ACTIONS[a][1]
+	var cb: String = ACTIONS[b][1]
+	return ca == cb or ca == "global" or cb == "global"
+
+
+## The action other than `action` that shares a context with it and is bound to `code`, or "".
+static func holder(binds: Dictionary, action: String, code: String) -> String:
+	for other in ACTIONS.keys():
+		if other != action and shares(action, other) and code in binds.get(other, []):
+			return other
+	return ""
+
+
+## The actions read in a place (PLACES).
+static func live_actions(place: String) -> Array:
+	var out := []
+	for a in ACTIONS.keys():
+		var ctx: String = ACTIONS[a][1]
+		match place:
+			"foot":
+				if ctx == "foot" or ctx == "global":
+					out.append(a)
+			"vehicle":
+				if ctx == "vehicle" or ctx == "global":
+					out.append(a)
+			"machine":
+				if a in MACHINE_ACTIONS or ctx == "global":
+					out.append(a)
+			"computer", "menu":
+				if a == "pause":
+					out.append(a)
+	return out
+
+
+## Pairs of actions live in the same place that share a key or button: [[a, b, label], ...].
+func conflicts(place: String) -> Array:
+	var out := []
+	var live := live_actions(place)
+	for i in range(live.size()):
+		for j in range(i + 1, live.size()):
+			for code in bindings.get(live[i], []):
+				if code in bindings.get(live[j], []):
+					out.append([live[i], live[j], code_label(code)])
+	return out
 
 
 func get_value(section: String, key: String, fallback = null):
@@ -86,6 +199,7 @@ func set_value(section: String, key: String, value) -> void:
 func save() -> void:
 	for a in bindings.keys():
 		cfg.set_value("controls", a, bindings[a])
+	cfg.set_value("meta", "controls_version", CONTROLS_VERSION)
 	cfg.save(PATH)
 
 
@@ -149,6 +263,40 @@ func action_label(action: String) -> String:
 	if lst.is_empty():
 		return "—"
 	return code_label(lst[0])
+
+
+## Text with {action} placeholders replaced by the keys bound to those actions (polish 5 §2: every
+## key shown is read from the input map), e.g. "Press {use_pouch} to use one".
+func with_keys(text: String) -> String:
+	if not text.contains("{"):
+		return text
+	for a in ACTIONS.keys():
+		text = text.replace("{%s}" % a, action_label(a))
+	return text
+
+
+## Polish 5 §2: a world-changing press of `action`. False (ignore it, don't queue it) when this
+## action already had input_max_presses_per_s presses accepted in the last second, or one in this
+## physics frame. Actions outside RATE_LIMITED, and a cap of 0, are never limited. Holding a button
+## isn't affected: callers ask once, on the press, and act for as long as it is held.
+func accept_press(action: String) -> bool:
+	if action not in RATE_LIMITED:
+		return true
+	var cap := 6.0
+	if Catalog.balance and "input_max_presses_per_s" in Catalog.balance:
+		cap = float(Catalog.balance.input_max_presses_per_s)
+	if cap <= 0.0:
+		return true
+	var now := Engine.get_physics_frames()
+	var window := Engine.physics_ticks_per_second
+	var lst: Array = _presses.get(action, [])
+	while not lst.is_empty() and now - int(lst[0]) >= window:
+		lst.pop_front()
+	if lst.size() >= int(cap) or (not lst.is_empty() and int(lst[-1]) == now):
+		return false
+	lst.append(now)
+	_presses[action] = lst
+	return true
 
 
 ## Rebind an action. Returns "" or the name of the conflicting action (binding refused).

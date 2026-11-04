@@ -13,7 +13,7 @@ const UPGRADE_IDS: Array[StringName] = [&"shovel_capacity_1", &"shovel_capacity_
 ## Consumable utility items sold in the store.
 const UTILITY := {
 	&"heat_pouches": {"name": "Heating Pouches (5 pack)", "price": 12, "count": 5,
-		"desc": "Air-activated heat pouches. Press G to use one: quick warmth and slower cooling for a while."},
+		"desc": "Air-activated heat pouches. Press {use_pouch} to use one: quick warmth and slower cooling for a while."},
 }
 
 var tools: Dictionary = {}

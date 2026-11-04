@@ -29,7 +29,7 @@ func _ready() -> void:
 	sc.add_child(v)
 	var head := UIKit.hbox()
 	v.add_child(head)
-	head.add_child(UIKit.label("DEBUG MENU (F1)", 28, Color(0.5, 1.0, 0.6)))
+	head.add_child(UIKit.label("DEBUG MENU (%s)" % Settings.action_label("debug"), 28, Color(0.5, 1.0, 0.6)))
 	head.add_child(UIKit.hspacer())
 	head.add_child(UIKit.button("Close", _close, 18))
 	out_l = UIKit.label("", 17, Color(0.7, 1.0, 0.7))
@@ -170,7 +170,8 @@ func _ready() -> void:
 		if Game.player:
 			Game.player.freecam = not Game.player.freecam
 			Game.player.collision.disabled = Game.player.freecam
-			_say("Free camera: %s (WASD, Space/Ctrl, Shift fast)" % Game.player.freecam)))
+			var mv := "%s%s%s%s" % [Settings.action_label("move_forward"), Settings.action_label("move_left"), Settings.action_label("move_back"), Settings.action_label("move_right")]
+			_say("Free camera: %s (%s, %s/%s, %s fast)" % [Game.player.freecam, mv, Settings.action_label("jump"), Settings.action_label("crouch"), Settings.action_label("sprint")])))
 	r.add_child(_b("Save now", func(): _say("Saved: %s" % Saves.save_game())))
 
 

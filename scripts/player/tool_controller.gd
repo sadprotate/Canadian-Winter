@@ -56,6 +56,8 @@ var _msg_timer := 0.0
 var _loop_vol := -80.0
 var _fill_pressed := false
 var _was_down := false
+var _held_ok: Dictionary = {}     # polish 5 §2: a held action whose press was accepted
+var _held_was: Dictionary = {}
 ## Screenshot / debug helper: freeze the viewmodel in a pose ("hold", "scoop", "push", "toss").
 var pose_override := ""
 var toss_override := 0.5
@@ -312,6 +314,7 @@ func _physics_process(delta: float) -> void:
 		engaged = false
 		filling = false
 		pushing = false
+		_held_was.clear()
 		player.speed_mult_tool = 1.0
 		_set_loop("")
 		if player.state == "machine":
@@ -326,9 +329,13 @@ func _physics_process(delta: float) -> void:
 	if held_fp.mesh != null and not player.third_person and not held_fp.visible:
 		held_fp.visible = true
 		blade_fp.visible = true
-	if Input.is_action_just_pressed("drop"):
+	if Input.is_action_just_pressed("drop") and Settings.accept_press("drop"):
 		drop_tool()
-	if Input.is_action_just_pressed("use_pouch") and Game.is_survival():
+		# Polish 5 §2: switch to what's left in your hands this frame. A carried item dropped
+		# without it left one frame posing the hands on a tool that's gone (a degenerate grip:
+		# two engine errors per drop).
+		_sync_tool()
+	if Input.is_action_just_pressed("use_pouch") and Game.is_survival() and Settings.accept_press("use_pouch"):
 		if Survival.use_pouch():
 			AudioMgr.play("paper", -6.0)
 			Notify.push("You crack a heating pouch. Warmth +%d." % int(Catalog.balance.pouch_warmth), Notify.GOOD)
@@ -341,7 +348,7 @@ func _physics_process(delta: float) -> void:
 		engaged = false
 		player.speed_mult_tool = 0.85
 		if Input.is_action_just_pressed("primary"):
-			_hint("Your hands are full — press Q to drop what you're carrying.")
+			_hint("Your hands are full — press %s to drop what you're carrying." % Settings.action_label("drop"))
 		player.model.set_pose("carry")
 		_animate_viewmodel(delta)
 		return
@@ -371,6 +378,15 @@ func _physics_process(delta: float) -> void:
 func _hint(text: String) -> void:
 	hint = text
 	_msg_timer = 2.2
+
+
+## Polish 5 §2: a held action acts from an accepted press (Settings.accept_press) for as long as it
+## is held; a press over the per-second cap is ignored until the button is let go and pressed again.
+func _held(action: String, down: bool) -> bool:
+	if down and not _held_was.get(action, false):
+		_held_ok[action] = Settings.accept_press(action)
+	_held_was[action] = down
+	return down and _held_ok.get(action, false)
 
 
 ## Where thrown snow leaves the hands. Standing in a trench, the load is lifted up over the walls
@@ -505,7 +521,7 @@ func _record_moved(v: float) -> void:
 # -----------------------------------------------------------------------------
 
 func _shovel_type(delta: float, pos2: Vector2, fwd: Vector2, travel: Vector2, ui_block: bool) -> void:
-	if data.angle_adjustable and not ui_block and Input.is_action_just_pressed("tool_angle"):
+	if data.angle_adjustable and not ui_block and Input.is_action_just_pressed("tool_angle") and Settings.accept_press("tool_angle"):
 		var m := data.max_angle_deg
 		blade_angle = m if blade_angle == 0.0 else (-m if blade_angle > 0.0 else 0.0)
 		_hint("Blade angle: %s" % ("straight" if blade_angle == 0.0 else ("right" if blade_angle > 0.0 else "left")))
@@ -514,7 +530,8 @@ func _shovel_type(delta: float, pos2: Vector2, fwd: Vector2, travel: Vector2, ui
 	# missed between physics frames.
 	var fill_down := not ui_block and Input.is_action_pressed("primary")
 	if fill_down and not _was_down:
-		_fill_pressed = true
+		# Polish 5 §2: a press over the per-second cap is ignored (no scoop, and no throw on release).
+		_fill_pressed = Settings.accept_press("primary")
 	# Release: throw whatever is carried (a partial load too).
 	if _was_down and not fill_down and _fill_pressed:
 		_fill_pressed = false
@@ -524,7 +541,7 @@ func _shovel_type(delta: float, pos2: Vector2, fwd: Vector2, travel: Vector2, ui
 	if not fill_down:
 		_fill_pressed = false
 	filling = fill_down and _fill_pressed
-	pushing = not filling and not ui_block and Input.is_action_pressed("secondary")
+	pushing = _held("secondary", not ui_block and Input.is_action_pressed("secondary")) and not filling
 	engaged = filling or pushing
 	# Speed: carrying a heavy load slows you a little (a full sleigh a lot).
 	var load_frac := clampf(load / maxf(_capacity(), 0.0001), 0.0, 1.0)
@@ -779,8 +796,8 @@ func _fade_loop(delta: float, target: float) -> void:
 # -----------------------------------------------------------------------------
 
 func _electric(delta: float, pos2: Vector2, fwd: Vector2, travel: Vector2, ui_block: bool) -> void:
-	filling = not ui_block and Input.is_action_pressed("primary")
-	pushing = not filling and not ui_block and Input.is_action_pressed("secondary")
+	filling = _held("primary", not ui_block and Input.is_action_pressed("primary"))
+	pushing = _held("secondary", not ui_block and Input.is_action_pressed("secondary")) and not filling
 	engaged = filling or pushing
 	if pushing:
 		indicator.visible = false

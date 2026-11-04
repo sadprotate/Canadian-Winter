@@ -134,17 +134,19 @@ func interact_prompt(_p: Player) -> String:
 
 
 func interact(_p: Player) -> void:
-	if not can_pick_up():
+	# Polish 5 §2: two presses in one frame reach it before queue_free(); the second must not
+	# collect it again (a burst of E duplicated tools).
+	if is_queued_for_deletion() or not can_pick_up():
 		return
 	if is_crate():
 		_open_crate()
 		return
 	if not Game.add_tool(tool_id):
-		Notify.push("Your hands and tool slots are full. Drop something first (Q).", Notify.WARN)
+		Notify.push("Your hands and tool slots are full. Drop something first (%s)." % Settings.action_label("drop"), Notify.WARN)
 		return
 	if tool_id == "small_shovel" and not Game.flags.get("found_shovel", false):
 		Game.flags["found_shovel"] = true
-		Notify.push("You found a small snow shovel! Hold left mouse and sweep it through the snow to fill it, release to throw, hold right mouse to push.", Notify.GOOD)
+		Notify.push("You found a small snow shovel! Hold %s and sweep it through the snow to fill it, release to throw, hold %s to push." % [Settings.action_label("primary"), Settings.action_label("secondary")], Notify.GOOD)
 	if entry.has("order_id"):
 		Economy.mark_order(int(entry["order_id"]), "collected")
 		Game.add_equipment_stat(Catalog.tool(StringName(tool_id)).display_name)

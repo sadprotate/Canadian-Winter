@@ -121,3 +121,7 @@ extends Resource
 @export var sprint_speed: float = 6.6
 @export var crouch_speed: float = 2.2
 @export var jump_velocity: float = 4.6
+## Polish 5 §2: world-changing presses (scoop, push, interact, drop, store, pouch, blade angle, the
+## vehicle tool key) are capped at this many per second per action; presses beyond it are ignored,
+## not queued. Holding a button, UI clicks and F1 aren't limited. 0 = no cap.
+@export var input_max_presses_per_s: float = 6.0

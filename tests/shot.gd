@@ -51,6 +51,10 @@ extends Node
 ##   --seq=N --every=F        capture N frames, one every F frames, to <out>_00.png, _01.png …
 ##   --menu_shot=k --menu_at=f   (menu) jump the background camera to shot k (0..2), fraction f
 ##                            of the way along it, then wait --menu_frames (default 40)
+## Polish 5 additions:
+##   --ui=settings [--settings_tab=n] [--settings_scroll=px]  the settings screen as opened from
+##                            the pause menu, on tab n (0 Audio … 4 Controls, the default),
+##                            scrolled down px
 
 var args := {}
 var game: Node = null
@@ -468,6 +472,22 @@ func _open_ui(which: String) -> void:
 			w.radio_forecast()
 		"sleep":
 			w.open_sleep()
+		"settings":
+			w._open_pause()
+			var sm := SettingsMenu.new()
+			w.ui.add_child(sm)
+			sm.tabs.current_tab = int(args.get("settings_tab", "4"))
+			if args.has("settings_scroll"):
+				_scroll_settings(sm, int(args["settings_scroll"]))
+
+
+## --settings_scroll: once the page is laid out, scroll the open settings tab down.
+func _scroll_settings(sm: SettingsMenu, px: int) -> void:
+	for i in range(3):
+		await get_tree().process_frame
+	var sc := sm.tabs.get_current_tab_control() as ScrollContainer
+	if sc:
+		sc.scroll_vertical = px
 
 
 ## --seq=N --every=F: a short series of frames (menu camera path, Gerry walking…).

@@ -26,8 +26,8 @@ static func lines(survival: bool) -> Array:
 	var out := []
 	for e in explanation(survival):
 		out.append("• " + str(e["text"]))
-	out.append("• Hands and every shovel, pusher, scraper or sleigh: HOLD left mouse and sweep the crosshair through the snow to fill your hands or blade — deep snow fills fast. RELEASE to throw it where you face (look down for a short drop). The landing ring turns red over the street — snow can never go on the street — and amber when the throw would land back in the box you're clearing.")
-	out.append("• HOLD right mouse and walk to push snow ahead of you into a pile. Pushers, scrapers and the sleigh push far more than shovels; scrapers angle their blade with R.")
+	out.append("• Hands and every shovel, pusher, scraper or sleigh: HOLD %s and sweep the crosshair through the snow to fill your hands or blade — deep snow fills fast. RELEASE to throw it where you face (look down for a short drop). The landing ring turns red over the street — snow can never go on the street — and amber when the throw would land back in the box you're clearing." % Settings.action_label("primary"))
+	out.append("• HOLD %s and walk to push snow ahead of you into a pile. Pushers, scrapers and the sleigh push far more than shovels; scrapers angle their blade with %s." % [Settings.action_label("secondary"), Settings.action_label("tool_angle")])
 	out.append("• Snow up to your hips can be waded through (slowly). Anything taller is a wall — dig through it.")
 	out.append("• Every driveway, path, sidewalk, parking lot and street section is a clearing box. While you work in one, a light outline shows its edges — throw the snow outside it. Clear 90% of a box and it snaps to bare ground. New snow reopens it.")
 	out.append("• Wading through deep snow treads a trench; walking back along it is easier. Look straight down to scoop the snow at your own feet.")

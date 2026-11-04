@@ -23,6 +23,8 @@ var _tick := 0.0
 var _warn := 0.0
 var _resist := 1.0
 var hint := ""
+var _run_was := false
+var _run_ok := false
 
 
 func setup(id: String, e: Dictionary) -> void:
@@ -67,7 +69,7 @@ func interact(p: Player) -> void:
 	if p.state != "foot":
 		return
 	if Game.carried != "":
-		Notify.push("Drop what you're carrying first (Q).", Notify.INFO)
+		Notify.push("Drop what you're carrying first (%s)." % Settings.action_label("drop"), Notify.INFO)
 		return
 	grabbed = true
 	player = p
@@ -82,7 +84,8 @@ func interact(p: Player) -> void:
 		entry.erase("order_id")
 	if not Game.flags.get("help_blower", false):
 		Game.flags["help_blower"] = true
-		Notify.push("Snowblower: hold Left Mouse to run, Z / C to turn the chute, E to let go.", Notify.INFO)
+		Notify.push("Snowblower: hold %s to run, %s / %s to turn the chute, %s to let go." % [Settings.action_label("primary"),
+			Settings.action_label("veh_aim_left"), Settings.action_label("veh_aim_right"), Settings.action_label("interact")], Notify.INFO)
 
 
 func release() -> void:
@@ -121,7 +124,12 @@ func _physics_process(delta: float) -> void:
 		if Input.is_action_pressed("veh_aim_right"):
 			chute_angle = clampf(chute_angle + 90.0 * delta, -110.0, 110.0)
 	chute.rotation.y = -deg_to_rad(chute_angle)
-	running = not ui_block and Input.is_action_pressed("primary")
+	# Polish 5 §2: it runs from an accepted press of the primary action (capped per second).
+	var run_down := not ui_block and Input.is_action_pressed("primary")
+	if run_down and not _run_was:
+		_run_ok = Settings.accept_press("primary")
+	_run_was = run_down
+	running = run_down and _run_ok
 	_warn -= delta
 	player.model.set_pose("push")
 	if not running:
@@ -142,7 +150,7 @@ func _physics_process(delta: float) -> void:
 	if not _landing.get("valid", false):
 		stream_fx.emitting = false
 		disc_snd.volume_db = -80.0
-		hint = "The chute is aimed at the street — turn it with Z / C."
+		hint = "The chute is aimed at the street — turn it with %s / %s." % [Settings.action_label("veh_aim_left"), Settings.action_label("veh_aim_right")]
 		if _warn <= 0.0:
 			_warn = 2.5
 			AudioMgr.play("ui_error", -10.0)

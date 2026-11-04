@@ -344,7 +344,7 @@ func _refresh_slots() -> void:
 		(slot_icons[i] as Control).modulate.a = 1.0 if (id != "" or sel) else 0.35
 		(slots[i] as PanelContainer).add_theme_stylebox_override("panel", UIKit.sb(Color(0.07, 0.09, 0.15, 0.65 if not sel else 0.85), 10, 3 if sel else 2, UIKit.ACCENT if sel else Color(1, 1, 1, 0.12), 6))
 	if Game.carried != "":
-		tool_name_l.text = "Carrying: %s  (Q to drop)" % Catalog.item_name(StringName(Game.carried))
+		tool_name_l.text = "Carrying: %s  (%s to drop)" % [Catalog.item_name(StringName(Game.carried)), Settings.action_label("drop")]
 	else:
 		var id2: String = Game.slots[Game.selected]
 		tool_name_l.text = "Bare hands" if id2 == "" else Catalog.tool(StringName(id2)).display_name
@@ -426,7 +426,7 @@ func _process(delta: float) -> void:
 		elif Survival.last_rate < -1.0:
 			trend = "  ▼"
 		warmth_l.text = "Warmth: %s%s" % [Survival.STATE_NAMES[st], trend]
-		pouch_l.text = "Heating pouches: %d (G)" % Game.heat_pouches if Game.heat_pouches > 0 else ""
+		pouch_l.text = "Heating pouches: %d (%s)" % [Game.heat_pouches, Settings.action_label("use_pouch")] if Game.heat_pouches > 0 else ""
 		var cold := clampf((45.0 - w) / 45.0, 0.0, 1.0)
 		frost_mat.set_shader_parameter("amount", cold)
 		frost_mat.set_shader_parameter("pulse", 1.0 if w < 15.0 else 0.0)

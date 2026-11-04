@@ -442,7 +442,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	if modal != null:
 		return
 	if event.is_action_pressed("interact"):
-		player.try_interact()
+		if Settings.accept_press("interact"):   # polish 5 §2: capped per second
+			player.try_interact()
 	elif event.is_action_pressed("camera_toggle") and player.state != "vehicle":
 		player.set_third_person(not player.third_person)
 	elif event.is_action_pressed("map"):

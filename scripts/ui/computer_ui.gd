@@ -45,7 +45,7 @@ func _ready() -> void:
 	bh.add_child(clock_l)
 	balance_l = UIKit.label("", 24, Color(0.7, 1.0, 0.7))
 	bh.add_child(balance_l)
-	bh.add_child(UIKit.button("Close  (Esc)", _close, 20))
+	bh.add_child(UIKit.button("Close  (%s)" % Settings.action_label("pause"), _close, 20))
 	var body := UIKit.hbox(0)
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	outer.add_child(body)
@@ -335,11 +335,11 @@ func _store() -> void:
 				stats += "  ·  load %.2f m³" % td.capacity
 			ToolData.Kind.ELECTRIC_SHOVEL, ToolData.Kind.WALK_BLOWER:
 				stats += "  ·  %.2f m³/s  ·  throw %.0f m" % [td.rate, td.throw_distance]
-		_store_card(String(td.id), td.display_name, td.price, td.description, stats)
+		_store_card(String(td.id), td.display_name, td.price, Settings.with_keys(td.description), stats)
 	content.add_child(UIKit.label("Supplies", 26, UIKit.ACCENT))
 	for k in Catalog.UTILITY.keys():
 		var u: Dictionary = Catalog.UTILITY[k]
-		_store_card(String(k), u["name"], u["price"], u["desc"], "You have %d" % Game.heat_pouches)
+		_store_card(String(k), u["name"], u["price"], Settings.with_keys(u["desc"]), "You have %d" % Game.heat_pouches)
 	content.add_child(UIKit.label("Vehicles (permanent equipment)", 26, UIKit.ACCENT))
 	for v in Catalog.store_vehicles():
 		var vd: VehicleData = v
@@ -351,7 +351,7 @@ func _store() -> void:
 		if vd.dump_capacity > 0:
 			stats2 += "  ·  bed %d m³" % int(vd.dump_capacity)
 		stats2 += "  ·  %s" % ("heated cab" if vd.heated_cabin else "no cab")
-		_store_card(String(vd.id), vd.display_name, vd.price, vd.description, stats2)
+		_store_card(String(vd.id), vd.display_name, vd.price, Settings.with_keys(vd.description), stats2)
 
 
 func _upgrades() -> void:

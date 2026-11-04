@@ -103,5 +103,6 @@ func _process(_delta: float) -> void:
 					Economy.mark_order(int(o["id"]), "collected")
 					Game.grant_upgrade(&"pickup_plow")
 					Game.add_equipment_stat("Pickup front plow")
-					Notify.push("The store crew bolted a front plow onto your pickup! Left-click to drop the blade, Z/C to angle it.", Notify.GOOD)
+					Notify.push("The store crew bolted a front plow onto your pickup! %s to drop the blade, %s/%s to angle it." % [Settings.action_label("veh_tool"),
+						Settings.action_label("veh_aim_left"), Settings.action_label("veh_aim_right")], Notify.GOOD)
 					break

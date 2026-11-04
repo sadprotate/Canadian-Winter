@@ -253,7 +253,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_set_camera()
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("veh_tool"):
-		_toggle_tool()
+		if Settings.accept_press("veh_tool"):   # polish 5 §2: capped per second
+			_toggle_tool()
 	elif event.is_action_pressed("veh_horn"):
 		AudioMgr.play_at("horn", global_position, 0.0)
 	elif event.is_action_pressed("veh_radio"):
@@ -446,8 +447,9 @@ func _blow(delta: float, fwd: Vector2) -> void:
 			stream_fx.emitting = false
 		if _warn_timer <= 0.0:
 			_warn_timer = 2.0
-			set_status("Chute aimed at the street — turn it (Z/C)!")
-			Notify.push("The blower won't discharge onto the street. Turn the chute with Z / C.", Notify.WARN)
+			var keys := "%s / %s" % [Settings.action_label("veh_aim_left"), Settings.action_label("veh_aim_right")]
+			set_status("Chute aimed at the street — turn it (%s)!" % keys)
+			Notify.push("The blower won't discharge onto the street. Turn the chute with %s." % keys, Notify.WARN)
 		return
 	var fp := Vector2(global_position.x, global_position.z) + fwd * absf(float(info["blade_z"]))
 	var r := Snow.intake(fp, fwd, data.blower_width, 0.6, data.blower_rate * Game.stat_value(&"vehicle_blower", 1.0) * delta, 0.01)
