@@ -217,6 +217,7 @@ func advance(game_min: float) -> void:
 func _systems_advance(start: float, step: float) -> void:
 	Weather.on_advance(start, step)
 	Snow.advance_settle(step)
+	Heating.advance(step)      # polish 5 §13: the heated pad, driveway and path melt on the clock
 	Survival.on_advance(step)
 	Contracts.on_advance(step)
 

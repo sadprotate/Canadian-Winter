@@ -366,8 +366,10 @@ func sim_step(delta: float) -> void:
 ## timers start) on time. Open boxes only need measuring while someone is clearing them.
 func on_hour(_day: int, _hour: int) -> void:
 	if Clock.skipping:
+		# Polish 5 §13: a heated box (driveway, path) is measured too, so it completes as it melts.
+		var heated := Heating.box_ids()
 		for b in boxes:
-			if b["complete"]:
+			if b["complete"] or heated.has(b["id"]):
 				measure(b, false)
 
 

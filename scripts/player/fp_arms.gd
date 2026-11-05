@@ -17,6 +17,10 @@ var thumb_r: Node3D
 var sleeve_l: Node3D
 var sleeve_r: Node3D
 var cup_load: MeshInstance3D
+## Polish 5 §13: the insulated coat's sleeves (red, puffy, fleece cuffs), shown instead of the
+## jacket's when it's worn (set_coat).
+var jacket_sleeves: Array = []
+var coat_sleeves: Array = []
 var elbow_l := Vector3(-0.36, -0.75, 0.08)
 var elbow_r := Vector3(0.36, -0.75, 0.08)
 # Current (smoothed) hand state.
@@ -44,6 +48,7 @@ func build(jacket: Color, glove: Color) -> void:
 		smi.mesh = sk.commit()
 		smi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		sleeve.add_child(smi)
+		jacket_sleeves.append(smi)
 		# Hand: wrist pivot. Local -Z = fingers, +Y = back of the hand, -Y = palm.
 		var hand := Node3D.new()
 		add_child(hand)
@@ -82,6 +87,29 @@ func build(jacket: Color, glove: Color) -> void:
 	cup_load.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	cup_load.visible = false
 	add_child(cup_load)
+
+
+## Polish 5 §13: the coat's sleeves instead of the jacket's (built the first time).
+func set_coat(on: bool) -> void:
+	if on and coat_sleeves.is_empty():
+		var coat := Mats.fabric(CharacterModel.COAT_COLOR)
+		var seam := Mats.fabric(CharacterModel.COAT_COLOR.darkened(0.3))
+		var fleece := Mats.fabric(CharacterModel.FLEECE_COLOR)
+		for sl in [sleeve_l, sleeve_r]:
+			var k := MeshKit.new()
+			k.bevel_box(coat, Transform3D(Basis(), Vector3(0, 0, 0.34)), Vector3(0.15, 0.15, 0.56), 0.065)
+			for z in [0.2, 0.36, 0.52]:
+				k.box(seam, Transform3D(Basis(), Vector3(0, 0, z)), Vector3(0.152, 0.152, 0.012))
+			k.bevel_box(fleece, Transform3D(Basis(), Vector3(0, 0, 0.045)), Vector3(0.142, 0.142, 0.075), 0.035)
+			var mi := MeshInstance3D.new()
+			mi.mesh = k.commit()
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			(sl as Node3D).add_child(mi)
+			coat_sleeves.append(mi)
+	for n in coat_sleeves:
+		(n as Node3D).visible = on
+	for n in jacket_sleeves:
+		(n as Node3D).visible = not on
 
 
 func _mi(parent: Node3D, mesh: Mesh) -> void:

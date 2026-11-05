@@ -696,6 +696,13 @@ func _store() -> void:
 			ToolData.Kind.ELECTRIC_SHOVEL, ToolData.Kind.WALK_BLOWER:
 				stats += "  ·  %.2f m³/s  ·  throw %.0f m" % [td.rate, td.throw_distance]
 		_store_card(String(td.id), td.display_name, td.price, Settings.with_keys(td.description), stats)
+	# Polish 5 §13: equipment — not tools (never in a slot); the coat in Survival only.
+	_section("Equipment")
+	for k in Catalog.EQUIPMENT.keys():
+		if not Equipment.shown(k):
+			continue
+		var e: Dictionary = Catalog.EQUIPMENT[k]
+		_store_card(String(k), e["name"], Equipment.price(k), Settings.with_keys(e["desc"]), Equipment.store_stats(k), String(k))
 	_section("Supplies")
 	for k in Catalog.UTILITY.keys():
 		var u: Dictionary = Catalog.UTILITY[k]
@@ -738,17 +745,31 @@ func _upgrades() -> void:
 			_cell(t, Catalog.item_name(g[0]), Color.WHITE)
 			_cell(t, ", ".join(names), UIKit.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true)
 			_cell(t, _not_owned_hint(g[0]), UIKit.MUTED)
+	# Polish 5 §13: the clothing became the insulated coat (the Equipment store), so a category with
+	# nothing in it (Cold protection) shows no section; the heated driveway and path are Property.
 	var cats := {UpgradeData.Category.CLOTHING: "Cold protection", UpgradeData.Category.WEATHER: "Weather technology", UpgradeData.Category.PROPERTY: "Property"}
 	for cat in cats.keys():
+		var ups := Catalog.UPGRADE_IDS.filter(func(i): return Catalog.upgrade(i) != null and Catalog.upgrade(i).category == cat)
+		if ups.is_empty():
+			continue
 		_section(cats[cat])
-		for id in Catalog.UPGRADE_IDS:
+		for id in ups:
 			var u: UpgradeData = Catalog.upgrade(id)
-			if u == null or u.category != cat:
-				continue
 			var desc := u.description
 			if Game.has_upgrade(u.id):
 				desc += "  (owned)"
-			_store_card(String(u.id), u.display_name, u.price, desc, "", _upgrade_icon(u))
+			_store_card(String(u.id), u.display_name, u.price, desc, _heated_stats(u.id), _upgrade_icon(u))
+
+
+## Polish 5 §13: a heated box's numbers on its Property card (its size, the melt rate, the cost).
+static func _heated_stats(id: StringName) -> String:
+	if id != &"heated_driveway" and id != &"heated_path":
+		return ""
+	var box := Boxes.get_box(Boxes.lot_box(Layout.player_lot, "driveway" if id == &"heated_driveway" else "path"))
+	if box.is_empty():
+		return ""
+	var b: BalanceData = Catalog.balance
+	return "%d m²  ·  melts %.1f cm an hour  ·  power: up to $%.2f an hour while melting" % [roundi(float(box["area"])), b.heated_melt_cm_h, b.heated_melt_cm_h / 100.0 * float(box["area"]) * b.melt_cost_per_m3]
 
 
 ## Polish 5 §13: the items with upgrades, in the ladder's order (HANDOFF §7), each as a group of the
@@ -873,11 +894,17 @@ func _bills() -> void:
 		var pw := "On" if Survival.power_on else "Off — the house is losing its heat (%d %% left)" % int(Survival.house_heat * 100)
 		_p("Power & heating: %s" % pw, UIKit.GOOD if Survival.power_on else UIKit.BAD, FS_SECTION)
 		_p("Hydro & heating: $%d a month, due on the 15th. Still unpaid at midnight into the 16th, the power is cut until you pay (no reconnection fee)." % Catalog.balance.hydro_bill)
+		# Polish 5 §13: what the heated pad, driveway and path use goes on the next bill.
+		var hc := Heating.hourly_costs()
+		if not hc.is_empty() or Economy.heat_used > 0.0:
+			var parts := hc.map(func(x): return "%s $%.2f" % [x[0], x[1]])
+			_p("Heating since the last bill: %s, on the next bill%s." % [UIKit.money(roundi(Economy.heat_used)), (" ($%.2f a m³ melted; an hour at most: %s)" % [Catalog.balance.melt_cost_per_m3, ", ".join(parts)]) if not parts.is_empty() else ""], Color.WHITE)
 		if not Economy.bills.is_empty():
 			var g := _table(4)
 			for bl in Economy.bills:
 				var overdue: bool = not bl["paid"] and Clock.day_index() > int(bl["due_day"])
-				_cell(g, "Hydro — %s" % Clock.MONTHS[int(bl["month"])], Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT, false, FS_CARD)
+				var heat := int(bl.get("heat", 0))
+				_cell(g, "Hydro — %s%s" % [Clock.MONTHS[int(bl["month"])], " (heating %s)" % UIKit.money(heat) if heat > 0 else ""], Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT, false, FS_CARD)
 				_cell(g, "due %s" % Clock.date_string(int(bl["due_day"])), UIKit.BAD if overdue else UIKit.MUTED)
 				_cell(g, UIKit.money(bl["amount"]), Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT, false, FS_CARD)
 				if bl["paid"]:
@@ -928,6 +955,12 @@ func _property() -> void:
 			var p2: Vector3 = m["pos"]
 			_cell(g2, Catalog.item_name(StringName(m["tool"])), Color.WHITE)
 			_cell(g2, "near %s" % Layout.describe_point(Vector2(p2.x, p2.z)), UIKit.TEXT, HORIZONTAL_ALIGNMENT_LEFT, true)
+	# Polish 5 §13: the equipment you have.
+	var eq := Equipment.overview_lines(false)
+	if not eq.is_empty():
+		_section("Equipment")
+		for line in eq:
+			_p(line, Color.WHITE)
 	if Game.has_upgrade(&"tool_rack"):
 		_p("Garage tool rack: %s" % (", ".join(Game.rack.map(func(x): return Catalog.item_name(StringName(x)))) if not Game.rack.is_empty() else "empty"), Color.WHITE)
 	_section("Vehicles")

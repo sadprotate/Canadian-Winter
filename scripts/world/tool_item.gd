@@ -152,7 +152,18 @@ func interact(_p: Player) -> void:
 func _open_crate() -> void:
 	var id := crate_item()
 	var sid := StringName(id)
-	if Catalog.UTILITY.has(sid):
+	# Polish 5 §13: equipment is put on as it's collected (the pad goes into your arms — not while
+	# they're full); an old jacket or parka crate is the insulated coat now.
+	if Catalog.RETIRED_UPGRADE_IDS.has(sid):
+		sid = Equipment.COAT
+		id = String(sid)
+	if Catalog.EQUIPMENT.has(sid):
+		if not Equipment.collect(sid):
+			Notify.push(Settings.with_keys("Your arms are full. Put down what you're carrying first ({drop})."), Notify.WARN)
+			return
+		Game.add_equipment_stat(Catalog.item_name(sid))
+		Notify.push(Equipment.collected_text(sid), Notify.GOOD)
+	elif Catalog.UTILITY.has(sid):
 		Game.heat_pouches += int(Catalog.UTILITY[sid]["count"])
 		Notify.push("Collected %s." % Catalog.UTILITY[sid]["name"], Notify.GOOD)
 	elif Catalog.upgrades.has(sid):

@@ -137,6 +137,9 @@ func _draw_tool(c: Vector2, s: float) -> void:
 	if tool_id.begins_with("crate:"):
 		draw_rect(Rect2(c - Vector2(0.25, 0.22) * s, Vector2(0.5, 0.44) * s), Color(0.7, 0.55, 0.35))
 		return
+	if Equipment.is_equipment(tool_id):
+		_draw_equipment(c, s)
+		return
 	var t: ToolData = Catalog.tool(StringName(tool_id))
 	var col := t.primary_color
 	var metal := Color(0.75, 0.77, 0.8)
@@ -166,3 +169,50 @@ func _draw_tool(c: Vector2, s: float) -> void:
 			draw_rect(Rect2(c + Vector2(0.08, -0.32) * s, Vector2(0.1, 0.34) * s), col.darkened(0.2))
 			draw_circle(c + Vector2(-0.22, 0.34) * s, 0.08 * s, Color(0.1, 0.1, 0.1))
 			draw_circle(c + Vector2(0.22, 0.34) * s, 0.08 * s, Color(0.1, 0.1, 0.1))
+
+
+## Polish 5 §13: the equipment's icons (drawn, over the same backdrop as the tools): the red coat,
+## a pair of snowshoes, the heated pad.
+func _draw_equipment(c: Vector2, s: float) -> void:
+	var P := func(pts: Array) -> PackedVector2Array:
+		var out := PackedVector2Array()
+		for q in pts:
+			out.append(c + (q as Vector2) * s)
+		return out
+	match tool_id:
+		"insulated_coat":
+			var red := CharacterModel.COAT_COLOR.lightened(0.1)
+			var dark := CharacterModel.COAT_COLOR.darkened(0.3)
+			draw_colored_polygon(P.call([Vector2(-0.2, -0.3), Vector2(0.2, -0.3), Vector2(0.24, 0.38), Vector2(-0.24, 0.38)]), red)
+			draw_colored_polygon(P.call([Vector2(-0.2, -0.3), Vector2(-0.38, 0.22), Vector2(-0.29, 0.26), Vector2(-0.17, -0.02)]), red)
+			draw_colored_polygon(P.call([Vector2(0.2, -0.3), Vector2(0.38, 0.22), Vector2(0.29, 0.26), Vector2(0.17, -0.02)]), red)
+			for y in [-0.08, 0.1, 0.27]:
+				draw_line(c + Vector2(-0.22, y) * s, c + Vector2(0.22, y) * s, dark, maxf(1.0, s * 0.02), true)
+			draw_line(c + Vector2(0, -0.28) * s, c + Vector2(0, 0.38) * s, dark, maxf(1.0, s * 0.025), true)
+			draw_circle(c + Vector2(0, -0.31) * s, 0.11 * s, CharacterModel.FLEECE_COLOR)
+			draw_circle(c + Vector2(0, -0.31) * s, 0.06 * s, dark)
+			draw_circle(c + Vector2(-0.335, 0.25) * s, 0.05 * s, CharacterModel.FLEECE_COLOR)
+			draw_circle(c + Vector2(0.335, 0.25) * s, 0.05 * s, CharacterModel.FLEECE_COLOR)
+		"snowshoes":
+			var rim := Color(0.8, 0.82, 0.86)
+			var deck := Color(0.22, 0.28, 0.42)
+			for k in [-1.0, 1.0]:
+				var o := Vector2(0.15 * k, 0.02 * k)
+				var ring := PackedVector2Array()
+				for i in range(24):
+					var a := TAU * i / 24.0
+					ring.append(c + (o + Vector2(cos(a) * 0.12, sin(a) * 0.36)) * s)
+				draw_colored_polygon(ring, deck)
+				ring.append(ring[0])
+				draw_polyline(ring, rim, maxf(1.5, s * 0.035), true)
+				draw_line(c + (o + Vector2(-0.11, -0.08)) * s, c + (o + Vector2(0.11, -0.08)) * s, Color(0.95, 0.45, 0.12), maxf(2.0, s * 0.05), true)
+		"heated_pad":
+			draw_rect(Rect2(c + Vector2(-0.24, -0.38) * s, Vector2(0.48, 0.7) * s), Color(0.12, 0.12, 0.14))
+			var line := PackedVector2Array()
+			for i in range(6):
+				var x := -0.17 + i * 0.068
+				line.append(c + Vector2(x, -0.3 if i % 2 == 0 else 0.25) * s)
+				line.append(c + Vector2(x, 0.25 if i % 2 == 0 else -0.3) * s)
+			draw_polyline(line, Color(0.95, 0.35, 0.12), maxf(1.5, s * 0.03), true)
+			draw_rect(Rect2(c + Vector2(-0.08, 0.32) * s, Vector2(0.16, 0.09) * s), Color(0.88, 0.88, 0.86))
+			draw_circle(c + Vector2(0.0, 0.365) * s, 0.02 * s, Color(1.0, 0.5, 0.1))

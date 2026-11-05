@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="UpgradeData" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/upgrade_data.gd" id="1_htpth"]
+
+[resource]
+script = ExtResource("1_htpth")
+id = &"heated_path"
+display_name = "Heated Path"
+category = 4
+price = 1500
+description = "Cables under your front walk, steps and porch melt a light snowfall as it lands; a storm is too much for them. Uses power while melting (hydro bill)."
+stat = &"heated_path"

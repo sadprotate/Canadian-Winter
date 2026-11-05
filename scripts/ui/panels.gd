@@ -287,6 +287,9 @@ static func inventory(parent: Control) -> Control:
 		v.add_child(UIKit.label("Carrying: %s (%s to drop)" % [Catalog.item_name(StringName(Game.carried)), Settings.action_label("drop")], 20, UIKit.WARN))
 	v.add_child(UIKit.label("Utility: %d heating pouch%s  (%s to use)" % [Game.heat_pouches, "" if Game.heat_pouches == 1 else "es", Settings.action_label("use_pouch")], 20, UIKit.MUTED))
 	v.add_child(UIKit.label("Keys: %s" % ("pickup truck keys" if Game.flags.get("truck_keys", false) else "none found"), 20, UIKit.MUTED))
+	# Polish 5 §13: the equipment you have (the snowshoes come off and go on here, with Interact).
+	for line in Equipment.overview_lines():
+		v.add_child(UIKit.label(line, 20, Color(0.85, 0.92, 1.0)))
 	# Polish 5 §13: the upgrades of the tool in your hands (each item has its own), and clothing.
 	var cur := Game.current_tool()
 	var ups := []

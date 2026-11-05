@@ -174,15 +174,17 @@ func _carrying() -> bool:
 
 func refresh_visuals() -> void:
 	var id := Game.carried if _carrying() else Game.current_tool_id()
-	var mesh: Mesh = ToolModels.mesh_for(id) if id != "" else null
+	var equip := Equipment.is_equipment(id)
+	# Polish 5 §13: the heated pad is carried rolled up (it isn't a tool).
+	var mesh: Mesh = (HeatedPad.carry_mesh() if equip else ToolModels.mesh_for(id)) if id != "" else null
 	held_tp.mesh = mesh
-	held_fp.mesh = ToolModels.handle_mesh(id) if mesh != null else null
-	blade_fp.mesh = ToolModels.blade_mesh(id) if mesh != null else null
+	held_fp.mesh = (HeatedPad.carry_mesh() if equip else ToolModels.handle_mesh(id)) if mesh != null else null
+	blade_fp.mesh = ToolModels.blade_mesh(id) if mesh != null and not equip else null
 	held_tp.visible = mesh != null and player.third_person
 	held_fp.visible = mesh != null and not player.third_person
 	blade_fp.visible = held_fp.visible
 	arms.visible = not player.third_person
-	if id != "" and mesh != null:
+	if id != "" and mesh != null and not equip:
 		load_fp.position = ToolModels.blade_offset(id) - ToolModels.tip(id)
 	_update_load_visual()
 
@@ -414,7 +416,7 @@ func _held(action: String, down: bool) -> bool:
 ## (up to arms overhead) so it can land on top instead of sliding back in.
 func _hand_pos() -> Vector3:
 	var f := Vector3(player.forward2().x, 0, player.forward2().y)
-	var feet := player.global_position.y
+	var feet := player.feet_y()     # polish 5 §13: on snowshoes, on the snow
 	var h := feet + 1.15
 	var top := 0.0
 	var p := player.global_position + f * 0.6
@@ -938,6 +940,16 @@ func _flush_stream() -> void:
 func drop_tool() -> void:
 	if load > 0.0:
 		dump_at_feet(true)
+	# Polish 5 §13: the heated pad is put down (on your own lot only), not dropped like a tool.
+	if Equipment.pad_carried():
+		var why := Equipment.put_down_pad(player, player.forward2(), player.yaw)
+		if why != "":
+			_hint(why)
+			return
+		if Game.world and Game.world.has_method("refresh_pad"):
+			Game.world.refresh_pad()
+		AudioMgr.play_at("pickup_item", player.global_position, -6.0, 0.7)
+		return
 	var id := Game.take_selected()
 	if id == "":
 		return
@@ -1096,6 +1108,8 @@ func _animate_viewmodel(delta: float) -> void:
 		held_fp.visible = true
 		blade_fp.visible = true
 		held_fp.transform = Transform3D(Basis.from_euler(Vector3(deg_to_rad(10), 0, 0)), Vector3(0.0, -0.3, -0.42))
+		if Equipment.is_equipment(Game.carried):
+			held_fp.transform = Transform3D(Basis(), Vector3(0.0, -0.3, -0.5))   # polish 5 §13: the rolled pad
 		blade_fp.transform = held_fp.transform * Transform3D(Basis(), ToolModels.tip(Game.carried))
 		return
 	if held_fp.mesh != null:

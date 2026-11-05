@@ -29,6 +29,9 @@ var vehicles: Array = []
 var items: Array = []
 var machines: Array = []
 var rack: Array = []              # tools stored on the garage rack (ids)
+## Polish 5 §13: the equipment picked up (Equipment): id -> its state (the coat worn, the snowshoes
+## on or off, the heated pad carried or put down with its position). Saved from version 3.
+var equipment: Dictionary = {}
 var player_pos := Vector3.ZERO
 var player_yaw := 0.0
 var camera_third := false
@@ -95,6 +98,8 @@ func new_game(m: String, seed_override := -1) -> void:
 	items = []
 	machines = []
 	rack = []
+	equipment = {}
+	Equipment.pending_note = ""
 	next_uid = 1
 	camera_third = Settings.get_value("camera", "default_third", false)
 	weather_seed = int(Time.get_unix_time_from_system()) % 100000 + 17 if seed_override < 0 else seed_override
@@ -254,6 +259,8 @@ func grant_upgrade(id: StringName) -> void:
 	# Polish 5 §13: an old global upgrade (an old order's crate) goes to every item it improved.
 	if ItemUpgrades.is_legacy(id):
 		ItemUpgrades.grant_legacy(id, upgrades)
+	elif Catalog.RETIRED_UPGRADE_IDS.has(id):
+		Equipment.collect(Equipment.COAT)   # polish 5 §13: the old jacket / parka is the coat now
 	else:
 		upgrades[String(id)] = true
 	upgrades_changed.emit()
@@ -392,7 +399,7 @@ func serialize() -> Dictionary:
 	return {"mode": mode, "year": year, "money": money, "reputation": reputation, "company_name": company_name, "stats": stats,
 		"lifetime": lifetime, "flags": flags, "slots": slots, "selected": selected, "carried": carried,
 		"heat_pouches": heat_pouches, "upgrades": upgrades, "vehicles": _pack_list(vehicles),
-		"items": _pack_list(items), "machines": _pack_list(machines), "rack": rack,
+		"items": _pack_list(items), "machines": _pack_list(machines), "rack": rack, "equipment": Equipment.pack(equipment),
 		"player_pos": a3(player_pos), "player_yaw": player_yaw, "camera_third": camera_third,
 		"next_uid": next_uid, "weather_seed": weather_seed}
 
@@ -424,6 +431,14 @@ func deserialize(d: Dictionary) -> void:
 	items = _unpack_list(d.get("items", []))
 	machines = _unpack_list(d.get("machines", []))
 	rack = d.get("rack", [])
+	# Polish 5 §13 (version 3, optional): the equipment picked up; an old save's jacket and parka
+	# become the insulated coat (one notification, Survival).
+	equipment = {}
+	var eq = d.get("equipment", {})
+	if eq is Dictionary:
+		equipment = Equipment.pack(eq)
+	Equipment.pending_note = ""
+	Equipment.migrate(upgrades, equipment, mode == "survival")
 	player_pos = v3(d.get("player_pos", [0, 0, 0]))
 	player_yaw = float(d.get("player_yaw", 0.0))
 	camera_third = bool(d.get("camera_third", false))

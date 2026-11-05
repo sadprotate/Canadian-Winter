@@ -110,7 +110,8 @@ func outdoor_loss_per_hour() -> float:
 		Weather.C.HEAVY: mult = b.heavy_cold_mult
 		Weather.C.BLIZZARD: mult = b.blizzard_cold_mult
 	var loss := exposure(wc) * mult
-	loss *= Game.stat_value(&"cold_protection", 1.0)
+	# Polish 5 §13: the insulated coat (it replaces the old jacket and parka upgrades).
+	loss *= Equipment.cold_mult()
 	if Clock.minutes < pouch_until:
 		loss *= 0.6
 	return loss
@@ -123,7 +124,7 @@ func compute_rate() -> float:
 	if in_neighbor_house:
 		rate = gain
 	elif in_player_house:
-		var sheltered := exposure(Weather.temperature()) * 0.65 * Game.stat_value(&"cold_protection", 1.0)
+		var sheltered := exposure(Weather.temperature()) * 0.65 * Equipment.cold_mult()
 		var g := gain * Game.stat_value(&"house_warm", 1.0)
 		if near_fire and power_on:
 			g *= 1.4

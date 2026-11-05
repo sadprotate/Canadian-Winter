@@ -126,6 +126,20 @@ extends Node
 ##                            stopped, then holds still there; without --cam the camera looks at its
 ##                            front from across the street. Run with --fixed-fps 60. Works on older
 ##                            builds too (there the truck stops at the bank)
+##   --equip=coat,shoes,pad   (§13b) the equipment picked up before the world spawns: the insulated
+##                            coat (worn; Survival only), snowshoes (on), the heated pad (carried —
+##                            or put down with --pad); quietly ignored on builds without equipment
+##   --pad=u,v                (§13b) the heated pad lying at player-lot coords (u, v) on the snow
+##                            there, long side along the lot's depth; --pad_snow=m3 throws that much
+##                            snow onto it (a few splats, settled), --pad_melt=min then runs the
+##                            clock that long (the snow on it melts)
+##   --heated=driveway,path   (§13b) the house upgrades bought, the boxes bare and complete (as if
+##                            they had kept up); --fall_h=h then a light snowfall (0.6 cm an hour)
+##                            for h game hours run through the clock (a skip), the sky clear after
+##   --comp_section=text      (§13b) with --ui=computer --tab=n: scroll the app to the section
+##                            heading with that text (e.g. Equipment, Property)
+##   --shoes_walk=frames      (§13b) walk forward that many frames (real input) before the shot —
+##                            with snowshoes on, a shallow track behind the player
 
 var args := {}
 var game: Node = null
@@ -386,6 +400,8 @@ func _setup_world_state() -> void:
 		_comp_state()
 	if args.has("upgrades_state"):
 		_upgrades_state()
+	if args.has("equip") or args.has("heated") or args.has("pad"):
+		_equip_state()
 	if args.has("storm"):
 		_storm_clock()
 	if args.has("tv_tier"):
@@ -512,6 +528,8 @@ func _setup_after_spawn() -> void:
 	if args.has("city_snow"):
 		Snow.add_snowfall(float(args["city_snow"]))
 		Snow.sync_all()
+	if args.has("pad_snow") or args.has("fall_h") or args.has("shoes_walk"):
+		await _equip_after(w)
 	if args.has("city_pass"):
 		_city_pass()
 	if args.has("crew_watch"):
@@ -543,6 +561,69 @@ func _setup_after_spawn() -> void:
 		_cam.look_at(look)
 		_cam.current = true
 		w.snow_renderer.build_all(cpos)
+
+
+## Polish 5 §13b: --equip / --pad / --heated — the equipment and the heated boxes before spawning.
+func _equip_state() -> void:
+	if not ("equipment" in Game):
+		return
+	var lot := Layout.player_lot
+	var eq: Dictionary = Game.get("equipment")
+	for e in str(args.get("equip", "")).split(","):
+		match e:
+			"coat":
+				eq["insulated_coat"] = {}
+			"shoes":
+				eq["snowshoes"] = {"on": true}
+			"pad":
+				eq["heated_pad"] = {}
+				Game.carried = "heated_pad"
+	if args.has("pad"):
+		var q := str(args["pad"]).split(",")
+		var c := Layout.lot_to_world(lot, Layout.gu(lot, float(q[0])), float(q[1]))
+		eq["heated_pad"] = {"pos": [c.x, 0.0, c.y], "yaw": 0.0}
+		if Game.carried == "heated_pad":
+			Game.carried = ""
+	for h in str(args.get("heated", "")).split(","):
+		if h in ["driveway", "path"]:
+			Game.upgrades["heated_" + h] = true
+			var b := Boxes.get_box(Boxes.lot_box(lot, h))
+			for r2 in b["rects"]:
+				Snow.set_rect(r2, 0.0)
+			Boxes.measure(b, true)
+
+
+func _equip_after(w) -> void:
+	if args.has("pad_snow"):
+		var eqs = load("res://scripts/data/equipment.gd")
+		var pr: Rect2 = eqs.pad_rect()
+		var vol := float(args["pad_snow"])
+		var rng := RandomNumberGenerator.new()
+		rng.seed = 31
+		for k in range(8):
+			var at := pr.get_center() + Vector2(rng.randf_range(-0.35, 0.35), rng.randf_range(-0.8, 0.8))
+			Snow.deposit(at, vol / 8.0, rng.randf_range(0.5, 0.8))
+		Snow.relax_until_stable()
+		if args.has("pad_melt"):
+			var left := float(args["pad_melt"])
+			while left > 0.0:
+				Clock.advance(minf(left, 1.0))
+				Snow.relax_until_stable()
+				left -= 1.0
+	if args.has("fall_h"):
+		var hours := float(args["fall_h"])
+		Weather.force(Weather.C.LIGHT, hours, 0.6)
+		Clock.skip(hours * 60.0)
+		Weather.force(Weather.C.CLEAR, 48.0)
+		Snow.relax_until_stable()
+		Boxes.measure_all(true)
+	if args.has("shoes_walk"):
+		Game.force_input = true
+		Input.action_press("move_forward")
+		await _wait(int(args["shoes_walk"]))
+		Input.action_release("move_forward")
+		await _wait(20)
+	w.snow_renderer.build_all(w.player.global_position)
 
 
 ## Polish 5 §11: --city_pass — the whole pass at once (a sleep's batch), then the snow settles.
@@ -661,12 +742,21 @@ func _open_ui(which: String) -> void:
 				for i in range(4):
 					await get_tree().process_frame
 				(w.modal as ComputerUI).scroll.scroll_vertical = int(args["comp_scroll"])
+			if args.has("comp_section"):
+				# §13b: scroll the open app to the section heading with this text.
+				for i in range(4):
+					await get_tree().process_frame
+				var cu: ComputerUI = w.modal
+				for n in cu.content.get_children():
+					if n is Label and (n as Label).text == str(args["comp_section"]):
+						cu.scroll.scroll_vertical = int((n as Label).position.y) - 8
 			await _wait_icons()
 		"map":
 			var m := MapUI.new()
 			w.ui.add_child(m)
 			w.open_modal(m, "map")
 		"inventory":
+			Input.action_press("inventory")   # held, as the game shows it (polish 5 §13b)
 			w.inventory_panel = Panels.inventory(w.hud)
 		"pause":
 			w._open_pause()

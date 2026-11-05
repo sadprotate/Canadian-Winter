@@ -25,6 +25,14 @@ var forearm_r: Node3D
 var leg_l: Node3D
 var leg_r: Node3D
 var hand_r: Node3D     # tool attachment point
+## Polish 5 §13: the insulated coat (a long red down parka over the jacket: hood, fleece cuffs) and
+## snowshoes under the boots — built on demand by set_coat / set_snowshoes (the player's model only).
+const COAT_COLOR := Color(0.62, 0.11, 0.1)
+const FLEECE_COLOR := Color(0.9, 0.86, 0.77)
+var coat_parts: Array = []
+var shoe_parts: Array = []
+var coat_on := false
+var shoes_on := false
 var walk_phase := 0.0
 var pose := "idle"     # idle, walk, dig, push, carry, wave, throw, drive
 var pose_t := 0.0
@@ -93,6 +101,67 @@ func build() -> void:
 		else:
 			forearm_r = fore
 	hand_r = _pivot(forearm_r, Vector3(0, -0.34, 0))
+
+
+## Polish 5 §13: wear the insulated coat (or not). The coat is built the first time.
+func set_coat(on: bool) -> void:
+	if on and coat_parts.is_empty():
+		_build_coat()
+	coat_on = on
+	for n in coat_parts:
+		(n as Node3D).visible = on
+
+
+## Polish 5 §13: snowshoes under the boots (or not).
+func set_snowshoes(on: bool) -> void:
+	if on and shoe_parts.is_empty():
+		_build_snowshoes()
+	shoes_on = on
+	for n in shoe_parts:
+		(n as Node3D).visible = on
+
+
+func _build_coat() -> void:
+	var coat := Mats.fabric(COAT_COLOR)
+	var seam := Mats.fabric(COAT_COLOR.darkened(0.3))
+	var fleece := Mats.fabric(FLEECE_COLOR)
+	# The body: longer and puffier than the jacket (it covers the jacket and its reflective strips:
+	# small bevels, so no corner of the jacket shows through), quilted front and back, to the thighs.
+	var tk := MeshKit.new()
+	tk.bevel_box(coat, Transform3D(Basis(), Vector3(0, 0.21, 0)), Vector3(0.6, 0.88, 0.39), 0.06)
+	for y in [0.03, 0.2, 0.37]:
+		tk.box(seam, Transform3D(Basis(), Vector3(0, y, 0)), Vector3(0.38, 0.016, 0.396))
+	# Zip and placket down the front.
+	tk.box(seam, Transform3D(Basis(), Vector3(0, 0.21, -0.197)), Vector3(0.035, 0.86, 0.01))
+	# The hood folded down at the back, its fleece trim round the collar.
+	tk.bevel_box(coat, Transform3D(Basis(Vector3(1, 0, 0), -0.25), Vector3(0, 0.6, 0.15)), Vector3(0.38, 0.2, 0.16), 0.07)
+	tk.cylinder(fleece, Transform3D(Basis(), Vector3(0, 0.66, 0.01)), 0.19, 0.17, 0.08, 12, true)
+	coat_parts.append(tk.instance(torso, "Coat", true))
+	for arm in [arm_l, arm_r]:
+		var ak := MeshKit.new()
+		ak.bevel_box(coat, Transform3D(Basis(), Vector3(0, -0.17, 0)), Vector3(0.195, 0.38, 0.205), 0.045)
+		ak.box(seam, Transform3D(Basis(), Vector3(0, -0.2, 0)), Vector3(0.198, 0.014, 0.208))
+		coat_parts.append(ak.instance(arm, "CoatSleeve", true))
+		var fore: Node3D = forearm_l if arm == arm_l else forearm_r
+		var fk := MeshKit.new()
+		fk.bevel_box(coat, Transform3D(Basis(), Vector3(0, -0.13, 0)), Vector3(0.185, 0.3, 0.195), 0.06)
+		fk.bevel_box(fleece, Transform3D(Basis(), Vector3(0, -0.285, -0.005)), Vector3(0.19, 0.06, 0.2), 0.03)
+		coat_parts.append(fk.instance(fore, "CoatCuff", true))
+
+
+func _build_snowshoes() -> void:
+	var deck := Mats.std(Color(0.16, 0.2, 0.3), 0.7)
+	var rim := Mats.std(Color(0.72, 0.74, 0.78), 0.35, 0.6)
+	var strap := Mats.fabric(Color(0.95, 0.45, 0.12))
+	for leg in [leg_l, leg_r]:
+		var k := MeshKit.new()
+		var x := 0.025 * (-1.0 if leg == leg_l else 1.0)   # a little outward: the two don't touch
+		# Aluminium frame (rounded at both ends), the decking on it, the binding over the boot.
+		k.bevel_box(rim, Transform3D(Basis(), Vector3(x, -0.962, -0.02)), Vector3(0.22, 0.022, 0.72), 0.08)
+		k.bevel_box(deck, Transform3D(Basis(), Vector3(x, -0.952, -0.02)), Vector3(0.18, 0.012, 0.66), 0.07)
+		k.bevel_box(strap, Transform3D(Basis(), Vector3(0, -0.88, -0.1)), Vector3(0.25, 0.04, 0.06), 0.015)
+		k.bevel_box(strap, Transform3D(Basis(), Vector3(0, -0.86, 0.05)), Vector3(0.25, 0.04, 0.05), 0.015)
+		shoe_parts.append(k.instance(leg, "Snowshoe", true))
 
 
 func _pivot(parent: Node3D, pos: Vector3) -> Node3D:

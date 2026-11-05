@@ -39,6 +39,7 @@ var _rack_node: Node3D
 var _roof_timer := 0.0
 var _roof_idx := 0
 var _veh_snow_last := 0.0
+var pad_node: HeatedPad = null    # polish 5 §13: the heated pad where it lies (refresh_pad)
 
 
 func _ready() -> void:
@@ -120,6 +121,9 @@ func _ready() -> void:
 	if ItemUpgrades.pending_note != "":
 		Notify.push(ItemUpgrades.pending_note, Notify.GOOD)
 		ItemUpgrades.pending_note = ""
+	if Equipment.pending_note != "":
+		Notify.push(Equipment.pending_note, Notify.GOOD)   # polish 5 §13: jacket and parka → the coat
+		Equipment.pending_note = ""
 	if Game.stage() == Game.Stage.START and Clock.day_index() == 0 and Clock.minutes < Clock.at(0, 8.0):
 		_morning_line_due = true     # polish 5 §4: the door line waits for it
 		get_tree().create_timer(1.5).timeout.connect(func():
@@ -300,6 +304,23 @@ func _spawn_objects() -> void:
 		spawn_machine_node(m)
 	for v in Game.vehicles:
 		spawn_vehicle_node(v)
+	refresh_pad()
+
+
+## Polish 5 §13: the heated pad's node follows Game.equipment — there when it's down, gone when
+## it's in your arms (or not yours yet).
+func refresh_pad() -> void:
+	if pad_node != null and is_instance_valid(pad_node):
+		pad_node.queue_free()
+	pad_node = null
+	if not Equipment.pad_placed():
+		return
+	pad_node = HeatedPad.new()
+	pad_node.name = "HeatedPad"
+	var p := Equipment.pad_pos()
+	pad_node.position = Vector3(p.x, Snow.ground_at(p.x, p.z), p.z)
+	pad_node.rotation.y = Equipment.pad_yaw()
+	objects.add_child(pad_node)
 
 
 func spawn_item_node(e: Dictionary) -> ToolItem:
@@ -511,7 +532,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event.is_action_pressed("interact"):
 		if Settings.accept_press("interact"):   # polish 5 §2: capped per second
-			player.try_interact()
+			# Polish 5 §13: with the Tab overview up, Interact takes the snowshoes off or puts them on.
+			if inventory_panel != null and Equipment.has(Equipment.SHOES) and player.state == "foot":
+				Equipment.toggle_snowshoes()
+				AudioMgr.play("paper", -10.0)
+				inventory_panel.queue_free()
+				inventory_panel = Panels.inventory(hud)
+			else:
+				player.try_interact()
 	elif event.is_action_pressed("camera_toggle") and player.state != "vehicle":
 		player.set_third_person(not player.third_person)
 	elif event.is_action_pressed("map"):

@@ -219,3 +219,33 @@ extends Resource
 ## The ladder: a track's levels stop where the item would pass the next item's base value of what
 ## the track improves by more than this fraction (unless the item is already ahead there at base).
 @export var upgrade_ladder_slack: float = 0.15
+
+@export_group("Equipment")
+## Polish 5 §13: equipment from the Equipment store (picked up at the store, never in a tool slot).
+## The insulated coat (Survival only, Decision 9) lowers the warmth lost outdoors (and sheltered
+## in a cold house) by this fraction. It replaces the old Insulated Work Jacket and Arctic Parka
+## upgrades (×0.8 and ×0.75: together ×0.6), so an old save keeps the protection it paid for.
+@export var coat_price: int = 480
+@export var coat_cold_protection: float = 0.4
+## Snowshoes: you sink in this fraction of the snow's depth — the snow under the snowshoes is trodden
+## down that much (a track that deep; wading without them treads down about 60 %) and you stand on
+## it (the hip rule is measured from there); you wade only through the snow you sink into, so you
+## move much faster.
+@export var snowshoes_price: int = 160
+@export var snowshoes_sink: float = 0.25
+## The heated pad: the snow on it melts at this rate (cm of depth per game hour, a world rate).
+@export var pad_price: int = 650
+@export var pad_melt_cm_h: float = 30.0
+
+@export_group("Heating")
+## Polish 5 §13: the heated driveway and heated path (house upgrades, data/upgrades/heated_*.tres)
+## melt the snow on those two boxes at this rate (cm of depth per game hour, a world rate): it keeps
+## up with a light snowfall and falls behind in a storm. A power cut stops them (and the pad).
+## 1.0 cm/h: of the scheduled events of 21 seeds × winters 1–3, no light snowfall (0 of 1,402)
+## builds 2 cm on it (the box's reopen depth) and 331 of 333 storms do (1.5 cm/h: 254 of 333).
+@export var heated_melt_cm_h: float = 1.0
+## The power it takes to melt snow (the pad, the heated driveway and path alike): this much per m³
+## melted goes on the next hydro bill (Survival). Real cables use about 20 kWh a cubic metre (≈ $2.40
+## at 12 ¢); the game charges less so the house upgrades stay a comfort, not a burden: the heated
+## driveway costs up to $1.11 an hour while it melts, about $70 in a December, $160 in a stormy January.
+@export var melt_cost_per_m3: float = 1.5

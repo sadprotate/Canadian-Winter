@@ -3178,13 +3178,31 @@ func test_s7_v3_save_round_trips() -> void:
 			ItemUpgrades.level_id(&"rotary_blower", &"blower", 1), "weather_pro"]:
 		Game.grant_upgrade(StringName(id))
 	var want13 := JSON.stringify(Game.upgrades, "", true)
+	# §13b: the equipment (the coat, the snowshoes off, the pad down on the lot), heating not yet
+	# billed and minutes not yet melted, a bill with its heating, the melted-volume ledger.
+	var pad_at := Layout.lot_to_world(Layout.player_lot, Layout.gu(Layout.player_lot, -9.0), 4.0)
+	Game.equipment = {"insulated_coat": {}, "snowshoes": {"on": false}, "heated_pad": {"pos": [snappedf(pad_at.x, 0.125), 0.0, snappedf(pad_at.y, 0.125)], "yaw": 1.5}}
+	Economy.heat_used = 12.375
+	Economy.heat_acc = {"pad": 0.25, "heated_driveway": 7.5}
+	Economy.bills.append({"month": 1, "amount": 97, "heat": 12, "issued_day": 31, "due_day": 45, "paid": false})
+	Snow.melted = 3.125
+	var bills_of := func() -> Array: return Economy.bills.map(func(x): return [int(x["month"]), int(x["amount"]), int(x.get("heat", 0)), int(x["due_day"]), bool(x["paid"])])
+	var want13b := JSON.stringify({"eq": Game.equipment, "used": Economy.heat_used, "acc": Economy.heat_acc, "bills": bills_of.call(), "melted": Snow.melted}, "", true)
 	runner.check(Saves.save_game(), "§7 a version-3 save")
 	Game.upgrades = {}
 	Game.company_name = ""
 	Contracts.job_history = []
 	Weather.alerts.clear()
+	Game.equipment = {}
+	Economy.heat_used = 0.0
+	Economy.heat_acc = {}
+	Snow.melted = 0.0
 	await _unload()
 	runner.check(Saves.load_game("fun"), "§7 …loads")
+	var got13b := JSON.stringify({"eq": Game.equipment, "used": Economy.heat_used, "acc": Economy.heat_acc, "bills": bills_of.call(), "melted": Snow.melted}, "", true)
+	runner.check(got13b == want13b and Equipment.pad_placed() and not Equipment.snowshoes_on(), "§13b …and the equipment, the pad where it lies, the heating not yet billed, the bill's heating and the melted-volume ledger exactly as saved")
+	if got13b != want13b:
+		runner.info("want %s\n got %s" % [want13b, got13b])
 	var got := JSON.stringify({"name": Game.company_name, "history": Contracts.job_history, "alerts": Weather.alerts})
 	runner.check(got == want and Contracts.job_history.size() == 4 and Weather.alerts.size() == 2, "§7 …with the name, the history and (§8) the recent alerts exactly as saved (%d entries, %d alerts)" % [Contracts.job_history.size(), Weather.alerts.size()])
 	if got != want:
@@ -3946,6 +3964,7 @@ func test_s9_fast_forward_equals_1x() -> void:
 	runner.info("1×: %d frames, %d substeps; storm %.1f cm, grader passes %s, bid %s, drops %s" % [base["frames"], base["substeps"], base["fell_cm"], base["passes"], base["bid"], base["drops"]])
 	runner.check(base["fell_cm"] > 4.0 and base["grader_done"] and base["crossed_9pm"] and base["bid"] != "" and base["bid_was"] == 1, "§9 the stretch has a storm (%.1f cm), a whole grader pass, 9 p.m. and a bid resolved (%s)" % [base["fell_cm"], base["bid"]])
 	runner.check(int(base["crew_cleared"]) + int(base["crew_skipped"]) == Municipal.crew_route().size() and int(base["crew_cleared"]) > 0 and base["crew_bare"], "§11 …and the sidewalk crew behind the grader: %d sidewalks cleared, each bare when it was done, %d left to the player's jobs" % [base["crew_cleared"], base["crew_skipped"]])
+	runner.check(float(base["melted"]) > 0.3 and float(base["heat_used"]) > 0.0, "§13b …and melting on the clock: the heated driveway, path and pad melted %.2f m³ ($%.2f on the next bill)" % [base["melted"], base["heat_used"]])
 	var s10: Dictionary = base["s10"]
 	runner.check(s10.values().all(func(x): return x), "§10 …and on the clock: the rivals' bids, the award at 9:01 p.m., a job missed at its due time and back on the board, a job paid, a visit due once the snow stopped (a day later for the storm), a due time the storm moved %s" % str(s10))
 	for k in range(1, runs.size()):
@@ -3956,7 +3975,7 @@ func test_s9_fast_forward_equals_1x() -> void:
 				diff.append(key)
 		runner.info("%s: %d frames (%d substeps), %.0f %% of the frames at more than 1×, held %d frames, drops %s" % [r["label"], r["frames"], r["substeps"], 100.0 * r["fast_frames"] / maxf(r["frames"], 1.0), r["held"], r["drops"]])
 		runner.check(r["substeps"] == base["substeps"] and r["frames"] < base["frames"], "§9 %s took the same %d clock substeps in %d frames (1×: %d)" % [r["label"], r["substeps"], r["frames"], base["frames"]])
-		runner.check(diff.is_empty(), "§9 %s ends identical to 1× (snow, boxes, money, contracts and bids, the grader and the sidewalk crew, weather, TV, radio, warmth, notifications)%s" % [r["label"], "" if diff.is_empty() else " — differs: %s" % str(diff)])
+		runner.check(diff.is_empty(), "§9 %s ends identical to 1× (snow and §13b's melting, boxes, money, contracts and bids, the grader and the sidewalk crew, weather, TV, radio, warmth, notifications)%s" % [r["label"], "" if diff.is_empty() else " — differs: %s" % str(diff)])
 	runner.check(int(runs[2]["fast_frames"]) > 0 and int(runs[2]["held"]) > 0, "§9 10× ran fast away from the grader and was held at 1× while it passed the house (%d / %d frames)" % [runs[2]["fast_frames"], runs[2]["held"]])
 
 
@@ -4021,6 +4040,15 @@ func _s9_stretch(sp: int, caps: bool) -> Dictionary:
 	var passes0 := Municipal.passes
 	var started: bool = Municipal.in_progress and world.grader.active
 	var fall0 := Snow.fall_total
+	# §13b: melting runs on the clock too — the heated driveway and path, and the heated pad on the
+	# lawn with a pile of snow on it.
+	Game.upgrades["heated_driveway"] = true
+	Game.upgrades["heated_path"] = true
+	var pad_at := Layout.lot_to_world(Layout.player_lot, Layout.gu(Layout.player_lot, -10.0), 3.0)
+	Game.equipment["heated_pad"] = {"pos": [pad_at.x, 0.0, pad_at.y], "yaw": 0.0}
+	world.refresh_pad()
+	Snow.deposit(pad_at, 0.8, 0.9)
+	var melted0 := Snow.melted
 	var crew_done := {}
 	var on_done := func(id: String):
 		if Boxes.quiet:
@@ -4064,7 +4092,7 @@ func _s9_stretch(sp: int, caps: bool) -> Dictionary:
 		notes.append("%s|%s" % [str(n["time"]), str(n["text"])])
 	var state := {
 		"clock": var_to_str(Clock.minutes),
-		"snow": _s9_sha(Snow.depth.to_byte_array() + Snow.loose.to_byte_array()) + var_to_str([Snow.fall_total, Snow.roof_depth, Snow.roof_extra]),
+		"snow": _s9_sha(Snow.depth.to_byte_array() + Snow.loose.to_byte_array()) + var_to_str([Snow.fall_total, Snow.roof_depth, Snow.roof_extra, Snow.melted]),
 		"boxes": var_to_str(Boxes.serialize()),
 		"money": Game.money,
 		"game": var_to_str(Game.serialize()),
@@ -4085,7 +4113,7 @@ func _s9_stretch(sp: int, caps: bool) -> Dictionary:
 		"crew_cleared": Municipal.crew_log.values().count("cleared"), "crew_skipped": Municipal.crew_log.values().count("skipped"),
 		# Each sidewalk the crew cleared was bare when it completed it (the storm reopens them later).
 		"crew_bare": crew_done.size() == Municipal.crew_log.values().count("cleared") and crew_done.values().all(func(v): return v < 1e-9),
-		"crossed_9pm": crossed, "bid_was": bids0, "bid": "" if not Contracts.bids.is_empty() else ("won" if Contracts.active.any(func(c): return c["target"] == l["target"]) else "lost"),
+		"crossed_9pm": crossed, "bid_was": bids0, "melted": Snow.melted - melted0, "heat_used": Economy.heat_used, "bid": "" if not Contracts.bids.is_empty() else ("won" if Contracts.active.any(func(c): return c["target"] == l["target"]) else "lost"),
 		"s10": {"missed": jm["status"] == "lost" and Contracts.listings.any(func(x): return x["target"] == jm["target"] and x.get("relisted", false)),
 			"paid": jp["status"] == "completed" and Game.money >= money_s10 + int(jp["pay"]),
 			"visit": jr["status"] == "needs_service" and bool(jr["ext"]) and is_equal_approx(float(jr["due"]), Clock.at(day + 1, Contracts.DUE_HOUR) + Contracts.STORM_EXTENSION_MIN),
@@ -6455,8 +6483,10 @@ func test_s13_old_global_levels_carry_over() -> void:
 		runner.check(bad.is_empty() and left.is_empty(), "§13 %s: every old level went to every item it used to affect, each item's effects as before %s" % [mode, str(bad.slice(0, 6))])
 		runner.check(ItemUpgrades.level(&"small_shovel", &"capacity") == 2 and ItemUpgrades.max_level(&"small_shovel", &"capacity") == 1 and ItemUpgrades.level(&"large_scraper", &"throw") == 2,
 			"§13 …past an item's ladder too (the small shovel keeps capacity 2; the large scraper, not owned, has throw 2)")
-		var kept := ["clothing_1", "clothing_2", "weather_pro", "weather_radar", "furnace", "tool_rack"].all(func(k): return Game.has_upgrade(StringName(k)))
-		runner.check(kept and Game.has_upgrade(ItemUpgrades.PLOW_ID), "§13 …the other upgrades stay as they were; the pickup's plow is its front plow")
+		# §13b: the jacket and the parka (retired upgrades) are the insulated coat now (equipment).
+		var kept := ["weather_pro", "weather_radar", "furnace", "tool_rack"].all(func(k): return Game.has_upgrade(StringName(k)))
+		var coat := Catalog.RETIRED_UPGRADE_IDS.all(func(k): return old_ups.has(String(k)) and not Game.has_upgrade(k)) and Equipment.has(Equipment.COAT)
+		runner.check(kept and coat and Game.has_upgrade(ItemUpgrades.PLOW_ID), "§13 …the other upgrades stay as they were (the jacket and parka are the insulated coat now); the pickup's plow is its front plow")
 		# The baseline bug's extra truck: kept (it was delivered; nothing is taken away), its order the
 		# plow's, nothing new delivered, the plow not for sale again.
 		var plows := Game.vehicles.filter(func(v): return str(v["id"]) == "pickup_plow").size()
@@ -6578,8 +6608,9 @@ func test_s13_upgrades_app() -> void:
 	var want_cards := ["hands", "small_shovel", "standard_shovel", "small_blower", "pickup", "atv_blade"]
 	var i_yours := heads.find("Your items")
 	var i_other := heads.find("Other items")
-	runner.check(cards == want_cards and i_yours >= 0 and i_other > i_yours and heads.find("Cold protection") > i_other,
-		"§13 the Upgrades app: your items first, a card each in the ladder's order %s, then the other items, then clothing, weather and property" % str(cards))
+	# §13b: the clothing is the insulated coat now (the Equipment store): no Cold protection section.
+	runner.check(cards == want_cards and i_yours >= 0 and i_other > i_yours and heads.find("Weather technology") > i_other and heads.find("Property") > i_other and not heads.has("Cold protection"),
+		"§13 the Upgrades app: your items first, a card each in the ladder's order %s, then the other items, then weather and property" % str(cards))
 	var first_other := kids.find(kids.filter(func(n): return n is Label and (n as Label).text == "Other items")[0])
 	runner.check(kids.find(_s13_card(comp, "atv_blade")) < first_other, "§13 …every owned item's card comes before the other items")
 	# Each card: the item's own icon (the mitten for bare hands; vehicles none) and its tracks.
@@ -6670,3 +6701,745 @@ static func _s13_text(n: Node) -> String:
 		elif c is Button:
 			out.append((c as Button).text)
 	return " | ".join(out)
+
+
+# =============================================================================
+# §13b Equipment (the coat, snowshoes, the heated pad), the heated driveway and path, melting
+# =============================================================================
+# Equipment is its own kind of item (Equipment, Catalog.EQUIPMENT): bought in the Equipment store,
+# a crate on the store's pad collected with Interact, never in a tool slot. Melting (Heating, on the
+# game clock) is the new ledgered exception: Snow.melted, snow + melted = before, exactly.
+
+## A point of the player's lot (lot frame u, v) in the world.
+static func _s13b_lot(u: float, v: float) -> Vector2:
+	return Layout.lot_to_world(Layout.player_lot, Layout.gu(Layout.player_lot, u), v)
+
+
+## Buy an equipment item during store hours and collect its crate from the store's pad (Interact,
+## as a player does). True once it is picked up.
+func _s13b_buy_and_collect(id: String) -> bool:
+	var r := Economy.buy(id)
+	if not r["ok"]:
+		runner.info("buy %s: %s" % [id, r["msg"]])
+		return false
+	await _frames(2)
+	for c in world.objects.get_children():
+		if c is ToolItem and (c as ToolItem).tool_id == "crate:" + id:
+			(c as ToolItem).interact(world.player)
+	await _frames(1)
+	return Equipment.has(id)
+
+
+## Each item is bought in the Equipment store and picked up at the store like any order — its own
+## kind (no id shared with a tool, vehicle or upgrade), never in a tool slot, one of each; the coat
+## is sold in Survival only; the store shows the cards with their icons and keys.
+func test_s13b_equipment_bought_and_collected() -> void:
+	var clash := []
+	for id in Catalog.EQUIPMENT.keys():
+		if Catalog.tools.has(id) or Catalog.vehicles.has(id) or Catalog.upgrades.has(id) or Catalog.UTILITY.has(id):
+			clash.append(id)
+	runner.check(clash.is_empty() and Equipment.IDS.size() == 3 and Equipment.IDS.all(func(i): return Economy.item_kind(String(i)) == "equipment"),
+		"§13b the coat, the snowshoes and the heated pad are their own kind of item (\"equipment\"), no id shared with a tool, vehicle or upgrade %s" % str(clash))
+	var defaults := BalanceData.new()
+	var keys := ["coat_price", "coat_cold_protection", "snowshoes_price", "snowshoes_sink", "pad_price", "pad_melt_cm_h", "heated_melt_cm_h", "melt_cost_per_m3"]
+	runner.check(keys.all(func(k): return is_equal_approx(float(Catalog.balance.get(k)), float(defaults.get(k)))), "§13b the new balance values are the same in data/balance.tres and the defaults")
+	await _s3_world("survival")
+	Game.money = 99999
+	Game.slots = ["standard_shovel", "", "", ""]
+	Game.inventory_changed.emit()
+	Clock.reset(Clock.at(1, 12.0))
+	var slots0 := Game.slots.duplicate()
+	for id in ["insulated_coat", "snowshoes", "heated_pad"]:
+		runner.check(Economy.can_buy(id) == "" and Economy.price_of(id) == Equipment.price(id) and Equipment.price(id) > 0, "§13b %s: for sale ($%d)" % [id, Equipment.price(id)])
+		var ok: bool = await _s13b_buy_and_collect(id)
+		var o: Dictionary = Economy.orders.filter(func(x): return x["item"] == id)[0]
+		runner.check(ok and o["kind"] == "equipment" and o["status"] == "collected" and Game.slots == slots0, "§13b …bought on the computer, a crate on the store's pad collected with Interact, no tool slot used")
+		runner.check(Economy.can_buy(id) == "Already owned." and not Economy.buy(id)["ok"], "§13b …one of each: \"Already owned.\"")
+	runner.check(Equipment.coat_worn() and Equipment.snowshoes_on() and Game.carried == "heated_pad", "§13b on pickup the coat is worn, the snowshoes are on and the pad is in your arms")
+	runner.check(world.player.model.coat_on and (world.player.tools.arms.coat_sleeves as Array).all(func(n): return (n as Node3D).visible) and (world.player.tools.arms.jacket_sleeves as Array).all(func(n): return not (n as Node3D).visible),
+		"§13b the coat shows on the character and on the first-person sleeves")
+	# A pad crate can't be collected while your arms are full.
+	Game.carried = ""
+	Game.equipment.erase("heated_pad")
+	world.refresh_pad()
+	Game.carried = "wide_pusher"
+	var e := {"uid": Game.uid(), "tool": "crate:heated_pad", "pos": Vector3(120, 0, 25), "yaw": 0.0}
+	Game.items.append(e)
+	var crate: ToolItem = world.spawn_item_node(e)
+	crate.interact(world.player)
+	await _frames(1)
+	runner.check(Game.carried == "wide_pusher" and Game.items.has(e) and not Equipment.has("heated_pad"), "§13b a pad's crate stays at the store while your arms are full")
+	Game.carried = ""
+	crate.interact(world.player)
+	await _frames(1)
+	runner.check(Game.carried == "heated_pad" and not Game.items.has(e), "§13b …and is collected once they're free")
+	# The store: an Equipment section, each card with its icon and the keys read from the input map.
+	world.open_computer()
+	await _tree().process_frame
+	var comp: ComputerUI = world.modal
+	comp._open_app(ComputerUI.app_index("store"))
+	await _tree().process_frame
+	var heads := comp.content.get_children().filter(func(n): return n is Label).map(func(n): return (n as Label).text)
+	var icons := _s6_icons(comp.content).map(func(n): return (n as Icons).tool_id)
+	var txt := _s13_text(comp.content)
+	runner.check(heads.has("Equipment") and ["insulated_coat", "snowshoes", "heated_pad"].all(func(i): return icons.has(i)) and txt.contains("Insulated Coat") and txt.contains("Heated Snow-Melting Pad") and not txt.contains("{"),
+		"§13b the Equipment store: an Equipment section, a card with its icon for each item, keys shown from the input map")
+	world.close_modal()
+	await _tree().process_frame
+	var descs := "\n".join(Catalog.EQUIPMENT.values().map(func(x): return Settings.with_keys(x["desc"])))
+	runner.check(not descs.contains("{") and descs.contains(Settings.action_label("drop")) and descs.contains(Settings.action_label("inventory")), "§13b the descriptions read their keys from the input map")
+	await _unload()
+	# Fun Mode: no coat (Decision 9) — not sold, and not shown even if owned.
+	await _s3_world("fun")
+	Game.money = 99999
+	Clock.reset(Clock.at(1, 12.0))
+	runner.check(Economy.can_buy("insulated_coat") == "Survival Mode only." and Economy.can_buy("snowshoes") == "" and Economy.can_buy("heated_pad") == "", "§13b Fun Mode: the coat isn't sold (\"Survival Mode only.\"); the snowshoes and the pad are")
+	world.open_computer()
+	await _tree().process_frame
+	var comp2: ComputerUI = world.modal
+	comp2._open_app(ComputerUI.app_index("store"))
+	await _tree().process_frame
+	var t2 := _s13_text(comp2.content)
+	runner.check(not t2.contains("Insulated Coat") and t2.contains("Snowshoes"), "§13b …the Fun Mode store shows no coat")
+	world.close_modal()
+	await _tree().process_frame
+	Game.equipment["insulated_coat"] = {}
+	Game.inventory_changed.emit()
+	await _frames(1)
+	runner.check(not Equipment.coat_worn() and is_equal_approx(Equipment.cold_mult(), 1.0) and not world.player.model.coat_on and not (world.player.tools.arms.coat_sleeves as Array).any(func(n): return (n as Node3D).visible),
+		"§13b …and a coat an old Fun save owns is neither worn nor shown (Fun Mode shows no coat)")
+	await _unload()
+
+
+## The coat lowers the warmth lost outdoors (and in a cold house) by its balance fraction; the old
+## jacket and parka become the coat in an old save — one coat, no protection lost, one notification.
+func test_s13b_the_coat() -> void:
+	await _s3_world("survival")
+	Weather.force(Weather.C.MODERATE, 24.0)
+	var bare := Survival.outdoor_loss_per_hour()
+	Equipment.collect(Equipment.COAT)
+	var worn := Survival.outdoor_loss_per_hour()
+	var f: float = Catalog.balance.coat_cold_protection
+	runner.check(bare > 0.0 and is_equal_approx(worn, bare * (1.0 - f)), "§13b the coat: outdoor warmth loss × %.2f (%.2f → %.2f %%/h)" % [1.0 - f, bare, worn])
+	Survival.in_player_house = true
+	Survival.cut_power()
+	Survival.house_heat = 0.0
+	var cold_house := Survival.compute_rate()
+	Game.equipment.erase("insulated_coat")
+	var cold_house0 := Survival.compute_rate()
+	Survival.in_player_house = false
+	runner.check(cold_house < 0.0 and is_equal_approx(cold_house, cold_house0 * (1.0 - f)), "§13b …and in a house without heat (%.2f → %.2f %%/h)" % [cold_house0, cold_house])
+	await _unload()
+	# Old saves: the 2_upgrades fixture bought the Insulated Work Jacket and the Arctic Parka.
+	for mode in ["fun", "survival"]:
+		var path := "res://tests/fixtures/polish5/%s_2_upgrades.json" % mode
+		var raw: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+		var old_ups: Dictionary = raw["game"]["upgrades"]
+		var old_mult := 1.0
+		for r in Catalog.RETIRED_UPGRADE_IDS:
+			if old_ups.has(String(r)):
+				old_mult *= (Catalog.upgrade(r) as UpgradeData).value
+		runner.check(await _load_save_file(path), "§13b %s_2_upgrades loads" % mode)
+		var no_old := Catalog.RETIRED_UPGRADE_IDS.all(func(r): return not Game.has_upgrade(r))
+		runner.check(old_mult < 1.0 and no_old and Equipment.has(Equipment.COAT) and is_equal_approx(Game.stat_value(&"cold_protection"), 1.0),
+			"§13b %s: the jacket and the parka (×%.2f) became one insulated coat; no clothing upgrade left (no two coats)" % [mode, old_mult])
+		if mode == "survival":
+			runner.check(Equipment.cold_mult() <= old_mult + 1e-6, "§13b …the coat protects at least as much as they did (×%.2f ≤ ×%.2f)" % [Equipment.cold_mult(), old_mult])
+		else:
+			runner.check(not Equipment.coat_worn() and is_equal_approx(Equipment.cold_mult(), 1.0), "§13b …Fun Mode: owned, not worn (no cold)")
+		Notify.clear()
+		await _spawn_world()
+		await _frames(2)
+		var notes := Notify.history.filter(func(n): return str(n["text"]).begins_with("Your jacket and parka"))
+		runner.check(notes.size() == (1 if mode == "survival" else 0) and world.player.model.coat_on == (mode == "survival"), "§13b …%s: %d notification, the coat %s on the character" % [mode, notes.size(), "shown" if mode == "survival" else "not shown"])
+		await world._do_sleep()
+		await _frames(3)
+		await _unload()
+		Notify.clear()
+		runner.check(Saves.load_game(mode) and Equipment.has(Equipment.COAT) and Equipment.pending_note == "", "§13b …the autosave reloads with the coat, no second notification")
+		await _unload()
+		Saves.delete_save(mode)
+	# An old jacket's crate still waiting at the store is the coat when collected.
+	await _s3_world("survival")
+	Game.grant_upgrade(&"clothing_1")
+	runner.check(Equipment.coat_worn() and not Game.has_upgrade(&"clothing_1"), "§13b an old jacket's crate collected now is the insulated coat")
+	await _unload()
+
+
+## A depth of uniform snow over a patch of the front yard; the player on it facing +v (into the
+## yard, away from the street), snowshoes on or off.
+func _s13b_snow_patch(d: float, shoes: bool) -> Vector2:
+	var spot := _s13b_lot(-9.0, 4.0)
+	Snow.set_rect(Rect2(spot - Vector2(3.5, 3.5), Vector2(7.0, 14.0)), d)
+	Snow.relax_until_stable()
+	if shoes:
+		Game.equipment["snowshoes"] = {"on": true}
+	else:
+		Game.equipment.erase("snowshoes")
+	var pl: Player = world.player
+	pl.shoe_lift = d if shoes else 0.0
+	pl.teleport(Vector3(spot.x, 0.05, spot.y), 0.0)
+	var into := Vector2(Layout.player_lot["inward"])
+	pl.set_yaw(atan2(-into.x, -into.y))
+	return spot
+
+
+## Snowshoes: on or off from the Tab overview (on by default), much faster through deep snow, you
+## sink in only part way, a much shallower trench (volume conserved), the hip rule from your feet,
+## no roofs and no map edge, the tools as usual.
+func test_s13b_snowshoes() -> void:
+	await _s3_world("fun")
+	var pl: Player = world.player
+	var b: BalanceData = Catalog.balance
+	# Speed against depth (1 s of walking, the real controls).
+	var rows := []
+	for d in [0.0, 0.3, 0.6, 0.85]:
+		var m := []
+		for shoes in [false, true]:
+			_s13b_snow_patch(d, shoes)
+			await _frames(30)
+			var p0 := pl.global_position
+			await _hold("move_forward", 60)
+			m.append(Vector2(pl.global_position.x - p0.x, pl.global_position.z - p0.z).length())
+		rows.append([d, m[0], m[1]])
+	runner.info("metres in 1 s, without / with snowshoes: %s" % str(rows.map(func(r): return "%.2f m: %.2f / %.2f" % r)))
+	runner.check(absf(rows[0][2] - rows[0][1]) < 0.15, "§13b on bare ground snowshoes change nothing (%.2f / %.2f m)" % [rows[0][1], rows[0][2]])
+	runner.check(rows[2][2] > rows[2][1] * 1.6 and rows[3][2] > rows[3][1] * 2.5 and rows[3][2] > rows[2][2] * 0.6, "§13b …in deep snow you wade much faster: 0.6 m %.2f → %.2f m/s, 0.85 m %.2f → %.2f m/s" % [rows[2][1], rows[2][2], rows[3][1], rows[3][2]])
+	# The sink: a few steps onto 0.85 m of snow and stop — your feet on the snow you trod down,
+	# sunk in snowshoes_sink of the depth.
+	var spot := _s13b_snow_patch(0.85, true)
+	await _frames(20)
+	await _hold("move_forward", 30)
+	await _frames(60)
+	var sunk := 0.85 - pl.shoe_lift
+	runner.check(absf(sunk - 0.85 * b.snowshoes_sink) < 0.03 and absf(pl.shoe_lift - Snow.depth_at(pl.global_position.x, pl.global_position.z)) < 0.01 and is_equal_approx(pl.model.position.y, pl.shoe_lift) and pl.head.position.y > Player.HEAD_H + 0.5 and pl.model.shoes_on,
+		"§13b you sink in %.0f %% of the way: %.2f m of 0.85 m (balance %.2f), standing on the snow you trod down; the model and the camera with you, snowshoes on the feet" % [100.0 * sunk / 0.85, sunk, b.snowshoes_sink])
+	# The trench: walk through 0.8 m with and without; volume conserved.
+	var trench := []
+	for shoes in [false, true]:
+		var at := _s13b_snow_patch(0.8, shoes)
+		await _frames(20)
+		var region := Rect2(at - Vector2(3.5, 3.5), Vector2(7.0, 14.0))
+		var v0 := Snow.volume_in_rect(region)
+		var p0 := Vector2(pl.global_position.x, pl.global_position.z)
+		await _hold("move_forward", 150 if not shoes else 60)
+		var p1 := Vector2(pl.global_position.x, pl.global_position.z)
+		await _frames(2)
+		# The trodden depth along the track (its deepest point; the shouldered snow slumps back a little).
+		var left := 0.8
+		for k in range(1, 10):
+			var q := p0.lerp(p1, k / 10.0)
+			left = minf(left, Snow.depth_at(q.x, q.y))
+		var want := maxf(0.12, 0.8 * (1.0 - b.snowshoes_sink)) if shoes else maxf(0.12, 0.8 * 0.4)
+		trench.append(0.8 - left)
+		Snow.relax_until_stable()
+		runner.check(p0.distance_to(p1) > 0.8 and absf(left - want) < 0.04 and absf(Snow.volume_in_rect(region) - v0) < 1e-4,
+			"§13b %s: the trench leaves %.2f m of 0.8 m under the feet (want %.2f), volume conserved" % ["snowshoes" if shoes else "no snowshoes", left, want])
+	runner.check(trench[1] < trench[0] * 0.5, "§13b …a much shallower trench on snowshoes (%.2f m trodden vs %.2f m)" % [trench[1], trench[0]])
+	# The hip rule from your feet: on 0.8 m of snow (trodden as you walk), a 1.3 m bank ahead — a wall
+	# to wade into, a step up on snowshoes; a 1.7 m bank is a wall either way.
+	var feet_on := 0.8 * (1.0 - b.snowshoes_sink)
+	for bank in [1.3, 1.7]:
+		for shoes in [false, true]:
+			var sp := _s13b_snow_patch(0.8, shoes)
+			var into := Vector2(Layout.player_lot["inward"])
+			Snow.set_rect(Rect2(Vector2(sp.x - 3.5, sp.y + into.y * 1.5 if into.y > 0 else sp.y - 6.5), Vector2(7.0, 5.0)), bank)
+			await _frames(40)
+			var q0 := Vector2(pl.global_position.x, pl.global_position.z)
+			await _hold("move_forward", 120)
+			var went := (Vector2(pl.global_position.x, pl.global_position.z) - q0).dot(into)
+			var should: bool = shoes and bank - feet_on <= CharacterModel.HIP_HEIGHT
+			runner.check((went > 2.0) == should, "§13b a %.2f m bank ahead, standing on 0.8 m %s: %s (moved %.2f m in)" % [bank, "on snowshoes" if shoes else "without", "walks up onto it" if should else "a wall", went])
+	# No roofs, no map edge: a 4 m drift against the front of the house and at the map's edge.
+	var hi := Layout.house_info(Layout.player_lot)
+	var body: Rect2 = hi["body"]
+	Game.equipment["snowshoes"] = {"on": true}
+	var sb: float = Layout.player_lot["setback"]
+	# A drift rising from 0.3 m to 2.4 m over the 6 m up to the front wall (beside the porch).
+	for k in range(24):
+		var v0k := sb - 6.0 + k * 0.25
+		Snow.set_rect(Layout.lot_rect_world(Layout.player_lot, Layout.gu(Layout.player_lot, -8.5), Layout.gu(Layout.player_lot, -4.0), v0k, v0k + 0.25), 0.3 + 2.1 * k / 23.0)
+	var front := _s13b_lot(-6.25, sb - 7.0)
+	pl.teleport(Vector3(front.x, 0.05, front.y), 0.0)
+	pl.shoe_lift = 0.0
+	var toward := Vector2(Layout.player_lot["inward"])
+	pl.set_yaw(atan2(-toward.x, -toward.y))
+	var top_feet := 0.0
+	for k in range(400):
+		Input.action_press("move_forward")
+		await _tree().physics_frame
+		top_feet = maxf(top_feet, pl.feet_y())
+	Input.action_release("move_forward")
+	var pp := Vector2(pl.global_position.x, pl.global_position.z)
+	runner.check(top_feet > 1.0 and not body.has_point(pp) and not Buildings.indoors(pl.global_position) and pl.global_position.y < 0.5 and (pp - body.get_center()).dot(Vector2(Layout.player_lot["inward"])) < 0.0,
+		"§13b up a 2.4 m drift against the house on snowshoes (feet up to %.2f m): the wall still stops you — no roofs, never inside" % top_feet)
+	# The strip between the west map edge and the first lot's fence.
+	Snow.set_rect(Rect2(0, 98, 3.6, 10), 3.0)
+	pl.teleport(Vector3(2.8, 0.05, 103.0), 0.0)
+	pl.shoe_lift = 3.0
+	pl.set_yaw(PI * 0.5)    # facing -x, the map's edge
+	var min_x := 8.0
+	for k in range(240):
+		Input.action_press("move_forward")
+		await _tree().physics_frame
+		min_x = minf(min_x, pl.global_position.x)
+	Input.action_release("move_forward")
+	runner.check(min_x < 0.8 and min_x > 0.0 and pl.feet_y() > 1.5, "§13b …and walking on 3 m of snow toward the map's edge you stop at it (x down to %.2f m, feet %.1f m up)" % [min_x, pl.feet_y()])
+	# The tools as usual: scoop on snowshoes with the small shovel, the load comes out of the snow.
+	var at2 := _s13b_snow_patch(0.8, true)
+	Game.slots = ["small_shovel", "", "", ""]
+	Game.selected = 0
+	Game.inventory_changed.emit()
+	await _frames(40)
+	var region2 := Rect2(at2 - Vector2(3.5, 3.5), Vector2(7.0, 14.0))
+	var v_before := Snow.volume_in_rect(region2)
+	pl.pitch = deg_to_rad(-50.0)
+	pl.head.rotation.x = pl.pitch
+	var base := pl.yaw
+	Input.action_press("primary")
+	for k in range(90):
+		pl.set_yaw(base + 0.5 * sin(k * 0.15))
+		await _tree().physics_frame
+	var held: float = pl.tools.load
+	runner.check(held > 0.02 and absf(Snow.volume_in_rect(region2) + held - v_before) < 2e-3, "§13b the tools work as usual on snowshoes (%.0f L in the shovel, volume conserved)" % (held * 1000.0))
+	Input.action_release("primary")
+	await _frames(30)
+	# On and off from the Tab overview: hold Tab, press Interact.
+	Game.equipment.erase("snowshoes")
+	Equipment.collect(Equipment.SHOES)
+	runner.check(Equipment.snowshoes_on(), "§13b snowshoes are on by default once picked up")
+	Input.action_press("inventory")
+	await _tree().process_frame
+	await _tree().process_frame
+	var ev := InputEventAction.new()
+	ev.action = "interact"
+	ev.pressed = true
+	world._unhandled_input(ev)
+	await _tree().process_frame
+	var txt := _s2_texts(world.inventory_panel) if world.inventory_panel else ""
+	runner.check(not Equipment.snowshoes_on() and txt.contains("Snowshoes: off"), "§13b Tab + Interact takes them off (the overview says so)")
+	for k in range(12):
+		await _tree().physics_frame    # the press cap (§2)
+	world._unhandled_input(ev)
+	await _tree().process_frame
+	runner.check(Equipment.snowshoes_on(), "§13b …and puts them back on")
+	Input.action_release("inventory")
+	await _tree().process_frame
+	await _unload()
+
+
+## The heated pad, carried: put down with Drop on your own lot only (never on the street, the
+## sidewalk or someone else's lot), picked up with Interact; the snow on it melts at its rate;
+## it stops in a power cut; it's on the bill; it's saved with the world objects.
+func test_s13b_heated_pad() -> void:
+	await _s3_world("survival")
+	Weather.force(Weather.C.CLEAR, 48.0)
+	var pl: Player = world.player
+	var b: BalanceData = Catalog.balance
+	Equipment.collect(Equipment.PAD)
+	await _frames(2)
+	runner.check(Game.carried == "heated_pad" and world.hud.tool_name_l.text.contains("Heated Snow-Melting Pad"), "§13b the pad is carried in your arms (%s)" % world.hud.tool_name_l.text)
+	var lot := Layout.player_lot
+	var inward := Vector2(lot["inward"])
+	var face_in := atan2(-inward.x, -inward.y)
+	var spots := {"the street": [_s13b_lot(-6.0, -6.0), face_in], "the sidewalk": [_s13b_lot(-6.0, -2.6), face_in],
+		"the neighbour's lot": [Layout.lot_to_world(Layout.neighbor_lot, 0.0, 4.0) - Vector2(Layout.neighbor_lot["inward"]) * Equipment.PAD_AHEAD, atan2(-Vector2(Layout.neighbor_lot["inward"]).x, -Vector2(Layout.neighbor_lot["inward"]).y)]}
+	for where in spots.keys():
+		var at: Vector2 = spots[where][0]
+		Snow.set_rect(Rect2(at - Vector2(3, 3), Vector2(6, 6)), 0.0)
+		pl.teleport(Vector3(at.x, 0.05, at.y), float(spots[where][1]))
+		await _frames(8)
+		await _hold("drop", 2)
+		runner.check(Game.carried == "heated_pad" and not Equipment.pad_placed() and pl.tools.hint != "", "§13b G on %s: refused, still carried (\"%s\")" % [where, pl.tools.hint])
+	# Your own lot: down in front of you.
+	var yard := _s13b_lot(-8.0, 4.0)
+	Snow.set_rect(Rect2(yard - Vector2(4, 4), Vector2(8, 10)), 0.0)
+	pl.teleport(Vector3(yard.x, 0.05, yard.y), face_in)
+	await _frames(12)
+	await _hold("drop", 2)
+	await _frames(2)
+	var pr := Equipment.pad_rect()
+	runner.check(Equipment.pad_placed() and Game.carried == "" and world.pad_node != null and Layout.player_lot["rect"].encloses(pr) and is_equal_approx(pr.get_area(), Equipment.PAD_SIZE.x * Equipment.PAD_SIZE.y),
+		"§13b G on your own lot: the pad is down in front of you (%s), a world object" % str(pr))
+	# Snow on it melts at its rate (a world rate), the ledger keeps the volume exact.
+	Snow.set_rect(pr, 0.5)
+	Snow.relax_until_stable()
+	var c := pr.get_center()
+	var v0 := Snow.total_volume() + Snow.melted
+	var heat0 := Economy.heat_used
+	Clock.running = false
+	for k in range(60):
+		Clock.advance(1.0)
+	var melt_cm := (0.5 - Snow.depth_at(c.x, c.y)) * 100.0
+	var resid := Snow.total_volume() + Snow.melted - v0
+	runner.check(absf(melt_cm - b.pad_melt_cm_h) < 0.3, "§13b in a game hour the pad melts %.1f cm of the snow on it (balance %.0f cm/h)" % [melt_cm, b.pad_melt_cm_h])
+	runner.check(absf(resid) < 1e-6 and Snow.melted > 0.8, "§13b …snow + melted = before, exactly (%.10f m³; %.3f m³ melted)" % [resid, Snow.melted])
+	runner.check(Economy.heat_used - heat0 > 1.0 and absf(Economy.heat_used - heat0 - Snow.melted * b.melt_cost_per_m3) < 1e-6, "§13b …and it drew power: $%.2f for the hour on the next bill ($%.2f a m³ melted)" % [Economy.heat_used - heat0, b.melt_cost_per_m3])
+	# A power cut stops it.
+	Survival.cut_power()
+	var m1 := Snow.melted
+	var h1 := Economy.heat_used
+	for k in range(60):
+		Clock.advance(1.0)
+	runner.check(Snow.melted == m1 and Economy.heat_used == h1, "§13b a power cut stops it: nothing melts, nothing is billed")
+	Survival.restore_power()
+	for k in range(30):
+		Clock.advance(1.0)
+	runner.check(Snow.melted > m1, "§13b …and it melts again when the power is back")
+	# The bill: the next hydro bill carries it.
+	var used := roundi(Economy.heat_used)
+	Economy._issue_bill(1)
+	var bl: Dictionary = Economy.bills.filter(func(x): return int(x["month"]) == 1)[0]
+	runner.check(used >= 1 and int(bl["heat"]) == used and int(bl["amount"]) == b.hydro_bill + used, "§13b the January bill: $%d hydro + $%d heating" % [b.hydro_bill, used])
+	# Thrown snow on it melts too: a load dropped on the pad and the loose snow round it slumping in.
+	Snow.set_rect(pr.grow(1.0), 0.0)
+	Snow.deposit(c, 0.6, 0.9)
+	Snow.relax_until_stable()
+	var v2 := Snow.volume_in_rect(pr.grow(1.5))
+	for k in range(90):
+		Clock.advance(1.0)
+		Snow.relax_until_stable()
+	runner.check(Snow.volume_in_rect(pr.grow(1.5)) < v2 * 0.35, "§13b snow thrown on it melts away (%.3f → %.3f m³ in 1.5 game hours)" % [v2, Snow.volume_in_rect(pr.grow(1.5))])
+	# Saved with the world objects → loaded where it lay.
+	Game.player_pos = pl.global_position
+	runner.check(Saves.save_game(), "§13b saved with the pad down")
+	await _unload()
+	runner.check(Saves.load_game("survival"), "§13b …loaded")
+	await _spawn_world()
+	await _frames(3)
+	runner.check(Equipment.pad_placed() and Equipment.pad_rect() == pr and world.pad_node != null and absf(world.pad_node.global_position.x - c.x) < 0.01, "§13b …the pad lies where it was")
+	# Picked up with Interact (looking at it), not while your arms are full.
+	pl = world.player
+	var stand := c - inward * 2.2
+	pl.teleport(Vector3(stand.x, 0.05, stand.y), face_in)
+	pl.pitch = deg_to_rad(-38.0)
+	pl.head.rotation.x = pl.pitch
+	Game.carried = "wide_pusher"
+	await _frames(6)
+	runner.check(pl.focus_prompt.contains("Pick up the heated pad"), "§13b looking at it: \"%s\"" % pl.focus_prompt)
+	pl.try_interact()
+	await _frames(2)
+	runner.check(Equipment.pad_placed() and Game.carried == "wide_pusher", "§13b …not while your arms are full")
+	Game.carried = ""
+	await _frames(2)
+	pl.try_interact()
+	await _frames(2)
+	runner.check(not Equipment.pad_placed() and Game.carried == "heated_pad" and world.pad_node == null, "§13b …Interact picks it up into your arms")
+	Saves.delete_save("survival")
+	await _unload()
+
+
+## Keep the hydro bills paid (a long skip would cut the power on the 16th).
+func _s13b_pay_bills() -> void:
+	Game.money = maxi(Game.money, 99999)
+	for bl in Economy.unpaid_bills():
+		Economy.pay_bill(int(bl["month"]))
+
+
+## Skip (as a sleep does) to a clock time, the bills paid on the way.
+func _s13b_skip_to(t: float) -> void:
+	while Clock.minutes < t - 1e-6:
+		_s13b_pay_bills()
+		Clock.skip(minf(t - Clock.minutes, 360.0))
+
+
+## The heated driveway and heated path: Property upgrades, started at once; the two boxes melt at
+## their rate — a light snowfall never reopens them, a storm does and they complete as they melt
+## after it; they stop in a power cut; Bills & payments shows what they cost.
+func test_s13b_heated_driveway_and_path() -> void:
+	await _s3_world("survival")
+	Weather.force(Weather.C.CLEAR, 3.0)
+	Game.money = 99999
+	var b: BalanceData = Catalog.balance
+	for id in ["heated_driveway", "heated_path"]:
+		var u: UpgradeData = Catalog.upgrade(StringName(id))
+		runner.check(u != null and u.category == UpgradeData.Category.PROPERTY and Catalog.UPGRADE_IDS.has(StringName(id)) and Economy.can_buy(id) == "", "§13b %s: a Property upgrade ($%d)" % [id, u.price if u else 0])
+		var r := Economy.buy(id)
+		runner.check(r["ok"] and Game.has_upgrade(StringName(id)) and Economy.can_buy(id) == "Already owned.", "§13b …bought, at work at once")
+	world.open_computer()
+	await _tree().process_frame
+	var comp: ComputerUI = world.modal
+	comp._open_app(ComputerUI.app_index("upgrades"))
+	await _tree().process_frame
+	var txt := _s13_text(comp.content)
+	runner.check(txt.contains("Heated Driveway") and txt.contains("Heated Path") and txt.contains("melts %.1f cm an hour" % b.heated_melt_cm_h), "§13b the Upgrades app: both in Property, with their melt rate and cost")
+	world.close_modal()
+	await _tree().process_frame
+	var dbox := Boxes.get_box(Boxes.lot_box(Layout.player_lot, "driveway"))
+	var pbox := Boxes.get_box(Boxes.lot_box(Layout.player_lot, "path"))
+	for r1 in pbox["rects"]:
+		Snow.set_rect(r1, 0.0)
+	Boxes.measure(pbox, true)
+	# The rate: 10 cm on the driveway, two game hours.
+	for r2 in dbox["rects"]:
+		Snow.set_rect(r2, 0.1)
+	Boxes.measure(dbox, true)
+	var dc: Vector2 = (dbox["rects"][0] as Rect2).get_center()
+	var v0 := Snow.total_volume() + Snow.melted
+	var h0 := Economy.heat_used
+	var mm0 := Snow.melted
+	for k in range(120):
+		Clock.advance(1.0)
+	var cm := (0.1 - Snow.depth_at(dc.x, dc.y)) * 100.0
+	runner.check(absf(cm - 2.0 * b.heated_melt_cm_h) < 0.25 and absf(Snow.total_volume() + Snow.melted - v0) < 1e-6,
+		"§13b the heated driveway melts %.2f cm in two game hours (balance %.1f cm/h); snow + melted = before, exactly" % [cm, b.heated_melt_cm_h])
+	var drive_melt := 2.0 * b.heated_melt_cm_h / 100.0 * float(dbox["area"])
+	runner.check(absf(Snow.melted - mm0 - drive_melt) < 0.02 and absf(Economy.heat_used - h0 - (Snow.melted - mm0) * b.melt_cost_per_m3) < 1e-6, "§13b …drawing power while it melts: $%.2f for the two hours (%.2f m³ at $%.2f; the path, bare, drew none)" % [Economy.heat_used - h0, Snow.melted - mm0, b.melt_cost_per_m3])
+	# Boxes complete as they melt: measured (as the world does) until the driveway snaps.
+	Clock.running = true
+	var done := false
+	for k in range(900):
+		Clock.advance(1.0)
+		Boxes.measure(dbox, true)
+		if dbox["complete"]:
+			done = true
+			break
+	Clock.running = false
+	runner.check(done and Snow.volume_in_rect(dbox["rects"][0], 0.0) < 1e-6, "§13b the driveway box completes as it melts (90 %, bare)")
+	for r3 in pbox["rects"]:
+		Snow.set_rect(r3, 0.0)
+	Boxes.measure(pbox, true)
+	# A light snowfall from the schedule never reopens them (sleeping through it, as a skip does);
+	# a storm does, and they complete again as they melt after it.
+	var light := {}
+	var storm := {}
+	for i in range(Weather.events.size() - 1):
+		var e: Dictionary = Weather.events[i]
+		if e["start"] < Clock.minutes / 60.0 + 2.0:
+			continue
+		var clear_after: bool = float(Weather.events[i + 1]["start"]) - float(e["end"]) >= 3.0
+		if light.is_empty() and e["tier"] == "light" and float(e["total"]) >= 4.0 and clear_after:
+			light = e
+		if storm.is_empty() and not light.is_empty() and e["tier"] == "storm" and float(e["start"]) > float(light["end"]):
+			storm = e
+	runner.check(not light.is_empty() and not storm.is_empty(), "§13b a light snowfall (%.1f cm) and a storm (%.1f cm) in the schedule" % [float(light.get("total", 0)), float(storm.get("total", 0))])
+	var lawn := _s13b_lot(-8.0, 4.0)
+	var reopened := []
+	var on_re := func(id: String): reopened.append(id)
+	Boxes.box_reopened.connect(on_re)
+	await _s13b_skip_to(float(light["start"]) * 60.0 - 30.0)
+	for bx in [dbox, pbox]:
+		for r6 in bx["rects"]:
+			Snow.set_rect(r6, 0.0)
+		Boxes.measure(bx, true)
+	var lawn1 := Snow.depth_at(lawn.x, lawn.y)
+	reopened.clear()
+	var peak := 0.0
+	var t_end := float(light["end"]) * 60.0 + 60.0
+	while Clock.minutes < t_end:
+		_s13b_pay_bills()
+		Clock.skip(30.0)
+		peak = maxf(peak, Boxes.avg_depth(dbox, true))
+	var fell := (Snow.depth_at(lawn.x, lawn.y) - lawn1) * 100.0
+	runner.check(fell > 3.0 and not reopened.has(dbox["id"]) and not reopened.has(pbox["id"]) and dbox["complete"] and pbox["complete"] and peak < b.box_reopen_depth,
+		"§13b a light snowfall (%.1f cm on the lawn): the heated driveway and path keep up — never reopened (the driveway's deepest %.1f cm)" % [fell, peak * 100.0])
+	await _s13b_skip_to(float(storm["start"]) * 60.0 - 30.0)
+	for bx in [dbox, pbox]:
+		for r7 in bx["rects"]:
+			Snow.set_rect(r7, 0.0)
+		Boxes.measure(bx, true)
+	reopened.clear()
+	var speak := 0.0
+	var lawn2 := Snow.depth_at(lawn.x, lawn.y)
+	while Clock.minutes < float(storm["end"]) * 60.0:
+		_s13b_pay_bills()
+		Clock.skip(30.0)
+		speak = maxf(speak, Boxes.avg_depth(dbox, true))
+	var sfell := (Snow.depth_at(lawn.x, lawn.y) - lawn2) * 100.0
+	runner.check(reopened.has(dbox["id"]) and speak > 0.03, "§13b a storm (%.1f cm on the lawn) is too much: the driveway reopens (up to %.1f cm deep)" % [sfell, speak * 100.0])
+	var back := false
+	for k in range(48):
+		_s13b_pay_bills()
+		Clock.skip(60.0)
+		if dbox["complete"] and pbox["complete"]:
+			back = true
+			break
+	Boxes.box_reopened.disconnect(on_re)
+	runner.check(back, "§13b …and once it stops they melt it and complete again by themselves (during a sleep: measured hourly)")
+	# A power cut stops them.
+	for r4 in dbox["rects"]:
+		Snow.set_rect(r4, 0.05)
+	Survival.cut_power()
+	var m1 := Snow.melted
+	for k in range(60):
+		Clock.advance(1.0)
+	runner.check(Snow.melted == m1, "§13b a power cut stops them")
+	Survival.restore_power()
+	# Bills & payments shows the cost: the line, and the next bill.
+	world.open_computer()
+	await _tree().process_frame
+	var comp2: ComputerUI = world.modal
+	comp2._open_app(ComputerUI.app_index("bills"))
+	await _tree().process_frame
+	var bt := _s13_text(comp2.content)
+	runner.check(bt.contains("Heating since the last bill") and bt.contains("heated driveway $") and bt.contains("heated path $"), "§13b Bills & payments: what heating used since the last bill, and each source's cost an hour")
+	world.close_modal()
+	await _tree().process_frame
+	var used := roundi(Economy.heat_used)
+	var m := Clock.month_of(Clock.day_index()) + 1
+	Economy._issue_bill(m)
+	var bl: Array = Economy.bills.filter(func(x): return int(x["month"]) == m)
+	comp2 = null
+	world.open_computer()
+	await _tree().process_frame
+	var comp3: ComputerUI = world.modal
+	comp3._open_app(ComputerUI.app_index("bills"))
+	await _tree().process_frame
+	var bt2 := _s13_text(comp3.content)
+	runner.check(used > 0 and not bl.is_empty() and int(bl[0]["heat"]) == used and bt2.contains("(heating %s)" % UIKit.money(used)), "§13b …the next bill: hydro + $%d heating, shown on its line" % used)
+	world.close_modal()
+	await _tree().process_frame
+	await _unload()
+	# Fun Mode: they melt too (no bills there).
+	await _s3_world("fun")
+	Game.upgrades["heated_driveway"] = true
+	var fb := Boxes.get_box(Boxes.lot_box(Layout.player_lot, "driveway"))
+	for r5 in fb["rects"]:
+		Snow.set_rect(r5, 0.05)
+	var fm := Snow.melted
+	for k in range(60):
+		Clock.advance(1.0)
+	runner.check(Snow.melted > fm and Economy.heat_used == 0.0, "§13b Fun Mode: the heated driveway melts too (no hydro bill)")
+	await _unload()
+
+
+## Melting is ledgered: with the pad and both heated boxes at work, every snow operation run next to
+## them and on them — throws, cuts, scoops, pushes, wading, the grader, the sidewalk crew,
+## relaxation — keeps snow + melted = before, exactly (the tolerance of a float sum, never looser);
+## without a source nothing ever melts.
+func test_s13b_melting_ledger() -> void:
+	await _s3_world("fun")
+	Clock.running = false
+	var s0 := Snow.melted
+	Weather.force(Weather.C.HEAVY, 6.0, 2.0)
+	for k in range(6):
+		Clock.advance(30.0)
+	runner.check(Snow.melted == s0 and s0 == 0.0, "§13b no heated pad, no heated box: nothing melts (ledger %.3f m³)" % Snow.melted)
+	Weather.force(Weather.C.CLEAR, 48.0)
+	Game.upgrades["heated_driveway"] = true
+	Game.upgrades["heated_path"] = true
+	var lot := Layout.player_lot
+	var yard := _s13b_lot(-8.0, 4.0)
+	Game.equipment["heated_pad"] = {"pos": [yard.x, 0.0, yard.y], "yaw": 0.0}
+	var pr := Equipment.pad_rect()
+	var dbox := Boxes.get_box(Boxes.lot_box(lot, "driveway"))
+	var drv: Rect2 = dbox["rects"][0]
+	Snow.sync_all()
+	# The lazy snowfall keeps each chunk's share in float32 (chunk_fall) against a float64 total, so
+	# a sync can add a few nm of "snowfall" that never fell (pre-existing, nothing to do with
+	# melting). With the weather clear, snap the total to the chunks' value: no sync adds anything.
+	Snow.fall_total = float(Snow.chunk_fall[0])
+	var before := Snow.total_volume() + Snow.melted
+	var worst := 0.0
+	var steps := []
+	var take := func(at: Vector2, vol: float) -> float:
+		var cells := Snow.cells_in_obb(at, Vector2(0, 1), 1.0, 2.0)
+		var bites := PackedFloat32Array()
+		bites.resize(cells.size())
+		bites.fill(0.3)
+		return float(Snow.cut(cells, bites, 0.0, vol)["volume"])
+	var ops := [
+		["a throw onto the pad", func(): Snow.deposit(pr.get_center(), take.call(yard + Vector2(3.0, -1.0), 0.4), 0.7)],
+		["a throw onto the driveway", func(): Snow.deposit(drv.get_center(), take.call(yard + Vector2(-2.5, -1.0), 0.3), 0.6)],
+		["a cut beside the pad", func():
+			var cells := Snow.cells_in_obb(pr.position - Vector2(0.6, 0), Vector2(0, 1), 0.5, 2.0)
+			var bites := PackedFloat32Array()
+			bites.resize(cells.size())
+			bites.fill(0.2)
+			var got: Dictionary = Snow.cut(cells, bites, 0.0, 1.0)
+			Snow.deposit(pr.get_center(), float(got["volume"]), 0.5)],
+		["a scoop off the driveway onto the lawn", func():
+			var got2: Dictionary = Snow.scoop(drv.position + Vector2(1, 1), Vector2(0, 1), 0.5, 1.0, 0.2)
+			Snow.deposit(yard + Vector2(2.5, 0), float(got2["volume"]), 0.5)],
+		["a push across the driveway", func():
+			var z := drv.position.y + 1.0
+			while z < drv.end.y - 1.0:
+				Snow.blade_push(Vector2(drv.get_center().x, z), Vector2(0, 1), 0.4, 0.15, 0.005, false, 0.3)
+				z += 0.1],
+		["wading across the pad", func():
+			var p := pr.position + Vector2(-0.5, 0.5)
+			for k in range(20):
+				Snow.wade(p + Vector2(k * 0.15, 0.0), Vector2(1, 0), 0.26, INF, 0.4)],
+		["the grader on Maple Street", func():
+			Snow.grader_lane(Vector2(drv.get_center().x - 20.0, 81.05), Vector2(drv.get_center().x + 20.0, 81.05), Vector2(0, -1), 3.7, 0.02, 7)],
+		["the sidewalk crew in front", func():
+			var sw: Rect2 = Layout.house_info(lot)["sidewalk"]
+			Snow.sidewalk_clear(sw, Vector2i(0, -1))],
+		["relaxation", func(): Snow.relax_until_stable()],
+	]
+	# Each operation, then half an hour of melting: the operations conserve as they always have
+	# (float32 cells: the existing 1e-4 m³ of the conservation tests, not loosened); what changes
+	# over the melting itself is exactly what the ledger took.
+	var melt_worst := 0.0
+	for op in ops:
+		(op[1] as Callable).call()
+		var t0 := Snow.total_volume()
+		var m0 := Snow.melted
+		for k in range(20):
+			Clock.advance(1.5)      # the pad and the boxes melt
+		var mr := (Snow.total_volume() - t0) + (Snow.melted - m0)
+		melt_worst = maxf(melt_worst, absf(mr))
+		var r := Snow.total_volume() + Snow.melted - before
+		worst = maxf(worst, absf(r))
+		steps.append("%s %.9f / melt %.9f" % [op[0], r, mr])
+	Snow.relax_until_stable()
+	for k in range(60):
+		Clock.advance(1.0)
+	var final := Snow.total_volume() + Snow.melted - before
+	worst = maxf(worst, absf(final))
+	runner.info("ledger residual (snow + melted − before) after each, and over its melting: %s" % ", ".join(steps))
+	runner.check(Snow.melted > 0.3 and worst < 1e-4, "§13b with the pad and both heated boxes melting, every operation keeps snow + melted = before (worst %.9f m³, the conservation tests' 1e-4; %.3f m³ melted)" % [worst, Snow.melted])
+	runner.check(melt_worst < 1e-7, "§13b …and over the melting itself snow + melted = before exactly (worst %.10f m³: the ledger holds every m³ that melted)" % melt_worst)
+	# The ledger is saved.
+	var want := Snow.melted
+	var d := Snow.serialize()
+	Snow.melted = 0.0
+	Snow.deserialize(d)
+	runner.check(Snow.melted == want, "§13b …and the ledger is saved with the snow")
+	Game.upgrades.erase("heated_driveway")
+	Game.upgrades.erase("heated_path")
+	Game.equipment.erase("heated_pad")
+	await _unload()
+
+
+## Melting runs on the clock: a stretch of play in small steps and the same stretch skipped (a
+## sleep's 30-minute steps) run the same code (Heating.advance from Clock.advance) and melt the same.
+func test_s13b_melting_in_skips_as_in_play() -> void:
+	var res := []
+	for skip in [false, true]:
+		await _s3_world("survival")
+		Clock.running = false
+		Game.upgrades["heated_driveway"] = true
+		var yard := _s13b_lot(-8.0, 4.0)
+		Game.equipment["heated_pad"] = {"pos": [yard.x, 0.0, yard.y], "yaw": 0.0}
+		var pr := Equipment.pad_rect()
+		var dbox := Boxes.get_box(Boxes.lot_box(Layout.player_lot, "driveway"))
+		Snow.set_rect(pr, 0.4)
+		for r in dbox["rects"]:
+			Snow.set_rect(r, 0.06)
+		dbox["peak"] = 0.0     # the box opens on this snow (no 90 % snap within the stretch)
+		Boxes.measure(dbox, true)
+		Weather.force(Weather.C.CLEAR, 48.0)
+		var m0 := Snow.melted
+		if skip:
+			Clock.skip(150.0)
+		else:
+			var step := 1.0 / 60.0 * Clock.GAME_MIN_PER_REAL_SEC
+			var left := 150.0
+			while left > 1e-9:
+				Clock.advance(minf(step, left))
+				left -= step
+		Snow.sync_all()
+		res.append({"melted": Snow.melted - m0, "pad": Snow.depth_at(pr.get_center().x, pr.get_center().y),
+			"drive": Snow.depth_at((dbox["rects"][0] as Rect2).get_center().x, (dbox["rects"][0] as Rect2).get_center().y), "cost": Economy.heat_used})
+		Game.upgrades.erase("heated_driveway")
+		Game.equipment.erase("heated_pad")
+		await _unload()
+	var a: Dictionary = res[0]
+	var c: Dictionary = res[1]
+	# The same, up to the slice each source is still adding up (Heating.QUANTUM of depth).
+	var dbox2 := Boxes.get_box(Boxes.lot_box(Layout.player_lot, "driveway"))
+	var slice_v := Heating.QUANTUM * (float(dbox2["area"]) + Equipment.PAD_SIZE.x * Equipment.PAD_SIZE.y)
+	var slice_cost := slice_v * Catalog.balance.melt_cost_per_m3
+	runner.check(absf(float(a["melted"]) - float(c["melted"])) <= slice_v + 1e-6 and absf(float(a["pad"]) - float(c["pad"])) <= Heating.QUANTUM + 1e-4 and absf(float(a["drive"]) - float(c["drive"])) <= Heating.QUANTUM + 1e-4 and absf(float(a["cost"]) - float(c["cost"])) <= slice_cost + 0.01,
+		"§13b 2.5 game hours played in frame-sized steps and slept through melt the same, up to the slice still adding up: %.4f / %.4f m³, the pad %.3f / %.3f m, the driveway %.3f / %.3f m, $%.2f / $%.2f" % [a["melted"], c["melted"], a["pad"], c["pad"], a["drive"], c["drive"], a["cost"], c["cost"]])

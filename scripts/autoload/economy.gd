@@ -10,6 +10,11 @@ var orders: Array = []        # {id, item, kind, price, placed, ready_at, status
 var bills: Array = []         # {month, amount, issued_day, due_day, paid}
 var transactions: Array = []  # {time, text, amount}
 var _next_order := 1
+## Polish 5 §13: heating (the heated pad, driveway and path — Heating). heat_used: the running cost
+## ($) of what melted since the last hydro bill (Survival), billed on the next one; heat_acc: each
+## source's game minutes not yet melted (Heating.QUANTUM). Both saved (version 3, optional).
+var heat_used := 0.0
+var heat_acc: Dictionary = {}
 
 
 func reset_for_new_game() -> void:
@@ -17,6 +22,8 @@ func reset_for_new_game() -> void:
 	bills = []
 	transactions = []
 	_next_order = 1
+	heat_used = 0.0
+	heat_acc = {}
 
 
 func start_winter() -> void:
@@ -62,6 +69,8 @@ func item_kind(item_id: String) -> String:
 		return "upgrade"
 	if Catalog.UTILITY.has(sid):
 		return "utility"
+	if Catalog.EQUIPMENT.has(sid):
+		return "equipment"     # polish 5 §13: its own kind (never a tool slot)
 	return ""
 
 
@@ -75,6 +84,8 @@ func price_of(item_id: String) -> int:
 		return Catalog.upgrades[sid].price
 	if Catalog.UTILITY.has(sid):
 		return Catalog.UTILITY[sid]["price"]
+	if Catalog.EQUIPMENT.has(sid):
+		return Equipment.price(sid)
 	return 0
 
 
@@ -91,9 +102,13 @@ func can_buy(item_id: String) -> String:
 	# "pickup_plow" vehicle: a second truck, again and again).
 	if kind == "vehicle" and not Catalog.store_vehicles().has(Catalog.vehicle(StringName(item_id))):
 		return "Not sold in the store."
+	if kind == "equipment":
+		var why_e := Equipment.why_not(item_id)
+		if why_e != "":
+			return why_e
 	if kind == "upgrade":
 		var u: UpgradeData = Catalog.upgrade(StringName(item_id))
-		if ItemUpgrades.is_legacy(u.id):
+		if ItemUpgrades.is_legacy(u.id) or Catalog.RETIRED_UPGRADE_IDS.has(u.id):
 			return "No longer sold."
 		if Game.has_upgrade(u.id) or has_open_order(item_id):
 			return "Already owned."
@@ -205,11 +220,15 @@ func _issue_bill(month: int) -> void:
 		if int(bl["month"]) == month:
 			return
 	var issued: int = Clock.MONTH_START[month]
-	bills.append({"month": month, "amount": b.hydro_bill, "issued_day": issued,
+	# Polish 5 §13: what the heated pad, driveway and path used since the last bill is on this one
+	# (the first bill of a winter carries the last month of the winter before).
+	var heat := maxi(roundi(heat_used), 0)
+	heat_used = maxf(heat_used - heat, 0.0)
+	bills.append({"month": month, "amount": b.hydro_bill + heat, "heat": heat, "issued_day": issued,
 		"due_day": Clock.day_of(month, b.hydro_due_day), "paid": false})
 	bills_changed.emit()
 	if month > 0:
-		Notify.push("New hydro bill: $%d due %s." % [b.hydro_bill, Clock.date_string(Clock.day_of(month, b.hydro_due_day))], Notify.INFO)
+		Notify.push("New hydro bill: $%d%s due %s." % [b.hydro_bill + heat, " (heating $%d)" % heat if heat > 0 else "", Clock.date_string(Clock.day_of(month, b.hydro_due_day))], Notify.INFO)
 
 
 func unpaid_bills() -> Array:
@@ -262,7 +281,8 @@ func on_day(day: int) -> void:
 
 
 func serialize() -> Dictionary:
-	return {"orders": orders, "bills": bills, "tx": transactions, "next_order": _next_order}
+	return {"orders": orders, "bills": bills, "tx": transactions, "next_order": _next_order,
+		"heat_used": heat_used, "heat_acc": heat_acc.duplicate()}
 
 
 func deserialize(d: Dictionary) -> void:
@@ -278,9 +298,18 @@ func deserialize(d: Dictionary) -> void:
 	for bl in bills:
 		bl["month"] = int(bl["month"])
 		bl["due_day"] = int(bl["due_day"])
+		if bl.has("heat"):
+			bl["heat"] = int(bl["heat"])
 	transactions = d.get("tx", [])
 	for t in transactions:
 		t["text"] = Layout.current_place(str(t.get("text", "")))   # polish 5 §5: places as named now
 	_next_order = int(d.get("next_order", 1))
+	# Polish 5 §13 (version 3, optional): heating not yet billed, and minutes not yet melted.
+	heat_used = float(d.get("heat_used", 0.0))
+	heat_acc = {}
+	var ha = d.get("heat_acc", {})
+	if ha is Dictionary:
+		for k in (ha as Dictionary).keys():
+			heat_acc[str(k)] = float(ha[k])
 	orders_changed.emit()
 	bills_changed.emit()

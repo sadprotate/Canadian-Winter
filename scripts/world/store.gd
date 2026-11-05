@@ -2,6 +2,8 @@ class_name Store
 extends Node3D
 ## Northern Supply Co. (Part 16.4): no interior, no clerk. Every ready order physically appears in
 ## the parking lot: tools/crates on the pickup pad, walk-behind machines beside it, vehicles in bays.
+## Polish 5 §13: equipment (the coat, snowshoes, the heated pad) is a crate on the pad like an
+## upgrade; collecting it puts it on (or the pad in your arms).
 ## Plow installation: drive your pickup into the lot while a plow order is ready (polish 5 §13: the
 ## pickup's own upgrade, ItemUpgrades.PLOW_ID).
 
@@ -81,7 +83,7 @@ func spawn_ready() -> void:
 				Game.vehicles.append(e3)
 				world.spawn_vehicle_node(e3)
 				Game.add_equipment_stat(Catalog.item_name(StringName(item)))
-			"upgrade", "utility":
+			"upgrade", "utility", "equipment":
 				if item == String(ItemUpgrades.PLOW_ID):
 					o["status"] = "spawned"
 					continue

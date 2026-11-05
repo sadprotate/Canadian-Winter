@@ -5,7 +5,12 @@ extends Node
 ## surface type per cell. All tool, vehicle, grader and weather interactions go through the
 ## operations below; volume is moved between cells (conserved), except for the explicit
 ## exceptions (dump truck disposal, clearing-box completion — up to the last 10 % of a box's snow
-## since polish 3 — and debug commands).
+## since polish 3 — melting since polish 5 §13, and debug commands).
+##
+## Melting (polish 5 §13): the heated pad and the heated driveway and path melt the snow on them
+## (Heating, on the game clock). It is the one new loss of snow since polish 3's box exception and it
+## is ledgered: melt_rect adds every m³ it removes to `melted`, so total_volume() + melted is what
+## the snow was before — exactly (the conservation tests assert it; no tolerance was loosened).
 ##
 ## Road rule (Part 8.9): removed in polish 5 §3 (Decision 12) for every bit of snow the player
 ## moves — tools, blowers and vehicles now pass allow_road = true / player_rule = false, so their
@@ -91,6 +96,8 @@ var ceiling := 6.0             # max snow surface height (street-lamp height)
 var initialized := false
 var _noise := FastNoiseLite.new()
 var stat_player_moved := 0.0    # m3 moved by the player (for season stats)
+## Polish 5 §13: the melted-volume ledger — every m³ melt_rect removed this winter (saved).
+var melted := 0.0
 # Simplified roof layer (Part 8.8): shared depth from snowfall + per-house extra (thrown snow).
 var roof_depth := 0.0
 var roof_extra: Dictionary = {}
@@ -285,6 +292,7 @@ func reset_for_winter(year: int) -> void:
 		set_rect(Rect2(p - Vector2(1.0, 1.0), Vector2(2.0, 2.0)), 0.04)
 	fall_total = 0.0
 	settle_clock = 0.0
+	melted = 0.0
 	roof_depth = 0.6 if year <= 1 else 0.25
 	roof_extra.clear()
 	chunk_fall.fill(0.0)
@@ -1324,6 +1332,44 @@ func add_layer_rect(r: Rect2, d: float) -> void:
 	mark_dirty(c.position.x, c.position.y, c.end.x, c.end.y)
 
 
+## Polish 5 §13: melt up to `amount` (m of depth) off the top of every cell in a world rect (the
+## heated pad, a heated box). Buildings' cells are skipped. What melts leaves the snow and goes into
+## the ledger `melted` (m³, each cell's removal measured after it is stored, so the ledger matches
+## the depth array exactly). Neighbouring loose snow may slump onto the melted cells (relaxation
+## is queued, as after any operation). Returns the volume melted (m³).
+## Bare cells (a float's worth of snow, e.g. what the lazy snowfall's rounding leaves) don't count.
+const MELT_MIN := 1e-6
+
+
+func melt_rect(r: Rect2, amount: float) -> float:
+	if amount <= 0.0:
+		return 0.0
+	var c := _rect_cells(r)
+	if c.size.x <= 0 or c.size.y <= 0:
+		return 0.0
+	_sync_cells(c.position.x, c.position.y, c.end.x - 1, c.end.y - 1)
+	var gone := 0.0
+	for z in range(c.position.y, c.end.y):
+		var row := z * W
+		for x in range(c.position.x, c.end.x):
+			var i := row + x
+			var d := depth[i]
+			if d <= MELT_MIN or surf[i] == S_BLOCKED:
+				continue
+			depth[i] = maxf(d - amount, 0.0)
+			var after := depth[i]
+			gone += d - after
+			if loose[i] > after:
+				loose[i] = after
+	if gone <= 0.0:
+		return 0.0
+	mark_dirty(c.position.x, c.position.y, c.end.x, c.end.y)
+	_queue_relax(c.position.x, c.position.y, c.end.x, c.end.y)
+	var v := gone * CELL_AREA
+	melted += v
+	return v
+
+
 func clear_all() -> void:
 	sync_all()
 	depth.fill(0.0)
@@ -1336,10 +1382,15 @@ func clear_all() -> void:
 ## someone standing on the road, and yard snow never lands on the road (road rule). Snow inside
 ## a completed box (bare, held) is left alone, and so is snow whose surface is above `max_top`
 ## (the wader's hips: snow taller than that is a wall to dig through, not something you can tread
-## down by leaning on it). Returns the volume moved (m3).
+## down by leaning on it). Returns the volume moved (m3). Polish 5 §13: `keep_frac` is the share of
+## the depth left under the feet at each wade (0.4; on snowshoes much more: a shallow track, Player).
+## With `stamp` > 0 (snowshoes) the cells trodden are noted in `recent` (cell -> stamp) and a cell
+## trodden by one of the last RECENT_WADES wades isn't trodden again: one pass treads once.
 const WADE_MIN := 0.15
 
-func wade(p: Vector2, dir: Vector2, radius := 0.26, max_top := INF) -> float:
+const RECENT_WADES := 3
+
+func wade(p: Vector2, dir: Vector2, radius := 0.26, max_top := INF, keep_frac := 0.4, recent: Dictionary = {}, stamp := 0) -> float:
 	if not in_map(p.x, p.y) or dir.length() < 0.01:
 		return 0.0
 	dir = dir.normalized()
@@ -1362,7 +1413,11 @@ func wade(p: Vector2, dir: Vector2, radius := 0.26, max_top := INF) -> float:
 			var d := depth[i]
 			if d < WADE_MIN or ground[i] + d > max_top:
 				continue
-			var keep := maxf(0.12, d * 0.4)
+			if stamp > 0:
+				if recent.has(i) and stamp - int(recent[i]) <= RECENT_WADES:
+					continue
+				recent[i] = stamp
+			var keep := maxf(0.12, d * keep_frac)
 			var take := d - keep
 			depth[i] = keep
 			loose[i] = minf(loose[i], keep)
@@ -1615,7 +1670,7 @@ func serialize() -> Dictionary:
 	var lcomp := lq.to_byte_array().compress(FileAccess.COMPRESSION_ZSTD)
 	return {"w": W, "h": H, "fmt": 2, "size": raw.size(), "data": comp, "fall_total": fall_total,
 		"settle_clock": settle_clock, "moved": stat_player_moved, "roof": roof_depth, "roof_extra": rx,
-		"loose": lcomp}
+		"loose": lcomp, "melted": melted}
 
 
 func deserialize(d: Dictionary) -> bool:
@@ -1637,6 +1692,7 @@ func deserialize(d: Dictionary) -> bool:
 	fall_total = float(d.get("fall_total", 0.0))
 	settle_clock = float(d.get("settle_clock", 0.0))
 	stat_player_moved = float(d.get("moved", 0.0))
+	melted = float(d.get("melted", 0.0))      # polish 5 §13 (version 3, optional)
 	roof_depth = float(d.get("roof", 0.3))
 	roof_extra.clear()
 	var rx: Dictionary = d.get("roof_extra", {})

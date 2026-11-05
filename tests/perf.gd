@@ -31,6 +31,11 @@ extends Node
 ## pushes a frame at the bumper, the snow cast aside settling, the chunks around the player
 ## re-meshed (before §12 the pickup stops at the snow's edge).
 ##   -- --only=pickup  runs just the world and the pickup
+## Polish 5 §13b (last): heating in a storm by the player — the heated driveway and path and (this
+## build) the heated pad with a pile of snow on it, melting under a storm's heaviest hour (5.5 cm/h),
+## the player in the front yard beside the driveway, at 1× and at fast-forward (capped at 2× in the
+## snow). On older builds the same storm without the heating (the upgrades do nothing, no pad).
+##   -- --only=heat    runs just the world and the heating
 
 ## Polish 4 §1: the highest hourly snowfall of any major event (seed 2024 and 20 other seeds,
 ## winters 1–5) once storms open with a lead-in (pass 3: 52.2 cm/h). Measured at the game's own
@@ -116,6 +121,10 @@ func _ready() -> void:
 		return
 	if only == "pickup":
 		await _pickup_shove(pl)
+		AudioMgr.quit()
+		return
+	if only == "heat":
+		await _heated_storm(pl)
 		AudioMgr.quit()
 		return
 	# Polish 4: indoors, the desk with the computer screen and the photo by the door in view.
@@ -216,6 +225,7 @@ func _ready() -> void:
 	await _jobs_live(pl, p)
 	await _city_pass_near(pl)
 	await _pickup_shove(pl)
+	await _heated_storm(pl)
 	# AudioMgr.quit: stop every sound before quitting, so nothing is reported leaked at exit
 	# (HANDOFF §13 item 13).
 	AudioMgr.quit()
@@ -450,6 +460,50 @@ func _pickup_shove(pl: Player) -> void:
 	Input.action_release("veh_accelerate")
 	print("  pickup: front at x %.1f (the snow from x 24), %.2f m³ shoved while measured, %.1f km/h at the end" % [v.global_position.x + v.data.length * 0.5, Snow.stat_player_moved - moved0, v.speed * 3.6])
 	v.exit_vehicle()
+	Weather.override_cond = -1
+
+
+## Polish 5 §13b: the heated driveway and path and the heated pad (a pile on it) melting in a storm's
+## heaviest hour, the player beside the driveway; 1× and fast-forward. Looked up at run time, so the
+## same scenario runs on builds without the heating (the storm alone).
+func _heated_storm(pl: Player) -> void:
+	var lot := Layout.player_lot
+	Game.upgrades["heated_driveway"] = true
+	Game.upgrades["heated_path"] = true
+	var pad_at := Layout.lot_to_world(lot, Layout.gu(lot, 1.0), 4.0)
+	var has_pad := "equipment" in Game
+	if has_pad:
+		Game.get("equipment")["heated_pad"] = {"pos": [pad_at.x, 0.0, pad_at.y], "yaw": 0.0}
+		world.call("refresh_pad")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 13
+	for k in range(8):
+		Snow.deposit(pad_at + Vector2(rng.randf_range(-0.4, 0.4), rng.randf_range(-0.9, 0.9)), 0.25, 0.7)
+	for kind in ["driveway", "path"]:
+		var b := Boxes.get_box(Boxes.lot_box(lot, kind))
+		for r in b["rects"]:
+			Snow.set_rect(r, 0.04)
+	Snow.relax_until_stable()
+	var stand := Layout.lot_to_world(lot, Layout.gu(lot, 1.5), 1.5)
+	pl.teleport(Vector3(stand.x, 0.05, stand.y), PI)
+	Weather.force(Weather.C.HEAVY, 12.0, FF_STORM_CM_H)
+	Clock.set_speed(1)
+	Clock.running = true
+	for k in range(60):
+		await get_tree().process_frame
+	var m0: float = float(Snow.get("melted")) if "melted" in Snow else 0.0
+	await _measure("heated, storm, by the player (1×)", 600, func(_i): pass)
+	Clock.set_speed(10)
+	await _measure("heated, storm, fast-forward", 600, func(_i):
+		if Clock.speed != 10:
+			Clock.set_speed(10))
+	Clock.set_speed(1)
+	print("  heated: %s, %.2f m³ melted while measured (speed capped at %d×)" % ["the driveway, the path and the pad" if has_pad else "no heating on this build", (float(Snow.get("melted")) if "melted" in Snow else 0.0) - m0, Clock.speed_cap()])
+	Game.upgrades.erase("heated_driveway")
+	Game.upgrades.erase("heated_path")
+	if has_pad:
+		Game.get("equipment").erase("heated_pad")
+		world.call("refresh_pad")
 	Weather.override_cond = -1
 
 
