@@ -13,6 +13,10 @@ var mode := "fun"
 var year := 1
 var money := 20
 var reputation := 50.0
+## Polish 5 §7: the player's company, named on the computer the first time Contracts or the
+## Contract board opens (empty until then: the form shows). Saved from version 3.
+var company_name := ""
+const COMPANY_NAME_MAX := 24
 var stats: Dictionary = {}
 var lifetime: Dictionary = {}
 var flags: Dictionary = {}
@@ -25,6 +29,9 @@ var vehicles: Array = []
 var items: Array = []
 var machines: Array = []
 var rack: Array = []              # tools stored on the garage rack (ids)
+## Polish 5 §13: the equipment picked up (Equipment): id -> its state (the coat worn, the snowshoes
+## on or off, the heated pad carried or put down with its position). Saved from version 3.
+var equipment: Dictionary = {}
 var player_pos := Vector3.ZERO
 var player_yaw := 0.0
 var camera_third := false
@@ -77,6 +84,7 @@ func new_game(m: String, seed_override := -1) -> void:
 	year = 1
 	money = Catalog.balance.starting_money
 	reputation = 50.0
+	company_name = ""
 	stats = {}
 	lifetime = {}
 	flags = {"stage": Stage.START}
@@ -85,10 +93,13 @@ func new_game(m: String, seed_override := -1) -> void:
 	carried = ""
 	heat_pouches = 0
 	upgrades = {}
+	ItemUpgrades.pending_note = ""
 	vehicles = []
 	items = []
 	machines = []
 	rack = []
+	equipment = {}
+	Equipment.pending_note = ""
 	next_uid = 1
 	camera_third = Settings.get_value("camera", "default_third", false)
 	weather_seed = int(Time.get_unix_time_from_system()) % 100000 + 17 if seed_override < 0 else seed_override
@@ -101,10 +112,8 @@ func new_game(m: String, seed_override := -1) -> void:
 	start_winter(1)
 	# The opening: a buried small shovel beside the truck, keys lost in the front lawn.
 	var lot := Layout.player_lot
-	var sb: float = lot["setback"]
-	var truck := Layout.lot_to_world(lot, Layout.gu(lot, 6.0), sb - 4.4)
-	var face := Layout.lot_to_world(lot, Layout.gu(lot, 6.0), sb) - truck
-	vehicles.append({"uid": uid(), "id": "pickup", "pos": Vector3(truck.x, 0, truck.y), "yaw": atan2(face.x, face.y), "snow": 0.55})
+	var ts := truck_start()
+	vehicles.append({"uid": uid(), "id": "pickup", "pos": ts["pos"], "yaw": ts["yaw"], "snow": 0.55})
 	var sh := shovel_spot()
 	items.append({"uid": uid(), "tool": "small_shovel", "pos": Vector3(sh.x, 0.0, sh.y), "yaw": 0.6, "buried": true})
 	# The snow over the shovel forms a slightly bigger, odd-looking oblong pile (polish §4).
@@ -114,6 +123,16 @@ func new_game(m: String, seed_override := -1) -> void:
 	flags["truck_keys"] = false
 	flags["computer_unlocked"] = false
 	dirty_since_save = true
+
+
+## Where the pickup stands on the first morning: in the driveway, its tailgate to the garage
+## (pos, yaw). Polish 5 §4: the framed photo places the shovel from this and shovel_spot().
+func truck_start() -> Dictionary:
+	var lot := Layout.player_lot
+	var sb: float = lot["setback"]
+	var truck := Layout.lot_to_world(lot, Layout.gu(lot, 6.0), sb - 4.4)
+	var face := Layout.lot_to_world(lot, Layout.gu(lot, 6.0), sb) - truck
+	return {"pos": Vector3(truck.x, 0, truck.y), "yaw": atan2(face.x, face.y)}
 
 
 ## Where the small shovel lies buried: beside the truck, on its far side from the house.
@@ -128,6 +147,35 @@ func computer_unlocked() -> bool:
 	return bool(flags.get("computer_unlocked", false)) or stage() >= Stage.COMPLETE
 
 
+## Polish 5 §7: a company name as typed, trimmed; "" when it isn't 1–COMPANY_NAME_MAX characters.
+static func clean_company_name(text: String) -> String:
+	var t := text.strip_edges()
+	return t if t.length() >= 1 and t.length() <= COMPANY_NAME_MAX else ""
+
+
+## Polish 5 §7: name (or rename) the company. False, and nothing changes, for an invalid name.
+func set_company_name(text: String) -> bool:
+	var t := clean_company_name(text)
+	if t == "":
+		return false
+	company_name = t
+	dirty_since_save = true
+	return true
+
+
+## Polish 5 §7: the neutral name the form suggests, from the player's street ("Maple Snow Removal").
+static func suggested_company_name() -> String:
+	var street := str(Layout.player_lot.get("street", "Maple Street"))
+	return clean_company_name("%s Snow Removal" % street.split(" ")[0])
+
+
+## Polish 5 §7: true while a text field has the keyboard focus (the company name; later a typed
+## bid). No game action may fire then: game_root ignores its keys, and so must any new key.
+func typing() -> bool:
+	var f := get_viewport().gui_get_focus_owner() if get_viewport() else null
+	return f != null and (f is LineEdit or f is TextEdit) and f.is_visible_in_tree()
+
+
 func start_winter(y: int) -> void:
 	year = y
 	stats = {"money_earned": 0, "contracts_completed": 0, "visits_completed": 0, "snow_moved": 0.0,
@@ -140,7 +188,6 @@ func start_winter(y: int) -> void:
 	Contracts.start_winter()
 	Municipal.start_winter()
 	Survival.start_winter()
-	var hi := Layout.house_info(Layout.player_lot)
 	player_pos = bedroom_spawn()
 	player_yaw = 0.0
 	flags["player_inside"] = true
@@ -168,7 +215,7 @@ func bedroom_spawn() -> Vector3:
 # Money / stats
 # -----------------------------------------------------------------------------
 
-func add_money(amount: int, reason := "") -> void:
+func add_money(amount: int, _reason := "") -> void:
 	money += amount
 	if amount > 0:
 		stats_add("money_earned", amount)
@@ -190,9 +237,9 @@ func stats_add(key: String, v) -> void:
 	lifetime[key] = lifetime.get(key, 0) + v
 
 
-func add_equipment_stat(name: String) -> void:
+func add_equipment_stat(stat: String) -> void:
 	var eq: Array = stats.get("equipment", [])
-	eq.append(name)
+	eq.append(stat)
 	stats["equipment"] = eq
 
 
@@ -209,18 +256,26 @@ func has_upgrade(id: StringName) -> bool:
 
 
 func grant_upgrade(id: StringName) -> void:
-	upgrades[String(id)] = true
+	# Polish 5 §13: an old global upgrade (an old order's crate) goes to every item it improved.
+	if ItemUpgrades.is_legacy(id):
+		ItemUpgrades.grant_legacy(id, upgrades)
+	elif Catalog.RETIRED_UPGRADE_IDS.has(id):
+		Equipment.collect(Equipment.COAT)   # polish 5 §13: the old jacket / parka is the coat now
+	else:
+		upgrades[String(id)] = true
 	upgrades_changed.emit()
 	dirty_since_save = true
 
 
 ## Combined value of a stat from owned upgrades: multipliers multiply; forecast_days takes the max.
+## Polish 5 §13: the upgrades that aren't an item's (clothing, house, weather); an item's own levels
+## are read with ItemUpgrades.mult(item, stat).
 func stat_value(stat: StringName, default := 1.0) -> float:
 	var v := default
 	var is_max := stat == &"forecast_days"
 	for id in upgrades.keys():
 		var u: UpgradeData = Catalog.upgrade(StringName(id))
-		if u == null or u.stat != stat:
+		if u == null or u.stat != stat or u.item != &"":
 			continue
 		if is_max:
 			v = maxf(v, u.value)
@@ -341,10 +396,10 @@ func _unpack_list(list: Array) -> Array:
 
 
 func serialize() -> Dictionary:
-	return {"mode": mode, "year": year, "money": money, "reputation": reputation, "stats": stats,
+	return {"mode": mode, "year": year, "money": money, "reputation": reputation, "company_name": company_name, "stats": stats,
 		"lifetime": lifetime, "flags": flags, "slots": slots, "selected": selected, "carried": carried,
 		"heat_pouches": heat_pouches, "upgrades": upgrades, "vehicles": _pack_list(vehicles),
-		"items": _pack_list(items), "machines": _pack_list(machines), "rack": rack,
+		"items": _pack_list(items), "machines": _pack_list(machines), "rack": rack, "equipment": Equipment.pack(equipment),
 		"player_pos": a3(player_pos), "player_yaw": player_yaw, "camera_third": camera_third,
 		"next_uid": next_uid, "weather_seed": weather_seed}
 
@@ -354,6 +409,8 @@ func deserialize(d: Dictionary) -> void:
 	year = int(d.get("year", 1))
 	money = int(d.get("money", 20))
 	reputation = float(d.get("reputation", 50.0))
+	# Polish 5 §7 (version 3): optional; an old save has none, so the form appears.
+	company_name = clean_company_name(str(d.get("company_name", "")))
 	stats = d.get("stats", {})
 	lifetime = d.get("lifetime", {})
 	flags = d.get("flags", {"stage": Stage.START})
@@ -366,10 +423,22 @@ func deserialize(d: Dictionary) -> void:
 	carried = str(d.get("carried", ""))
 	heat_pouches = int(d.get("heat_pouches", 0))
 	upgrades = d.get("upgrades", {})
+	# Polish 5 §13 (Decision 8): an old save's global upgrades go to every item they improved (one
+	# notification, shown once the game is up). Saves stay version 3: the same key, new ids.
+	ItemUpgrades.pending_note = ""
+	ItemUpgrades.migrate(upgrades)
 	vehicles = _unpack_list(d.get("vehicles", []))
 	items = _unpack_list(d.get("items", []))
 	machines = _unpack_list(d.get("machines", []))
 	rack = d.get("rack", [])
+	# Polish 5 §13 (version 3, optional): the equipment picked up; an old save's jacket and parka
+	# become the insulated coat (one notification, Survival).
+	equipment = {}
+	var eq = d.get("equipment", {})
+	if eq is Dictionary:
+		equipment = Equipment.pack(eq)
+	Equipment.pending_note = ""
+	Equipment.migrate(upgrades, equipment, mode == "survival")
 	player_pos = v3(d.get("player_pos", [0, 0, 0]))
 	player_yaw = float(d.get("player_yaw", 0.0))
 	camera_third = bool(d.get("camera_third", false))

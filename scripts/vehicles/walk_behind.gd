@@ -1,7 +1,8 @@
 class_name WalkBehind
 extends StaticBody3D
 ## Walk-behind snowblower (Part 9.7): grab with E, hold left mouse to run, Z/C turn the chute,
-## E to let go. Intake removes snow in front; the chute throws it to a landing point (never the street).
+## E to let go. Intake removes snow in front; the chute throws it to a landing point (the street
+## too, since polish 5 §3: no road rule). Nothing works from inside a building.
 
 var tool_id := "small_blower"
 var data: ToolData
@@ -23,6 +24,8 @@ var _tick := 0.0
 var _warn := 0.0
 var _resist := 1.0
 var hint := ""
+var _run_was := false
+var _run_ok := false
 
 
 func setup(id: String, e: Dictionary) -> void:
@@ -39,12 +42,11 @@ func _ready() -> void:
 	mesh.mesh = ToolModels.mesh_for(tool_id)
 	add_child(mesh)
 	chute = Node3D.new()
-	chute.position = Vector3(0, 0.62, -0.25)
+	chute.position = ToolModels.CHUTE_POS
 	add_child(chute)
-	var ck := MeshKit.new()
-	ck.cylinder(Mats.std(data.primary_color, 0.5), Transform3D(Basis(Vector3(1, 0, 0), deg_to_rad(-25)), Vector3.ZERO), 0.08, 0.07, 0.45, 8, false)
+	# Polish 5 §6: the chute (tube and deflector) is part of the blower's model.
 	var cm := MeshInstance3D.new()
-	cm.mesh = ck.commit()
+	cm.mesh = ToolModels.chute_mesh(tool_id)
 	chute.add_child(cm)
 	cs = CollisionShape3D.new()
 	var box := BoxShape3D.new()
@@ -67,8 +69,9 @@ func interact(p: Player) -> void:
 	if p.state != "foot":
 		return
 	if Game.carried != "":
-		Notify.push("Drop what you're carrying first (Q).", Notify.INFO)
+		Notify.push("Drop what you're carrying first (%s)." % Settings.action_label("drop"), Notify.INFO)
 		return
+	Clock.drop_to_1x("machine")   # polish 5 §9: no fast-forward at a machine
 	grabbed = true
 	player = p
 	p.state = "machine"
@@ -82,7 +85,8 @@ func interact(p: Player) -> void:
 		entry.erase("order_id")
 	if not Game.flags.get("help_blower", false):
 		Game.flags["help_blower"] = true
-		Notify.push("Snowblower: hold Left Mouse to run, Z / C to turn the chute, E to let go.", Notify.INFO)
+		Notify.push("Snowblower: hold %s to run, %s / %s to turn the chute, %s to let go." % [Settings.action_label("primary"),
+			Settings.action_label("veh_aim_left"), Settings.action_label("veh_aim_right"), Settings.action_label("interact")], Notify.INFO)
 
 
 func release() -> void:
@@ -93,6 +97,8 @@ func release() -> void:
 	if player:
 		player.state = "foot"
 		player.machine = null
+	if player and player.tools:
+		player.tools.indicator.visible = false
 	player = null
 	cs.disabled = false
 	engine_snd.stop()
@@ -121,28 +127,48 @@ func _physics_process(delta: float) -> void:
 		if Input.is_action_pressed("veh_aim_right"):
 			chute_angle = clampf(chute_angle + 90.0 * delta, -110.0, 110.0)
 	chute.rotation.y = -deg_to_rad(chute_angle)
-	running = not ui_block and Input.is_action_pressed("primary")
+	# Polish 5 §2: it runs from an accepted press of the primary action (capped per second).
+	var run_down := not ui_block and Input.is_action_pressed("primary")
+	if run_down and not _run_was:
+		_run_ok = Settings.accept_press("primary")
+	_run_was = run_down
+	running = run_down and _run_ok
 	_warn -= delta
 	player.model.set_pose("push")
 	if not running:
 		engine_snd.volume_db = move_toward(engine_snd.volume_db, -14.0, delta * 30.0)
 		disc_snd.volume_db = move_toward(disc_snd.volume_db, -80.0, delta * 60.0)
 		stream_fx.emitting = false
+		if player.tools:
+			player.tools.indicator.visible = false
 		_resist = 1.0
 		return
 	engine_snd.volume_db = move_toward(engine_snd.volume_db, -2.0, delta * 30.0)
+	# Polish 5 §3: no snow work from inside a building — the player indoors, or the intake on the far
+	# side of a building from the player's eye: no intake, no discharge, no indicator.
+	var mouth := Vector2(global_position.x, global_position.z) + fwd * 0.15
+	var inside := Buildings.indoors(pp)
+	if inside or Buildings.blocks(player.head.global_position, Vector3(mouth.x, Snow.surface_height(mouth.x, mouth.y), mouth.y),
+			Buildings.near(mouth, 4.0), ToolController.REACH_SKIN):
+		stream_fx.emitting = false
+		disc_snd.volume_db = -80.0
+		hint = "You can't work the snow from inside." if inside else ""
+		if player.tools:
+			player.tools.indicator.visible = false
+		_resist = 1.0
+		return
 	var cd := fwd.rotated(deg_to_rad(chute_angle))
 	var cp := chute.global_position + Vector3(0, 0.3, 0)
 	_land_timer -= delta
 	if _land_timer <= 0.0:
 		_land_timer = 0.12
-		_landing = Throw.compute(get_world_3d(), cp, cd, data.throw_distance * Game.stat_value(&"blower_throw", 1.0), data.throw_angle_deg, [player.get_rid(), get_rid()])
+		_landing = Throw.compute(get_world_3d(), cp, cd, data.throw_distance * ItemUpgrades.mult(data.id, &"blower_throw"), data.throw_angle_deg, [player.get_rid(), get_rid()])
 	if player.tools:
 		player.tools._show_indicator(_landing)
 	if not _landing.get("valid", false):
 		stream_fx.emitting = false
 		disc_snd.volume_db = -80.0
-		hint = "The chute is aimed at the street — turn it with Z / C."
+		hint = "Nowhere for the snow to land — turn the chute with %s / %s." % [Settings.action_label("veh_aim_left"), Settings.action_label("veh_aim_right")]
 		if _warn <= 0.0:
 			_warn = 2.5
 			AudioMgr.play("ui_error", -10.0)
@@ -152,7 +178,7 @@ func _physics_process(delta: float) -> void:
 	var depth := Snow.depth_at(front.x + fwd.x * 0.3, front.y + fwd.y * 0.3)
 	# Deep snow above the intake slows you down; the blower still chews through it.
 	_resist = 1.0 / (1.0 + maxf(0.0, depth - 0.45) * 3.0)
-	var r := Snow.intake(front, fwd, data.width, data.reach, data.rate * Game.stat_value(&"blower_rate", 1.0) * delta, data.scrape_floor)
+	var r := Snow.intake(front, fwd, data.width, data.reach, data.rate * ItemUpgrades.mult(data.id, &"blower_rate") * delta, data.scrape_floor)
 	var v: float = r["volume"]
 	if v > 0.0:
 		Boxes.note_work(front + fwd * 0.3)

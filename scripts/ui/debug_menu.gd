@@ -12,6 +12,7 @@ var date_m: OptionButton
 var date_d: SpinBox
 var snow_e: LineEdit
 var warm_e: LineEdit
+var rep_e: LineEdit
 
 
 func _ready() -> void:
@@ -29,7 +30,7 @@ func _ready() -> void:
 	sc.add_child(v)
 	var head := UIKit.hbox()
 	v.add_child(head)
-	head.add_child(UIKit.label("DEBUG MENU (F1)", 28, Color(0.5, 1.0, 0.6)))
+	head.add_child(UIKit.label("DEBUG MENU (%s)" % Settings.action_label("debug"), 28, Color(0.5, 1.0, 0.6)))
 	head.add_child(UIKit.hspacer())
 	head.add_child(UIKit.button("Close", _close, 18))
 	out_l = UIKit.label("", 17, Color(0.7, 1.0, 0.7))
@@ -63,6 +64,20 @@ func _ready() -> void:
 	r.add_child(_b("+6 hours", func(): Clock.skip(360.0); _say(Clock.format_time(Clock.minutes))))
 	r.add_child(_b("+1 day", func(): _skip_days(1)))
 	r.add_child(_b("+7 days", func(): _skip_days(7)))
+	# Polish 5 §10: just before bidding closes / jobs fall due (simulated, like every jump).
+	r.add_child(_b("8:59 p.m.", func():
+		var t := Clock.at(Clock.day_index(), 20.0 + 59.0 / 60.0)
+		if t <= Clock.minutes:
+			t += 1440.0
+		Clock.skip(t - Clock.minutes)
+		_say("Time: " + Clock.time_string())))
+	# Polish 5 §11: half an hour before the city crews' next Monday (simulated, like every jump).
+	r.add_child(_b("Next Monday", func():
+		var d := Clock.day_index() + 1
+		while Clock.weekday_index(d, Game.year) != 0:
+			d += 1
+		_jump_to(d, (Municipal.pass_minute() - 30.0) / 60.0)
+		_say("Now: %s %s · %s" % [Clock.weekday(Clock.day_index(), Game.year), Clock.format_time(Clock.minutes), Municipal.crew_line()])))
 	r = _row(v, "Jump to date")
 	date_m = OptionButton.new()
 	for m in ["December", "January", "February", "March", "April"]:
@@ -134,6 +149,13 @@ func _ready() -> void:
 		var lot2: Dictionary = Layout.lots[addr.selected]
 		var p3 := Layout.lot_to_world(lot2, 0, -0.5)
 		_tp(Vector3(p3.x, 0.1, p3.y))))
+	# Polish 5 §10: reputation (the tiers unlock as it passes their thresholds).
+	r = _row(v, "Reputation")
+	rep_e = _edit(r, "65")
+	r.add_child(_b("Set", func(): _set_rep(float(rep_e.text))))
+	for ti in range(Catalog.balance.rep_tier_thresholds.size()):
+		var th: float = Catalog.balance.rep_tier_thresholds[ti]
+		r.add_child(_b("%s (%d)" % [Catalog.balance.rep_tier_names[ti], int(th)], func(): _set_rep(th)))
 	# Survival
 	r = _row(v, "Warmth")
 	warm_e = _edit(r, "50")
@@ -170,13 +192,20 @@ func _ready() -> void:
 		if Game.player:
 			Game.player.freecam = not Game.player.freecam
 			Game.player.collision.disabled = Game.player.freecam
-			_say("Free camera: %s (WASD, Space/Ctrl, Shift fast)" % Game.player.freecam)))
+			var mv := "%s%s%s%s" % [Settings.action_label("move_forward"), Settings.action_label("move_left"), Settings.action_label("move_back"), Settings.action_label("move_right")]
+			_say("Free camera: %s (%s, %s/%s, %s fast)" % [Game.player.freecam, mv, Settings.action_label("jump"), Settings.action_label("crouch"), Settings.action_label("sprint")])))
 	r.add_child(_b("Save now", func(): _say("Saved: %s" % Saves.save_game())))
 
 
 func _close() -> void:
 	closed.emit()
 	queue_free()
+
+
+## Polish 5 §10: set the reputation (0–100); reaching a tier announces it as play would.
+func _set_rep(v: float) -> void:
+	Contracts.adjust_reputation(clampf(v, 0.0, 100.0) - Game.reputation)
+	_say("Reputation %d · %s" % [int(Game.reputation), Contracts.tier_name(Contracts.tier_index())])
 
 
 func _row(parent: Control, title: String) -> HBoxContainer:

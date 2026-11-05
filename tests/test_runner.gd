@@ -10,6 +10,7 @@ const SUITES := [
 	"res://tests/test_gameplay.gd",
 	"res://tests/test_polish3.gd",
 	"res://tests/test_polish4.gd",
+	"res://tests/test_polish5.gd",
 ]
 
 var passed := 0
@@ -65,7 +66,9 @@ func _ready() -> void:
 	print("==== %d passed, %d failed (%.1f s) ====" % [passed, failed, (Time.get_ticks_msec() - t0) / 1000.0])
 	for f in failures:
 		print("  - " + f)
-	get_tree().quit(1 if failed > 0 else 0)
+	# AudioMgr.quit: stop every sound before quitting, so nothing is reported leaked at exit
+	# (HANDOFF §13 item 13).
+	AudioMgr.quit(1 if failed > 0 else 0)
 
 
 func check(cond: bool, msg: String) -> bool:

@@ -34,6 +34,14 @@ var _built := false
 # scoop / push / intake that moves snow out of a box bumps work_serial.
 var work_box := ""
 var work_serial := 0
+var _outline_cache: Dictionary = {}   # polish 5 §10b: box id -> [its rects, outline_segments]
+## Polish 5 §11: set while the city's sidewalk crew completes a box — the player didn't, so there is
+## no completion flash or chime (ZoneMarkers); everything else about the completion is the same.
+var quiet := false
+## Polish 5 §11: boxes the city's sidewalk plow is clearing right now. They are measured as usual
+## but never completed by a measurement — the crew completes each at the end of its run, with
+## nothing left inside — so the 90 % snap never removes snow the plow was about to move.
+var busy: Dictionary = {}
 
 
 func _ready() -> void:
@@ -43,31 +51,32 @@ func _ready() -> void:
 func build() -> void:
 	boxes.clear()
 	by_id.clear()
+	busy.clear()
 	Layout.ensure()
 	for lot in Layout.lots:
 		var idx: int = lot["index"]
-		var owner := "lot:%d" % idx
+		var lot_owner := "lot:%d" % idx
 		var hi := Layout.house_info(lot)
 		if not lot["vacant"]:
-			_add("lot%d_driveway" % idx, "driveway", "Driveway", owner, [hi["driveway"]], lot["address"])
-			_add("lot%d_path" % idx, "path", "Path to the house", owner, [hi["walkway"], hi["stairs"], hi["porch"]], lot["address"])
-		_add("lot%d_sidewalk" % idx, "sidewalk", "Sidewalk", owner, [hi["sidewalk"]], lot["address"])
+			_add("lot%d_driveway" % idx, "driveway", "Driveway", lot_owner, [hi["driveway"]], lot["address"])
+			_add("lot%d_path" % idx, "path", "Path to the house", lot_owner, [hi["walkway"], hi["stairs"], hi["porch"]], lot["address"])
+		_add("lot%d_sidewalk" % idx, "sidewalk", "Sidewalk", lot_owner, [hi["sidewalk"]], lot["address"])
 	for a in Layout.big_areas:
 		if a["id"] == "dump_lot":
 			continue
-		_add("area_" + str(a["id"]), "parking", "Parking lot", "area:" + str(a["id"]), [a["rect"], a["apron"]], a["name"])
+		_add("area_" + str(a["id"]), "parking", "Parking lot", "area:" + str(a["id"]), [a["rect"], a["apron"]], a["place"])
 	for seg in Layout.road_segments:
 		_add("road_" + str(seg["id"]), "street", "Street", "road:" + str(seg["id"]), [seg["rect"]], seg["name"])
 	_built = true
 
 
-func _add(id: String, kind: String, name: String, owner: String, rects: Array, place: String, dynamic := false) -> Dictionary:
+func _add(id: String, kind: String, box_name: String, owner_id: String, rects: Array, place: String, dynamic := false) -> Dictionary:
 	var area := 0.0
 	var big := false
 	for r in rects:
 		area += (r as Rect2).get_area()
 	big = area > 300.0
-	var b := {"id": id, "kind": kind, "name": name, "owner": owner, "rects": rects, "place": place,
+	var b := {"id": id, "kind": kind, "name": box_name, "owner": owner_id, "rects": rects, "place": place,
 		"area": area, "big": big, "dynamic": dynamic,
 		"complete": false, "peak": 0.0, "vol": 0.0, "progress": 0.0, "since": -1.0}
 	boxes.append(b)
@@ -76,10 +85,10 @@ func _add(id: String, kind: String, name: String, owner: String, rects: Array, p
 
 
 ## A box defined at runtime (e.g. Gerry's trail). Saved with the game.
-func add_dynamic(id: String, kind: String, name: String, owner: String, rects: Array, place: String) -> Dictionary:
+func add_dynamic(id: String, kind: String, box_name: String, owner_id: String, rects: Array, place: String) -> Dictionary:
 	if by_id.has(id):
 		return by_id[id]
-	var b := _add(id, kind, name, owner, rects, place, true)
+	var b := _add(id, kind, box_name, owner_id, rects, place, true)
 	measure(b, true)
 	return b
 
@@ -92,16 +101,17 @@ func lot_box(lot: Dictionary, kind: String) -> String:
 	return "lot%d_%s" % [int(lot["index"]), kind]
 
 
-func for_owner(owner: String) -> Array:
+func for_owner(owner_id: String) -> Array:
 	var out := []
 	for b in boxes:
-		if b["owner"] == owner and not b["dynamic"]:
+		if b["owner"] == owner_id and not b["dynamic"]:
 			out.append(b)
 	return out
 
 
 ## Fresh state for a new winter: every box starts open with the snow it holds now.
 func start_winter() -> void:
+	busy.clear()
 	for b in boxes.duplicate():
 		if b["dynamic"]:
 			boxes.erase(b)
@@ -168,7 +178,7 @@ func measure(b: Dictionary, exact := true) -> float:
 	b["peak"] = maxf(float(b["peak"]), v)
 	var peak: float = b["peak"]
 	b["progress"] = 1.0 if peak <= TINY else clampf(1.0 - v / peak, 0.0, 1.0)
-	if (b["progress"] >= bal.box_completion or v < TINY) and (exact or not b["big"]):
+	if (b["progress"] >= bal.box_completion or v < TINY) and (exact or not b["big"]) and not busy.has(b["id"]):
 		complete(b)
 	return b["progress"]
 
@@ -255,32 +265,60 @@ func box_has_point(id: String, p: Vector2) -> bool:
 
 ## The box's outer boundary on the snow grid: the cell edges between cells inside the box (centre
 ## inside one of its rects) and cells outside it — internal edges between its rects drop out.
-## Returns a PackedVector2Array of segment end points (pairs), in world metres.
+## Returns a PackedVector2Array of segment end points (pairs), in world metres. Polish 5 §10b: only
+## each rect's border cells are looked at (every boundary edge lies on one: the same edges as
+## testing every cell, which took tens of ms for a parking lot), and the result is kept per box.
 func outline_segments(id: String) -> PackedVector2Array:
 	var b := get_box(id)
-	var out := PackedVector2Array()
 	if b.is_empty():
-		return out
+		return PackedVector2Array()
+	var hit: Array = _outline_cache.get(id, [])
+	if not hit.is_empty() and hit[0] == b["rects"]:
+		return hit[1]
 	var cs := Snow.CELL
-	var inside := {}
+	var rs: Array[Rect2i] = []
 	for r in b["rects"]:
 		var rr: Rect2 = r
-		for cz in range(roundi(rr.position.y / cs), roundi(rr.end.y / cs)):
-			for cx in range(roundi(rr.position.x / cs), roundi(rr.end.x / cs)):
-				inside[Vector2i(cx, cz)] = true
-	for c in inside.keys():
-		var cc: Vector2i = c
-		var ax := cc.x * cs
-		var az := cc.y * cs
-		if not inside.has(cc + Vector2i(0, -1)):
-			out.append_array([Vector2(ax, az), Vector2(ax + cs, az)])
-		if not inside.has(cc + Vector2i(0, 1)):
-			out.append_array([Vector2(ax, az + cs), Vector2(ax + cs, az + cs)])
-		if not inside.has(cc + Vector2i(-1, 0)):
-			out.append_array([Vector2(ax, az), Vector2(ax, az + cs)])
-		if not inside.has(cc + Vector2i(1, 0)):
-			out.append_array([Vector2(ax + cs, az), Vector2(ax + cs, az + cs)])
+		var x0 := roundi(rr.position.x / cs)
+		var z0 := roundi(rr.position.y / cs)
+		var x1 := roundi(rr.end.x / cs)
+		var z1 := roundi(rr.end.y / cs)
+		if x1 > x0 and z1 > z0:
+			rs.append(Rect2i(x0, z0, x1 - x0, z1 - z0))
+	var out := PackedVector2Array()
+	var seen := {}
+	for ri in rs:
+		for cx in range(ri.position.x, ri.end.x):
+			_outline_edge(Vector2i(cx, ri.position.y), Vector2i(0, -1), rs, seen, out)
+			_outline_edge(Vector2i(cx, ri.end.y - 1), Vector2i(0, 1), rs, seen, out)
+		for cz in range(ri.position.y, ri.end.y):
+			_outline_edge(Vector2i(ri.position.x, cz), Vector2i(-1, 0), rs, seen, out)
+			_outline_edge(Vector2i(ri.end.x - 1, cz), Vector2i(1, 0), rs, seen, out)
+	_outline_cache[id] = [(b["rects"] as Array).duplicate(), out]
 	return out
+
+
+## The edge of cell `c` on side `d`, if the cell on the other side is outside the box (once).
+func _outline_edge(c: Vector2i, d: Vector2i, rs: Array[Rect2i], seen: Dictionary, out: PackedVector2Array) -> void:
+	var n := c + d
+	for r in rs:
+		if r.has_point(n):
+			return
+	var key := Vector4i(c.x, c.y, d.x, d.y)
+	if seen.has(key):
+		return
+	seen[key] = true
+	var cs := Snow.CELL
+	var ax := c.x * cs
+	var az := c.y * cs
+	if d.y < 0:
+		out.append_array([Vector2(ax, az), Vector2(ax + cs, az)])
+	elif d.y > 0:
+		out.append_array([Vector2(ax, az + cs), Vector2(ax + cs, az + cs)])
+	elif d.x < 0:
+		out.append_array([Vector2(ax, az), Vector2(ax, az + cs)])
+	else:
+		out.append_array([Vector2(ax + cs, az), Vector2(ax + cs, az + cs)])
 
 
 static func _dist_to_rect(r: Rect2, p: Vector2) -> float:
@@ -301,6 +339,12 @@ func boxes_near(p: Vector2, radius: float) -> Array:
 
 
 func _process(delta: float) -> void:
+	sim_step(delta)
+
+
+## One frame's measuring. Polish 5 §9: fast-forward runs it once more for every extra clock
+## substep (Clock._process), so boxes are looked at as often per game minute as at 1×.
+func sim_step(delta: float) -> void:
 	if not Clock.running or get_tree().paused or not Snow.initialized:
 		return
 	# Boxes the player is working in: exact and frequent (HUD progress, completion snaps).
@@ -322,8 +366,10 @@ func _process(delta: float) -> void:
 ## timers start) on time. Open boxes only need measuring while someone is clearing them.
 func on_hour(_day: int, _hour: int) -> void:
 	if Clock.skipping:
+		# Polish 5 §13: a heated box (driveway, path) is measured too, so it completes as it melts.
+		var heated := Heating.box_ids()
 		for b in boxes:
-			if b["complete"]:
+			if b["complete"] or heated.has(b["id"]):
 				measure(b, false)
 
 
@@ -357,7 +403,9 @@ func deserialize(d: Dictionary) -> void:
 		var rects := []
 		for a in e.get("rects", []):
 			rects.append(Rect2(a[0], a[1], a[2], a[3]))
-		_add(str(e["id"]), str(e.get("kind", "path")), str(e.get("name", "Box")), str(e.get("owner", "")), rects, str(e.get("place", "")), true)
+		# Polish 5 §5: its place is read from the layout (its owner's address), not the saved text.
+		var place := Layout.place_name(str(e.get("owner", "")))
+		_add(str(e["id"]), str(e.get("kind", "path")), str(e.get("name", "Box")), str(e.get("owner", "")), rects, place if place != "" else str(e.get("place", "")), true)
 	# Polish 3 §4 / polish 4 §4: Gerry's mailbox moved (beside his walk, then to its foot), so his
 	# trail is the steps and the walk down to it. A saved trail with older rectangles is rebuilt —
 	# unless it was already done (or the tutorial is past it): the stage wins, the trail stays done

@@ -61,7 +61,7 @@ static func build_player(world: Node, root: Node3D, lot: Dictionary) -> Dictiona
 			kit.box(wood, L * Transform3D(Basis(), Vector3(-6.0 + lx, FY + 0.1, sb + 2.7 + lz)), Vector3(0.05, 0.2, 0.05))
 	_floor_lamp_base(kit, L, Vector3(-3.6, FY, sb + 0.6))
 	kit.cylinder(Mats.emissive(Color(1.0, 0.85, 0.6), 1.3), L * Transform3D(Basis(), Vector3(-3.6, FY + 1.35, sb + 0.6)), 0.25, 0.15, 0.3, 10, true)
-	_house_plant(kit, L, Vector3(-8.6, FY, sb + 0.5))
+	_house_plant(kit, L, Vector3(PLANT_AT.x, FY, sb + PLANT_AT.y))
 	# Kitchen counter along the back wall, radio on it
 	kit.box(Mats.std(Color(0.88, 0.86, 0.82), 0.6), L * Transform3D(Basis(), Vector3(-1.1, FY + 0.45, sb + 8.55)), Vector3(3.0, 0.9, 0.6))
 	kit.box(Mats.std(Color(0.25, 0.25, 0.27), 0.4), L * Transform3D(Basis(), Vector3(-1.1, FY + 0.92, sb + 8.55)), Vector3(3.1, 0.05, 0.65))
@@ -157,16 +157,26 @@ static func build_player(world: Node, root: Node3D, lot: Dictionary) -> Dictiona
 	out["fire_light"] = fire_light
 	# Interactables
 	out["bed"] = Interactable.make(root, L * Vector3(bx, FY + 0.6, bz), Vector3(1.6, 0.8, 2.1),
-		func(_p): return "[E] Go to sleep", func(p): world.open_sleep())
+		func(_p): return "[E] Go to sleep", func(_p): world.open_sleep())
 	out["computer"] = Interactable.make(root, L * Vector3(dx, FY + 1.0, dz), Vector3(1.4, 0.9, 0.8),
-		func(_p): return ("[E] Use computer" + ("  (battery backup)" if not Survival.power_on else "")) if Game.computer_unlocked() else "[E] Computer (locked)", func(p): world.open_computer())
+		func(_p): return ("[E] Use computer" + ("  (battery backup)" if not Survival.power_on else "")) if Game.computer_unlocked() else "[E] Computer (locked)", func(_p): world.open_computer())
 	out["tv"] = Interactable.make(root, L * Vector3(-6.0, FY + 1.0, tvz), Vector3(1.6, 1.0, 0.5),
-		func(_p): return "[E] Watch the weather on TV" if Survival.power_on else "TV (no power)", func(p): world.open_tv())
+		func(_p): return "[E] Watch the weather on TV" if Survival.power_on else "TV (no power)", func(_p): world.open_tv())
 	out["radio"] = Interactable.make(root, out["radio_pos"], Vector3(0.5, 0.4, 0.4),
-		func(_p): return "[E] Listen to the radio forecast", func(p): world.radio_forecast())
+		func(_p): return "[E] Listen to the radio forecast", func(_p): world.radio_forecast())
 	out["fireplace"] = Interactable.make(root, L * Vector3(fx + 0.2, FY + 0.7, fz), Vector3(0.8, 1.4, 1.7),
 		func(_p): return "Fireplace — stand close to warm up" if Survival.power_on else "Fireplace (the furnace fan and igniter are off — no power)", func(_p): pass)
+	# Polish 5 §3: the money plant, a testing aid (HANDOFF §13: remove or hide it before release) —
+	# the living-room plant above, in the corner by the front window.
+	out["plant"] = Interactable.make(root, L * Vector3(PLANT_AT.x, FY + 0.45, sb + PLANT_AT.y), Vector3(0.7, 0.9, 0.7),
+		func(_p): return "[E] Plant (+%s)" % UIKit.money(PLANT_MONEY), func(_p): world.plant_money())
 	return out
+
+
+## Where the living-room plant stands (house frame x, z - setback).
+const PLANT_AT := Vector2(-8.6, 0.5)
+## Polish 5 §3: what each Interact on the plant adds to the money (a testing aid).
+const PLANT_MONEY := 1000
 
 
 # -----------------------------------------------------------------------------
@@ -199,12 +209,12 @@ static func _mat2(color: Color, emission := 0.0) -> StandardMaterial3D:
 ## Gas-lift column, five-spoke base and twin-wheel casters under a chair seat centred over `floor`
 ## (house frame, floor height). The back's support bar meets the back at `back_z`. Returns the
 ## world positions of the casters' contact points with the floor.
-static func _chair_base(kit: MeshKit, L: Transform3D, floor: Vector3, back_z: float) -> Array:
+static func _chair_base(kit: MeshKit, L: Transform3D, floor_pos: Vector3, back_z: float) -> Array:
 	var black := Mats.std(Color(0.07, 0.07, 0.08), 0.45)
 	var chrome := Mats.metal(Color(0.72, 0.74, 0.78))
-	var x := floor.x
-	var z := floor.z
-	var y := floor.y
+	var x := floor_pos.x
+	var z := floor_pos.z
+	var y := floor_pos.y
 	# Tilt mechanism under the seat, the column (chrome lift in a black sleeve), the hub.
 	kit.box(black, L * Transform3D(Basis(), Vector3(x, y + 0.385, z)), Vector3(0.2, 0.03, 0.2))
 	kit.cylinder(chrome, L * Transform3D(Basis(), Vector3(x, y + 0.2, z)), 0.022, 0.022, 0.17, 10, false)
@@ -274,7 +284,7 @@ static func _desk_peripherals(kit: MeshKit, L: Transform3D, top: Vector3) -> voi
 ## The living-room floor lamp's base, turned like a real one: a wide, heavy foot, a rounded body,
 ## a neck narrowing up to the slim stem, and a socket under the shade (the shade and its glow are
 ## unchanged). `floor`: where it stands (house frame).
-static func _floor_lamp_base(kit: MeshKit, L: Transform3D, floor: Vector3) -> void:
+static func _floor_lamp_base(kit: MeshKit, L: Transform3D, floor_pos: Vector3) -> void:
 	var m := Mats.metal(Color(0.3, 0.3, 0.3))
 	# [height from the floor, radius] down the turned profile, from the foot up to the stem.
 	var prof := [[0.0, 0.19], [0.022, 0.19], [0.032, 0.172], [0.05, 0.13], [0.09, 0.145], [0.13, 0.13],
@@ -282,10 +292,10 @@ static func _floor_lamp_base(kit: MeshKit, L: Transform3D, floor: Vector3) -> vo
 	for i in range(prof.size() - 1):
 		var a: Array = prof[i]
 		var b: Array = prof[i + 1]
-		kit.cylinder(m, L * Transform3D(Basis(), floor + Vector3(0, float(a[0]), 0)), float(a[1]), float(b[1]), float(b[0]) - float(a[0]), 20, i == 0 or i == prof.size() - 2)
+		kit.cylinder(m, L * Transform3D(Basis(), floor_pos + Vector3(0, float(a[0]), 0)), float(a[1]), float(b[1]), float(b[0]) - float(a[0]), 20, i == 0 or i == prof.size() - 2)
 	# Stem up into the shade, and a socket just below it.
-	kit.cylinder(m, L * Transform3D(Basis(), floor + Vector3(0, 0.3, 0)), 0.02, 0.018, 1.1, 10, false)
-	kit.cylinder(m, L * Transform3D(Basis(), floor + Vector3(0, 1.3, 0)), 0.032, 0.03, 0.08, 12, true)
+	kit.cylinder(m, L * Transform3D(Basis(), floor_pos + Vector3(0, 0.3, 0)), 0.02, 0.018, 1.1, 10, false)
+	kit.cylinder(m, L * Transform3D(Basis(), floor_pos + Vector3(0, 1.3, 0)), 0.032, 0.03, 0.08, 12, true)
 
 
 ## A bedside table lamp standing on `top` (the table top, house frame): weighted base, ceramic
@@ -307,16 +317,16 @@ static func _table_lamp(kit: MeshKit, L: Transform3D, top: Vector3) -> void:
 
 
 ## A leafy house plant in a terracotta pot standing on `floor` (house frame).
-static func _house_plant(kit: MeshKit, L: Transform3D, floor: Vector3) -> void:
+static func _house_plant(kit: MeshKit, L: Transform3D, floor_pos: Vector3) -> void:
 	var terra := Mats.std(Color(0.66, 0.36, 0.24), 0.8)
-	kit.cylinder(terra, L * Transform3D(Basis(), floor), 0.13, 0.165, 0.3, 14, true)
-	kit.cylinder(_mat2(Color(0.62, 0.33, 0.22)), L * Transform3D(Basis(), floor + Vector3(0, 0.29, 0)), 0.178, 0.18, 0.05, 16, false)
-	kit.cylinder(Mats.std(Color(0.2, 0.13, 0.08), 0.95), L * Transform3D(Basis(), floor + Vector3(0, 0.3, 0)), 0.16, 0.16, 0.012, 14, true)
+	kit.cylinder(terra, L * Transform3D(Basis(), floor_pos), 0.13, 0.165, 0.3, 14, true)
+	kit.cylinder(_mat2(Color(0.62, 0.33, 0.22)), L * Transform3D(Basis(), floor_pos + Vector3(0, 0.29, 0)), 0.178, 0.18, 0.05, 16, false)
+	kit.cylinder(Mats.std(Color(0.2, 0.13, 0.08), 0.95), L * Transform3D(Basis(), floor_pos + Vector3(0, 0.3, 0)), 0.16, 0.16, 0.012, 14, true)
 	var greens := [Color(0.22, 0.45, 0.2), Color(0.28, 0.52, 0.24), Color(0.18, 0.4, 0.22), Color(0.3, 0.48, 0.18)]
 	var stem := Mats.std(Color(0.25, 0.38, 0.17), 0.9)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 4242
-	var base := floor + Vector3(0, 0.31, 0)
+	var base := floor_pos + Vector3(0, 0.31, 0)
 	for k in range(9):
 		var a := TAU * k / 9.0 + rng.randf_range(-0.3, 0.3)
 		var out := Vector3(cos(a), 0, sin(a))

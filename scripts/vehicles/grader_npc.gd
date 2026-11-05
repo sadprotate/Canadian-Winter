@@ -84,6 +84,14 @@ func _place() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	sim_step(delta)
+
+
+## One frame of the pass. Polish 5 §9: the grader runs on the city's clock, so fast-forward runs
+## it once more for every extra clock substep (through the world's tick) — away from the player it
+## covers the route N× faster with the same blade steps, and the snow it leaves is the same as at
+## 1×. Within Clock's hold distance of the player fast-forward is held at 1× for the pass.
+func sim_step(delta: float) -> void:
 	if not active:
 		return
 	if get_tree().paused:

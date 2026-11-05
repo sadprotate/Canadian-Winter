@@ -10,6 +10,11 @@ var orders: Array = []        # {id, item, kind, price, placed, ready_at, status
 var bills: Array = []         # {month, amount, issued_day, due_day, paid}
 var transactions: Array = []  # {time, text, amount}
 var _next_order := 1
+## Polish 5 §13: heating (the heated pad, driveway and path — Heating). heat_used: the running cost
+## ($) of what melted since the last hydro bill (Survival), billed on the next one; heat_acc: each
+## source's game minutes not yet melted (Heating.QUANTUM). Both saved (version 3, optional).
+var heat_used := 0.0
+var heat_acc: Dictionary = {}
 
 
 func reset_for_new_game() -> void:
@@ -17,6 +22,8 @@ func reset_for_new_game() -> void:
 	bills = []
 	transactions = []
 	_next_order = 1
+	heat_used = 0.0
+	heat_acc = {}
 
 
 func start_winter() -> void:
@@ -62,6 +69,8 @@ func item_kind(item_id: String) -> String:
 		return "upgrade"
 	if Catalog.UTILITY.has(sid):
 		return "utility"
+	if Catalog.EQUIPMENT.has(sid):
+		return "equipment"     # polish 5 §13: its own kind (never a tool slot)
 	return ""
 
 
@@ -75,6 +84,8 @@ func price_of(item_id: String) -> int:
 		return Catalog.upgrades[sid].price
 	if Catalog.UTILITY.has(sid):
 		return Catalog.UTILITY[sid]["price"]
+	if Catalog.EQUIPMENT.has(sid):
+		return Equipment.price(sid)
 	return 0
 
 
@@ -87,14 +98,27 @@ func can_buy(item_id: String) -> String:
 	var kind := item_kind(item_id)
 	if kind == "":
 		return "Unknown item."
+	# Polish 5 §13: only the store's own vehicles are sold (the pickup's plow was bought as the
+	# "pickup_plow" vehicle: a second truck, again and again).
+	if kind == "vehicle" and not Catalog.store_vehicles().has(Catalog.vehicle(StringName(item_id))):
+		return "Not sold in the store."
+	if kind == "equipment":
+		var why_e := Equipment.why_not(item_id)
+		if why_e != "":
+			return why_e
 	if kind == "upgrade":
 		var u: UpgradeData = Catalog.upgrade(StringName(item_id))
+		if ItemUpgrades.is_legacy(u.id) or Catalog.RETIRED_UPGRADE_IDS.has(u.id):
+			return "No longer sold."
 		if Game.has_upgrade(u.id) or has_open_order(item_id):
 			return "Already owned."
-		if u.requires != &"" and not Game.has_upgrade(u.requires):
+		if u.item != &"":
+			# An item's own level: you own the item, the ladder allows it, the level before it is in.
+			var why := ItemUpgrades.why_not(u)
+			if why != "":
+				return why
+		elif u.requires != &"" and not Game.has_upgrade(u.requires):
 			return "Requires %s." % Catalog.item_name(u.requires)
-		if u.id == &"pickup_plow" and not _owns_vehicle("pickup"):
-			return "You need your pickup truck."
 	if price_of(item_id) > Game.money:
 		return "Not enough money."
 	return ""
@@ -122,14 +146,14 @@ func buy(item_id: String) -> Dictionary:
 	if not Game.spend(price):
 		return {"ok": false, "msg": "Not enough money."}
 	var kind := item_kind(item_id)
-	var name := Catalog.item_name(StringName(item_id))
-	log_tx("Purchase: %s" % name, -price)
+	var item_label := Catalog.item_name(StringName(item_id))
+	log_tx("Purchase: %s" % item_label, -price)
 	if kind == "upgrade":
 		var u: UpgradeData = Catalog.upgrade(StringName(item_id))
 		if upgrade_is_immediate(u):
 			Game.grant_upgrade(u.id)
-			Notify.push("%s is now active." % name, Notify.GOOD)
-			return {"ok": true, "msg": "%s activated." % name}
+			Notify.push("%s is now active." % item_label, Notify.GOOD)
+			return {"ok": true, "msg": "%s activated." % item_label}
 	var open := store_open()
 	var order := {"id": _next_order, "item": item_id, "kind": kind, "price": price, "placed": Clock.minutes,
 		"ready_at": Clock.minutes if open else next_open_time(), "status": "ready" if open else "pending"}
@@ -138,10 +162,10 @@ func buy(item_id: String) -> Dictionary:
 	orders_changed.emit()
 	Game.dirty_since_save = true
 	if open:
-		Notify.push("Order placed: %s — ready for pickup at Northern Supply Co." % name, Notify.GOOD)
-		return {"ok": true, "msg": "%s is ready for pickup at the store lot." % name}
-	Notify.push("Order placed: %s — ready at 7:00 when the store opens." % name, Notify.INFO)
-	return {"ok": true, "msg": "%s will be ready at 7:00." % name}
+		Notify.push("Order placed: %s — ready for pickup at %s." % [item_label, Layout.building_by_id("store")["place"]], Notify.GOOD)
+		return {"ok": true, "msg": "%s is ready for pickup at the store lot." % item_label}
+	Notify.push("Order placed: %s — ready at 7:00 when the store opens." % item_label, Notify.INFO)
+	return {"ok": true, "msg": "%s will be ready at 7:00." % item_label}
 
 
 func order_status_text(o: Dictionary) -> String:
@@ -173,7 +197,7 @@ func ready_orders() -> Array:
 	return out
 
 
-func on_hour(day: int, hour: int) -> void:
+func on_hour(_day: int, hour: int) -> void:
 	var b: BalanceData = Catalog.balance
 	if hour == b.store_open_hour:
 		var any := false
@@ -196,11 +220,15 @@ func _issue_bill(month: int) -> void:
 		if int(bl["month"]) == month:
 			return
 	var issued: int = Clock.MONTH_START[month]
-	bills.append({"month": month, "amount": b.hydro_bill, "issued_day": issued,
+	# Polish 5 §13: what the heated pad, driveway and path used since the last bill is on this one
+	# (the first bill of a winter carries the last month of the winter before).
+	var heat := maxi(roundi(heat_used), 0)
+	heat_used = maxf(heat_used - heat, 0.0)
+	bills.append({"month": month, "amount": b.hydro_bill + heat, "heat": heat, "issued_day": issued,
 		"due_day": Clock.day_of(month, b.hydro_due_day), "paid": false})
 	bills_changed.emit()
 	if month > 0:
-		Notify.push("New hydro bill: $%d due %s." % [b.hydro_bill, Clock.date_string(Clock.day_of(month, b.hydro_due_day))], Notify.INFO)
+		Notify.push("New hydro bill: $%d%s due %s." % [b.hydro_bill + heat, " (heating $%d)" % heat if heat > 0 else "", Clock.date_string(Clock.day_of(month, b.hydro_due_day))], Notify.INFO)
 
 
 func unpaid_bills() -> Array:
@@ -253,18 +281,35 @@ func on_day(day: int) -> void:
 
 
 func serialize() -> Dictionary:
-	return {"orders": orders, "bills": bills, "tx": transactions, "next_order": _next_order}
+	return {"orders": orders, "bills": bills, "tx": transactions, "next_order": _next_order,
+		"heat_used": heat_used, "heat_acc": heat_acc.duplicate()}
 
 
 func deserialize(d: Dictionary) -> void:
 	orders = d.get("orders", [])
 	for o in orders:
 		o["id"] = int(o["id"])
+		# Polish 5 §13: the pickup's plow was ordered under the plowed pickup's vehicle id (sold as a
+		# vehicle). Now the pickup's upgrade: an open order delivers the plow, never another truck.
+		if str(o.get("item", "")) == "pickup_plow":
+			o["item"] = String(ItemUpgrades.PLOW_ID)
+			o["kind"] = "upgrade"
 	bills = d.get("bills", [])
 	for bl in bills:
 		bl["month"] = int(bl["month"])
 		bl["due_day"] = int(bl["due_day"])
+		if bl.has("heat"):
+			bl["heat"] = int(bl["heat"])
 	transactions = d.get("tx", [])
+	for t in transactions:
+		t["text"] = Layout.current_place(str(t.get("text", "")))   # polish 5 §5: places as named now
 	_next_order = int(d.get("next_order", 1))
+	# Polish 5 §13 (version 3, optional): heating not yet billed, and minutes not yet melted.
+	heat_used = float(d.get("heat_used", 0.0))
+	heat_acc = {}
+	var ha = d.get("heat_acc", {})
+	if ha is Dictionary:
+		for k in (ha as Dictionary).keys():
+			heat_acc[str(k)] = float(ha[k])
 	orders_changed.emit()
 	bills_changed.emit()

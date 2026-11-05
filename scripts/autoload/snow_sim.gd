@@ -5,11 +5,19 @@ extends Node
 ## surface type per cell. All tool, vehicle, grader and weather interactions go through the
 ## operations below; volume is moved between cells (conserved), except for the explicit
 ## exceptions (dump truck disposal, clearing-box completion — up to the last 10 % of a box's snow
-## since polish 3 — and debug commands).
+## since polish 3 — melting since polish 5 §13, and debug commands).
 ##
-## Road rule (Part 8.9): a player operation may only put snow into a ROAD cell if that snow
-## came out of a ROAD cell. Relaxation treats the curb line as a wall. Snowfall and the city
-## grader are exempt.
+## Melting (polish 5 §13): the heated pad and the heated driveway and path melt the snow on them
+## (Heating, on the game clock). It is the one new loss of snow since polish 3's box exception and it
+## is ledgered: melt_rect adds every m³ it removes to `melted`, so total_volume() + melted is what
+## the snow was before — exactly (the conservation tests assert it; no tolerance was loosened).
+##
+## Road rule (Part 8.9): removed in polish 5 §3 (Decision 12) for every bit of snow the player
+## moves — tools, blowers and vehicles now pass allow_road = true / player_rule = false, so their
+## snow lands on (or is pushed onto) the street where it's aimed. The flags stay for what still
+## keeps to the curb: wading never shoulders yard snow onto the road, and relaxation still treats
+## the curb line as a wall (yard snow doesn't slump onto the street by itself). Snowfall and the
+## city grader are exempt as before.
 ##
 ## Ceiling: the snow surface never rises above `ceiling` (street-lamp height). Snowfall stops
 ## adding at the ceiling; operations spill the excess into neighbouring cells (volume conserved).
@@ -88,6 +96,8 @@ var ceiling := 6.0             # max snow surface height (street-lamp height)
 var initialized := false
 var _noise := FastNoiseLite.new()
 var stat_player_moved := 0.0    # m3 moved by the player (for season stats)
+## Polish 5 §13: the melted-volume ledger — every m³ melt_rect removed this winter (saved).
+var melted := 0.0
 # Simplified roof layer (Part 8.8): shared depth from snowfall + per-house extra (thrown snow).
 var roof_depth := 0.0
 var roof_extra: Dictionary = {}
@@ -282,6 +292,7 @@ func reset_for_winter(year: int) -> void:
 		set_rect(Rect2(p - Vector2(1.0, 1.0), Vector2(2.0, 2.0)), 0.04)
 	fall_total = 0.0
 	settle_clock = 0.0
+	melted = 0.0
 	roof_depth = 0.6 if year <= 1 else 0.25
 	roof_extra.clear()
 	chunk_fall.fill(0.0)
@@ -356,6 +367,7 @@ func sync_chunk(ci: int) -> void:
 	# Loose snow left alone sinters: the loose share of each cell decays with time.
 	var harden := exp(-dmin / loose_harden_min) if dmin > 0.0 else 1.0
 	var cx := (ci % CW) * CHUNK
+	@warning_ignore("integer_division")
 	var cz := (ci / CW) * CHUNK
 	for z in range(cz, cz + CHUNK):
 		var row := z * W
@@ -411,9 +423,13 @@ const SYNC_MIN_SETTLE := 180.0
 
 
 func _sync_cells(x0: int, z0: int, x1: int, z1: int) -> void:
+	@warning_ignore("integer_division")
 	var c0x := clampi(x0 / CHUNK, 0, CW - 1)
+	@warning_ignore("integer_division")
 	var c1x := clampi(x1 / CHUNK, 0, CW - 1)
+	@warning_ignore("integer_division")
 	var c0z := clampi(z0 / CHUNK, 0, CH - 1)
+	@warning_ignore("integer_division")
 	var c1z := clampi(z1 / CHUNK, 0, CH - 1)
 	for cz in range(c0z, c1z + 1):
 		for cx in range(c0x, c1x + 1):
@@ -424,6 +440,7 @@ func _sync_cells(x0: int, z0: int, x1: int, z1: int) -> void:
 
 ## Snowfall that has fallen on a chunk but is not yet written into its cells.
 func _pending_fall(cx: int, cz: int) -> float:
+	@warning_ignore("integer_division")
 	return fall_total - chunk_fall[(cz / CHUNK) * CW + cx / CHUNK]
 
 
@@ -487,6 +504,14 @@ func surface_height(x: float, z: float) -> float:
 	var h01 := _h(x0, z1)
 	var h11 := _h(x1, z1)
 	return lerpf(lerpf(h00, h10, tx), lerpf(h01, h11, tx), tz)
+
+
+## Polish 5 §10b: the snow surface height at the centre of cell (cx, cz) — what surface_height reads
+## there — or 0 outside the map. (The box outlines drape on it: a quarter of the reads.)
+func cell_surface(cx: int, cz: int) -> float:
+	if cx < 0 or cz < 0 or cx >= W or cz >= H:
+		return 0.0
+	return _h(cx, cz)
 
 
 func _h(cx: int, cz: int) -> float:
@@ -589,9 +614,13 @@ func mark_dirty(x0: int, z0: int, x1: int, z1: int) -> void:
 	z0 = clampi(z0 - 1, 0, H - 1)
 	x1 = clampi(x1 + 1, 0, W - 1)
 	z1 = clampi(z1 + 1, 0, H - 1)
+	@warning_ignore("integer_division")
 	var c0x := x0 / CHUNK
+	@warning_ignore("integer_division")
 	var c1x := mini(x1 / CHUNK, CW - 1)
+	@warning_ignore("integer_division")
 	var c0z := z0 / CHUNK
+	@warning_ignore("integer_division")
 	var c1z := mini(z1 / CHUNK, CH - 1)
 	for cz in range(c0z, c1z + 1):
 		for cx in range(c0x, c1x + 1):
@@ -619,7 +648,9 @@ func mark_dirty(x0: int, z0: int, x1: int, z1: int) -> void:
 
 
 func _dirty_edge(x: int, z0: int, z1: int) -> void:
+	@warning_ignore("integer_division")
 	var cx := x / CHUNK
+	@warning_ignore("integer_division")
 	for cz in range(z0 / CHUNK, mini(z1 / CHUNK, CH - 1) + 1):
 		var ci := cz * CW + cx
 		var lz0 := clampi(z0 - cz * CHUNK, 0, CHUNK)
@@ -637,7 +668,9 @@ func _dirty_edge(x: int, z0: int, z1: int) -> void:
 
 
 func _dirty_edge_z(z: int, x0: int, x1: int) -> void:
+	@warning_ignore("integer_division")
 	var cz := z / CHUNK
+	@warning_ignore("integer_division")
 	for cx in range(x0 / CHUNK, mini(x1 / CHUNK, CW - 1) + 1):
 		var ci := cz * CW + cx
 		var lx0 := clampi(x0 - cx * CHUNK, 0, CHUNK)
@@ -668,9 +701,13 @@ func is_dirty(ci: int) -> bool:
 
 
 func _queue_relax(x0: int, z0: int, x1: int, z1: int) -> void:
+	@warning_ignore("integer_division")
 	var t0x := clampi((x0 - 2) / TILE, 0, TW - 1)
+	@warning_ignore("integer_division")
 	var t1x := clampi((x1 + 2) / TILE, 0, TW - 1)
+	@warning_ignore("integer_division")
 	var t0z := clampi((z0 - 2) / TILE, 0, TH - 1)
+	@warning_ignore("integer_division")
 	var t1z := clampi((z1 + 2) / TILE, 0, TH - 1)
 	for tz in range(t0z, t1z + 1):
 		for tx in range(t0x, t1x + 1):
@@ -715,6 +752,7 @@ func set_blade_guard(r: Rect2) -> void:
 
 func _guarded(i: int) -> bool:
 	var x := i % W
+	@warning_ignore("integer_division")
 	var z := i / W
 	return x >= guard_x0 and x <= guard_x1 and z >= guard_z0 and z <= guard_z1
 
@@ -731,6 +769,7 @@ func process_relax(max_tiles: int = 48, max_usec: int = 0) -> int:
 		var t: int = _pop_tile()
 		relax_queue.erase(t)
 		var tx := t % TW
+		@warning_ignore("integer_division")
 		var tz := t / TW
 		var moved := _relax_tile(tx, tz)
 		processed += 1
@@ -890,6 +929,7 @@ func _sync_list(cells: PackedInt32Array) -> void:
 	var z1 := 0
 	for i in cells:
 		var x := i % W
+		@warning_ignore("integer_division")
 		var z := i / W
 		x0 = mini(x0, x)
 		z0 = mini(z0, z)
@@ -905,6 +945,7 @@ func _bounds_of(cells: PackedInt32Array) -> Rect2i:
 	var z1 := 0
 	for i in cells:
 		var x := i % W
+		@warning_ignore("integer_division")
 		var z := i / W
 		x0 = mini(x0, x)
 		z0 = mini(z0, z)
@@ -919,14 +960,12 @@ func scoop(origin: Vector2, fwd: Vector2, width: float, length: float, max_vol: 
 	var cells := cells_in_obb(origin, fwd, width, length)
 	_sync_list(cells)
 	var avail := 0.0
-	var cnt := 0
 	for i in cells:
 		if surf[i] == S_BLOCKED:
 			continue
 		var d := depth[i] - floor_d
 		if d > 0.0:
 			avail += d
-			cnt += 1
 	if avail <= 0.0 or max_vol <= 0.0:
 		return {"volume": 0.0, "road_volume": 0.0}
 	var want := max_vol / CELL_AREA   # in depth-units summed over cells
@@ -1231,6 +1270,7 @@ func intake(origin: Vector2, fwd: Vector2, width: float, length: float, max_vol:
 	# Order by distance along fwd (cells are generated row-major; sort a small array).
 	var order := []
 	for i in cells:
+		@warning_ignore("integer_division")
 		var c := Vector2((i % W + 0.5) * CELL, (i / W + 0.5) * CELL) - origin
 		order.append([c.dot(fwd), i])
 	order.sort_custom(func(a, b): return a[0] < b[0])
@@ -1292,6 +1332,44 @@ func add_layer_rect(r: Rect2, d: float) -> void:
 	mark_dirty(c.position.x, c.position.y, c.end.x, c.end.y)
 
 
+## Polish 5 §13: melt up to `amount` (m of depth) off the top of every cell in a world rect (the
+## heated pad, a heated box). Buildings' cells are skipped. What melts leaves the snow and goes into
+## the ledger `melted` (m³, each cell's removal measured after it is stored, so the ledger matches
+## the depth array exactly). Neighbouring loose snow may slump onto the melted cells (relaxation
+## is queued, as after any operation). Returns the volume melted (m³).
+## Bare cells (a float's worth of snow, e.g. what the lazy snowfall's rounding leaves) don't count.
+const MELT_MIN := 1e-6
+
+
+func melt_rect(r: Rect2, amount: float) -> float:
+	if amount <= 0.0:
+		return 0.0
+	var c := _rect_cells(r)
+	if c.size.x <= 0 or c.size.y <= 0:
+		return 0.0
+	_sync_cells(c.position.x, c.position.y, c.end.x - 1, c.end.y - 1)
+	var gone := 0.0
+	for z in range(c.position.y, c.end.y):
+		var row := z * W
+		for x in range(c.position.x, c.end.x):
+			var i := row + x
+			var d := depth[i]
+			if d <= MELT_MIN or surf[i] == S_BLOCKED:
+				continue
+			depth[i] = maxf(d - amount, 0.0)
+			var after := depth[i]
+			gone += d - after
+			if loose[i] > after:
+				loose[i] = after
+	if gone <= 0.0:
+		return 0.0
+	mark_dirty(c.position.x, c.position.y, c.end.x, c.end.y)
+	_queue_relax(c.position.x, c.position.y, c.end.x, c.end.y)
+	var v := gone * CELL_AREA
+	melted += v
+	return v
+
+
 func clear_all() -> void:
 	sync_all()
 	depth.fill(0.0)
@@ -1304,10 +1382,15 @@ func clear_all() -> void:
 ## someone standing on the road, and yard snow never lands on the road (road rule). Snow inside
 ## a completed box (bare, held) is left alone, and so is snow whose surface is above `max_top`
 ## (the wader's hips: snow taller than that is a wall to dig through, not something you can tread
-## down by leaning on it). Returns the volume moved (m3).
+## down by leaning on it). Returns the volume moved (m3). Polish 5 §13: `keep_frac` is the share of
+## the depth left under the feet at each wade (0.4; on snowshoes much more: a shallow track, Player).
+## With `stamp` > 0 (snowshoes) the cells trodden are noted in `recent` (cell -> stamp) and a cell
+## trodden by one of the last RECENT_WADES wades isn't trodden again: one pass treads once.
 const WADE_MIN := 0.15
 
-func wade(p: Vector2, dir: Vector2, radius := 0.26, max_top := INF) -> float:
+const RECENT_WADES := 3
+
+func wade(p: Vector2, dir: Vector2, radius := 0.26, max_top := INF, keep_frac := 0.4, recent: Dictionary = {}, stamp := 0) -> float:
 	if not in_map(p.x, p.y) or dir.length() < 0.01:
 		return 0.0
 	dir = dir.normalized()
@@ -1330,7 +1413,11 @@ func wade(p: Vector2, dir: Vector2, radius := 0.26, max_top := INF) -> float:
 			var d := depth[i]
 			if d < WADE_MIN or ground[i] + d > max_top:
 				continue
-			var keep := maxf(0.12, d * 0.4)
+			if stamp > 0:
+				if recent.has(i) and stamp - int(recent[i]) <= RECENT_WADES:
+					continue
+				recent[i] = stamp
+			var keep := maxf(0.12, d * keep_frac)
 			var take := d - keep
 			depth[i] = keep
 			loose[i] = minf(loose[i], keep)
@@ -1438,6 +1525,119 @@ func grader_lane(a: Vector2, b: Vector2, push: Vector2, blade_w: float, residual
 	return total * CELL_AREA
 
 
+## Polish 5 §11: the city's sidewalk crew on a sidewalk rect `r` (whole cells). Every cell is
+## cleared to bare pavement and held (no slump inflow, as in a completed box), and its snow goes —
+## volume conserved — straight out from the sidewalk in `out` (a cell step toward the street), column
+## by column, onto the strip between the sidewalk and the street (the cells beyond it up to the
+## curb: the boulevard, or a driveway's apron) as a mound on the strip's sidewalk side (CREW_MOUND),
+## beside the grader's windrow, which lies on its street side. Whatever a column's strip has no room
+## for under the ceiling goes onto the street's edge, outward from the curb (Decision 12). Returns
+## the volume moved (m³).
+const CREW_MOUND := [0.3, 0.3, 0.2, 0.12, 0.06, 0.02]
+const CREW_STRIP_MAX := 12   # cells looked at beyond the sidewalk for the strip (the boulevard is 6)
+const CREW_EDGE_MAX := 24    # cells of the street the overflow may go to, from the curb
+## What is left of a column after the strip is float32 rounding below this (depth units, 1 µm):
+## not overflow.
+const CREW_RESIDUE := 1e-6
+
+
+func sidewalk_clear(r: Rect2, out: Vector2i) -> float:
+	var c := _rect_cells(r)
+	if c.size.x <= 0 or c.size.y <= 0 or out == Vector2i.ZERO:
+		return 0.0
+	var cols_x := out.y != 0          # out along z: one column per x cell
+	var n_cols := c.size.x if cols_x else c.size.y
+	var n_deep := c.size.y if cols_x else c.size.x
+	# The first strip cell of column 0, just beyond the rect on the street side.
+	var edge := Vector2i(c.position.x, c.end.y if out.y > 0 else c.position.y - 1) if cols_x \
+		else Vector2i(c.end.x if out.x > 0 else c.position.x - 1, c.position.y)
+	var step := Vector2i(1, 0) if cols_x else Vector2i(0, 1)
+	var reach := CREW_STRIP_MAX + CREW_EDGE_MAX
+	var lo := Vector2i(mini(c.position.x, c.position.x + out.x * reach), mini(c.position.y, c.position.y + out.y * reach))
+	var hi := Vector2i(maxi(c.end.x - 1, c.end.x - 1 + out.x * reach), maxi(c.end.y - 1, c.end.y - 1 + out.y * reach))
+	lo = lo.clamp(Vector2i.ZERO, Vector2i(W - 1, H - 1))
+	hi = hi.clamp(Vector2i.ZERO, Vector2i(W - 1, H - 1))
+	_sync_cells(lo.x, lo.y, hi.x, hi.y)
+	var moved := 0.0
+	for k in range(n_cols):
+		var total := 0.0
+		for j in range(n_deep):
+			var cell := Vector2i(c.position.x + k, c.position.y + j) if cols_x else Vector2i(c.position.x + j, c.position.y + k)
+			var i := cell.y * W + cell.x
+			if surf[i] == S_BLOCKED:
+				continue
+			total += depth[i]
+			depth[i] = 0.0
+			loose[i] = 0.0
+			hold[i] = 1
+		if total <= 0.0:
+			continue
+		# The strip: the cells beyond the sidewalk up to the curb (the first street cell); then the
+		# street's edge, outward from the curb.
+		var strip := PackedInt32Array()
+		var road := PackedInt32Array()
+		var p := edge + step * k
+		for n in range(reach):
+			if p.x < 0 or p.y < 0 or p.x >= W or p.y >= H:
+				break
+			var i2 := p.y * W + p.x
+			var s2 := surf[i2]
+			if s2 == S_ROAD:
+				if road.size() >= CREW_EDGE_MAX:
+					break
+				road.append(i2)
+			elif not road.is_empty() or strip.size() >= CREW_STRIP_MAX:
+				break
+			elif s2 != S_BLOCKED:
+				strip.append(i2)
+			p += out
+		var left := _crew_fill(strip, total, CREW_MOUND)
+		if left > CREW_RESIDUE:
+			left = _crew_fill(strip, left, [])     # whatever room is left on the strip
+		if left > CREW_RESIDUE:
+			left = _crew_fill(road, left, [])      # the street's edge
+		if left > CREW_RESIDUE:
+			# Nowhere along the column (not on this map): the nearest room, as every operation does.
+			var pc: int = strip[0] if not strip.is_empty() else (road[0] if not road.is_empty() else (edge + step * k).y * W + (edge + step * k).x)
+			@warning_ignore("integer_division")
+			left = _spill(Vector2((pc % W + 0.5) * CELL, (pc / W + 0.5) * CELL), left, true)
+		moved += total - maxf(left, 0.0)
+	mark_dirty(lo.x, lo.y, hi.x, hi.y)
+	_queue_relax(lo.x, lo.y, hi.x, hi.y)
+	return moved * CELL_AREA
+
+
+## Put `amount` (depth units) into `cells` under the ceiling: by `weights` (the first cells, each
+## at most its room; the last weighted cell takes what is left), or with no weights each cell up
+## to its room in turn. What a cell receives is read back from the float32 map, so what is placed
+## is counted exactly. Returns what didn't fit.
+func _crew_fill(cells: PackedInt32Array, amount: float, weights: Array) -> float:
+	var left := amount
+	if cells.is_empty() or amount <= 0.0:
+		return left
+	var n := cells.size() if weights.is_empty() else mini(cells.size(), weights.size())
+	var wsum := 0.0
+	for k in range(n):
+		wsum += 1.0 if weights.is_empty() else float(weights[k])
+	if wsum <= 0.0:
+		return left
+	for k in range(n):
+		var i := cells[k]
+		var room := maxf(ceiling - ground[i] - depth[i], 0.0)
+		var share := left if weights.is_empty() or k == n - 1 else amount * float(weights[k]) / wsum
+		var add := minf(minf(share, left), room)
+		if add <= 0.0:
+			continue
+		var before := depth[i]
+		depth[i] = before + add
+		var got := depth[i] - before
+		loose[i] += got
+		left -= got
+		if weights.is_empty() and left <= CREW_RESIDUE:
+			break
+	return left
+
+
 # -----------------------------------------------------------------------------
 # Persistence (compact: zstd-compressed float32 depth + scalars)
 # -----------------------------------------------------------------------------
@@ -1470,7 +1670,7 @@ func serialize() -> Dictionary:
 	var lcomp := lq.to_byte_array().compress(FileAccess.COMPRESSION_ZSTD)
 	return {"w": W, "h": H, "fmt": 2, "size": raw.size(), "data": comp, "fall_total": fall_total,
 		"settle_clock": settle_clock, "moved": stat_player_moved, "roof": roof_depth, "roof_extra": rx,
-		"loose": lcomp}
+		"loose": lcomp, "melted": melted}
 
 
 func deserialize(d: Dictionary) -> bool:
@@ -1492,6 +1692,7 @@ func deserialize(d: Dictionary) -> bool:
 	fall_total = float(d.get("fall_total", 0.0))
 	settle_clock = float(d.get("settle_clock", 0.0))
 	stat_player_moved = float(d.get("moved", 0.0))
+	melted = float(d.get("melted", 0.0))      # polish 5 §13 (version 3, optional)
 	roof_depth = float(d.get("roof", 0.3))
 	roof_extra.clear()
 	var rx: Dictionary = d.get("roof_extra", {})

@@ -120,8 +120,33 @@ static func trim() -> StandardMaterial3D:
 	return std(Color(0.22, 0.23, 0.25), 0.7)
 
 
+## Polish 5 §3: the finished interior walls of the enterable houses — painted drywall with a faint
+## roller texture, a subtle wallpaper on the walls facing into `paper` (world XZ rect, the bedroom).
+## Averages to the old plain paint (0.86, 0.8, 0.7). `origin`: the house's centre (world XZ).
+static func interior_wall(origin: Vector2, paper: Rect2) -> ShaderMaterial:
+	return shader_mat("interior_wall", {"origin": origin, "paper_rect": Vector4(paper.position.x, paper.position.y, paper.end.x, paper.end.y)})
+
+
+## Polish 5 §5: house numbers — matte paint (a plate with a painted border, or the digits) that the
+## porch lantern above lights at night (`lamp` > 0; shaders/address_plate.gdshader).
+static func address_paint(color: Color, border_color := Color.BLACK, border_uv := Vector2.ZERO, lamp := 0.0) -> ShaderMaterial:
+	return shader_mat("address_plate", {"albedo": color, "border_color": border_color, "border": border_uv, "lamp": lamp})
+
+
+## Polish 5 §3: painted interior trim (baseboards, door and window casings).
+static func interior_trim() -> StandardMaterial3D:
+	return std(Color(0.9, 0.88, 0.83), 0.55)
+
+
 static func roof(color: Color) -> StandardMaterial3D:
 	return std(color, 0.9)
+
+
+## Polish 5 §6: tool surfaces (shaders/tool.gdshader): `finish` is one of ToolModels.FIN_* —
+## plastic, aluminium, painted steel, bare steel, wood, fibreglass, rubber — with a little wear;
+## `edge_wear` scuffs the edge a blade scrapes with (UV.y = 0); `axis` runs along the grain.
+static func tool(finish: int, color: Color, rough := 0.5, metallic := 0.0, wear := 0.3, edge_wear := 0.0, axis := Vector3(0, -0.819, -0.574)) -> ShaderMaterial:
+	return shader_mat("tool", {"finish": finish, "albedo": color, "roughness": rough, "metallic": metallic, "wear": wear, "edge_wear": edge_wear, "grain_axis": axis})
 
 
 static func metal(color := Color(0.62, 0.64, 0.68)) -> StandardMaterial3D:

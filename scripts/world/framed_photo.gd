@@ -1,14 +1,17 @@
 class_name FramedPhoto
 extends Node3D
 ## Polish 4 §5: a framed photograph on the wall beside the player's front door: the player's
-## character standing by the pickup truck on a sunny winter day, the small shovel (the one dug out
-## beside the truck on the first morning) leaning against the passenger door.
+## character standing by the pickup truck on a sunny winter day with the small shovel.
+## Polish 5 §4: the photo is a hint — the shovel stands planted in the snow exactly where it lies
+## buried on the first morning, relative to the truck (beside the driver's door, the side away
+## from the house), seen from that side.
 ##
 ## The photo is rendered once from the game's own models — CharacterModel with the player's look,
-## the truck's mesh from VehicleModels, ToolModels' small shovel — in a SubViewport with its own
-## World3D, camera and lights, then copied to a static texture and the viewport is freed. The truck
-## is a plain mesh (no vehicle, physics body, registration or roof snow) and nothing in the photo
-## scene touches an autoload. Headless runs (no renderer) skip the capture and keep a plain
+## the truck's mesh from VehicleModels, ToolModels' small shovel (whatever that model is when the
+## photo is taken) — in a SubViewport with its own World3D, camera and lights, then copied to a
+## static texture and the viewport is freed. The truck is a plain mesh (no vehicle, physics body,
+## registration or roof snow) and the photo scene changes no autoload (it only reads where the
+## truck and the shovel start). Headless runs (no renderer) skip the capture and keep a plain
 ## placeholder. The print is a normal shaded material, so it darkens with the room at night.
 
 const PHOTO := Vector2i(720, 480)      # 3:2 print, pixels
@@ -16,6 +19,13 @@ const PRINT := Vector2(0.42, 0.28)     # metres
 const MAT_W := 0.07                    # the mat around the print
 const FRAME_W := 0.035                 # the wooden moulding
 const DEPTH := 0.03                    # frame depth off the wall
+# The photo scene (polish 5 §4), for the passenger side (+X); x is mirrored for the driver's side.
+const CAM := Vector3(7.2, 1.3, -1.6)    # camera, truck frame
+const LOOK := Vector3(0.6, 0.95, -0.35) # what it looks at
+const CHAR := Vector2(1.75, -2.15)     # where the character stands (x, z): by the front wheel
+const SHOVEL_TURN_DEG := 18.0          # the scoop turned this far off the camera
+const SHOVEL_LEAN_DEG := 6.0           # the shaft leans back a little
+const SHOVEL_SINK := 0.05              # the blade's lowest point this far into the snow
 
 var texture: Texture2D
 var captured := false
@@ -29,7 +39,18 @@ static func make(parent: Node, xf: Transform3D) -> FramedPhoto:
 	f.name = "FramedPhoto"
 	parent.add_child(f)
 	f.global_transform = xf
+	f._orient_print()
 	return f
+
+
+## Polish 5 §4: a mirrored house transform (the player's lot is one: determinant -1) mirrors the
+## print quad, so its UVs are flipped back. This must run once the frame has its place on the wall:
+## pass 4 checked in _ready, which runs inside add_child before make() sets the transform, so the
+## flip never happened and the print hung mirror-reversed.
+func _orient_print() -> void:
+	var mirrored := global_transform.basis.determinant() < 0.0
+	_print_mat.uv1_scale = Vector3(-1, 1, 1) if mirrored else Vector3.ONE
+	_print_mat.uv1_offset = Vector3(1, 0, 0) if mirrored else Vector3.ZERO
 
 
 static func outer_size() -> Vector2:
@@ -77,10 +98,10 @@ func _build_frame() -> void:
 	pr.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_print_mat = StandardMaterial3D.new()
 	_print_mat.roughness = 0.75
-	# Mirrored lots have a mirrored house transform: flip the print back.
-	if global_transform.basis.determinant() < 0.0:
-		_print_mat.uv1_scale = Vector3(-1, 1, 1)
-		_print_mat.uv1_offset = Vector3(1, 0, 0)
+	# Polish 5 §4: a matte print. Its own sheen and the glass's reflection of the bright sky laid a
+	# milky veil over it on the wall (blacks lifted from 0.18 to 0.30 at noon, colour −15 %).
+	_print_mat.metallic_specular = 0.0
+	# Mirrored lots have a mirrored house transform: the print is flipped back by _orient_print().
 	pr.material_override = _print_mat
 	add_child(pr)
 	# A hint of glass over it.
@@ -92,9 +113,9 @@ func _build_frame() -> void:
 	g.position = Vector3(0, 0, DEPTH - 0.006)
 	var gm := StandardMaterial3D.new()
 	gm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	gm.albedo_color = Color(0.85, 0.9, 1.0, 0.07)
+	gm.albedo_color = Color(0.85, 0.9, 1.0, 0.04)
 	gm.roughness = 0.04
-	gm.metallic_specular = 0.9
+	gm.metallic_specular = 0.3
 	g.material_override = gm
 	g.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(g)
@@ -111,9 +132,20 @@ func _capture() -> void:
 	vp.own_world_3d = true
 	vp.transparent_bg = false
 	vp.msaa_3d = Viewport.MSAA_2X
-	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	# Polish 5 §4: nothing is drawn until the scene is in place. The nodes get their places (the
+	# camera, the sun, the character, the shovel…) after they enter the tree, and those transforms
+	# only reach the renderer when the engine flushes its transform notifications. Started from the
+	# menu's New Game (a scene change), pass 4's single frame was drawn before that flush: the
+	# camera still sat at the scene's origin under the truck, and the print showed the truck's
+	# underside against the sky instead of the photo. So: build with drawing off, let one frame go
+	# by, then draw once.
+	vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	add_child(vp)
 	build_scene(vp)
+	await get_tree().process_frame
+	if not is_inside_tree():
+		return
+	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
 	await RenderingServer.frame_post_draw
 	if not is_inside_tree():
 		return
@@ -124,13 +156,28 @@ func _capture() -> void:
 		_print_mat.albedo_texture = texture
 		captured = true
 	vp.queue_free()
+	@warning_ignore("integer_division")
 	capture_ms = int((Time.get_ticks_usec() - t0) / 1000)
 
 
+## Where the shovel stands in the photo: where it lies buried on the first morning, in the truck's
+## frame (forward -Z, the driver on the left, -X), from the game's own start spots (polish 5 §4).
+static func shovel_spot_in_truck_frame() -> Vector3:
+	var ts: Dictionary = Game.truck_start()
+	var sp: Vector2 = Game.shovel_spot()
+	var rel: Vector3 = Vector3(sp.x, 0.0, sp.y) - (ts["pos"] as Vector3)
+	return Basis(Vector3.UP, float(ts["yaw"])).inverse() * Vector3(rel.x, 0.0, rel.z)
+
+
 ## The photo scene: snowy ground, a few spruces, the pickup, the player beside it and the small
-## shovel leaning on the passenger door, under a clear winter sky. Truck frame: forward is -Z, the
-## driver sits on the left (-X), so the passenger door is on the right (+X).
+## shovel planted in the snow beside him, under a clear winter sky, in a three-quarter front view
+## from the shovel's side of the truck. Truck frame: forward is -Z, the driver sits on the left
+## (-X), so the passenger door is on the right (+X). Pass 4 framed the passenger side with the
+## shovel leaning on that door; the shovel lies buried on the driver's side, so everything that
+## depends on the side is mirrored by `s` (-1 for the driver's side).
 static func build_scene(vp: SubViewport) -> void:
+	var spot := shovel_spot_in_truck_frame()
+	var s := -1.0 if spot.x < 0.0 else 1.0
 	var root := Node3D.new()
 	vp.add_child(root)
 	var env := Environment.new()
@@ -153,7 +200,7 @@ static func build_scene(vp: SubViewport) -> void:
 	sun.light_color = Color(1.0, 0.93, 0.82)
 	sun.light_energy = 1.25
 	sun.shadow_enabled = true
-	sun.rotation = Vector3(deg_to_rad(-28.0), deg_to_rad(205.0), 0.0)
+	sun.rotation = Vector3(deg_to_rad(-28.0), deg_to_rad(180.0 + s * 25.0), 0.0)
 	root.add_child(sun)
 	# Snowy ground and a soft bank behind.
 	var snow := StandardMaterial3D.new()
@@ -161,20 +208,21 @@ static func build_scene(vp: SubViewport) -> void:
 	snow.roughness = 0.9
 	var gk := MeshKit.new()
 	gk.box(snow, Transform3D(Basis(), Vector3(0, -0.05, 0)), Vector3(60, 0.1, 60))
-	gk.pillow(snow, Transform3D(Basis(), Vector3(-2.5, 0.0, 6.5)), 14.0, 4.0, 0.9, 0.3, 10, 2.6)
+	gk.pillow(snow, Transform3D(Basis(), Vector3(-s * 2.5, 0.0, 6.5)), 14.0, 4.0, 0.9, 0.3, 10, 2.6)
 	var ground := MeshInstance3D.new()
 	ground.mesh = gk.commit()
 	root.add_child(ground)
 	for p in [Vector3(-9, 0, 10), Vector3(-4.5, 0, 15), Vector3(2.0, 0, 16), Vector3(-13, 0, 5)]:
-		var tr := MeshInstance3D.new()
-		tr.mesh = Props.evergreen()
-		tr.position = p
-		tr.scale = Vector3.ONE * 1.1
-		root.add_child(tr)
+		var tree := MeshInstance3D.new()
+		tree.mesh = Props.evergreen()
+		tree.position = Vector3(s * p.x, p.y, p.z)
+		tree.scale = Vector3.ONE * 1.1
+		root.add_child(tree)
 	# The pickup (the player's own truck model), parked.
 	var vd: VehicleData = Catalog.vehicle(&"pickup")
 	var info := VehicleModels.build(vd)
 	var truck := Node3D.new()
+	truck.name = "Truck"
 	root.add_child(truck)
 	var tm := MeshInstance3D.new()
 	tm.mesh = info["mesh"]
@@ -184,36 +232,46 @@ static func build_scene(vp: SubViewport) -> void:
 		wm.mesh = w["mesh"]
 		wm.position = w["pos"]
 		truck.add_child(wm)
-	# The small shovel leaning on the passenger door: its grip against the door below the window,
-	# the shaft down to the blade on the snow, the blade across the door's length. The mesh's
-	# origin is the grip, its shaft runs along SHAFT and its blade across local X.
+	var cam_pos := Vector3(s * CAM.x, CAM.y, CAM.z)
+	# The small shovel, planted upright in the snow where it lies buried, its scoop turned towards
+	# the camera. Placed from its own mesh (the grip is the origin, the shaft runs to tip()), so a
+	# remodelled shovel stands the same way.
 	var sh := MeshInstance3D.new()
+	sh.name = "Shovel"
 	sh.mesh = ToolModels.mesh_for("small_shovel")
 	truck.add_child(sh)
-	var shaft := Vector3(0, -sin(deg_to_rad(55)), -cos(deg_to_rad(55)))
-	var grip := Vector3(1.07, 1.12, 0.05)
-	var down := (Vector3(1.52, 0.12, 0.0) - grip).normalized()
-	var across := Vector3(0, 0, 1)
-	across = (across - down * across.dot(down)).normalized()
+	var tip := ToolModels.tip("small_shovel")
+	var shaft := tip.normalized()
+	var to_cam := Vector3(cam_pos.x - spot.x, 0.0, cam_pos.z - spot.z).normalized().rotated(Vector3.UP, s * deg_to_rad(SHOVEL_TURN_DEG))
+	var down := Vector3(0, -1, 0).rotated(to_cam.cross(Vector3.UP).normalized(), deg_to_rad(SHOVEL_LEAN_DEG))
+	# Tool frame: X across the blade, the shaft, and their normal (towards the scoop's opening).
 	var local := Basis(Vector3.RIGHT, shaft, Vector3.RIGHT.cross(shaft).normalized())
+	var across := Vector3.UP.cross(to_cam).normalized()
 	var world := Basis(across, down, across.cross(down).normalized())
-	sh.transform = Transform3D(world * local.transposed(), grip)
-	# The player, standing by the front of the truck on the passenger side, facing the camera.
-	var cam_pos := Vector3(6.6, 1.45, -3.9)
+	var rot := world * local.transposed()
+	var low := INF
+	var aabb: AABB = sh.mesh.get_aabb()
+	for k in range(8):
+		low = minf(low, (rot * aabb.get_endpoint(k)).y)
+	var at := spot - rot * tip
+	sh.transform = Transform3D(rot, Vector3(at.x, -low - SHOVEL_SINK, at.z))
+	# The player, standing beside the truck next to the shovel, facing the camera.
 	var ch := CharacterModel.new()
+	ch.name = "Character"
 	truck.add_child(ch)
 	ch.build()
-	ch.position = Vector3(1.75, 0.0, -2.05)
+	ch.position = Vector3(s * CHAR.x, 0.0, CHAR.y)
 	var to := Vector2(cam_pos.x - ch.position.x, cam_pos.z - ch.position.z)
 	ch.rotation.y = atan2(-to.x, -to.y)
 	ch.set_pose("idle")
 	for i in range(30):
 		ch.animate(0.1, 0.0)
 	var cam := Camera3D.new()
-	cam.fov = 40.0
+	cam.name = "Camera"
+	cam.fov = 38.0
 	root.add_child(cam)
 	cam.position = cam_pos
-	cam.look_at(Vector3(0.5, 0.9, -0.75))
+	cam.look_at(Vector3(s * LOOK.x, LOOK.y, LOOK.z))
 	cam.current = true
 	# Print treatment: a slightly warm tint, a soft vignette and a white border.
 	var tint := ColorRect.new()

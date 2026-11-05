@@ -13,7 +13,7 @@ func build(parent: Node3D, minimal := false) -> Dictionary:
 	root = Node3D.new()
 	root.name = "World"
 	parent.add_child(root)
-	refs = {"houses": {}, "roof_snows": [], "mailboxes": {}, "streetlights": [], "tree_points": []}
+	refs = {"houses": {}, "roof_snows": [], "mailboxes": {}, "streetlights": [], "tree_points": [], "building_numbers": {}}
 	_ground()
 	_pavement()
 	_houses(minimal)
@@ -138,7 +138,7 @@ func _curb_segments(a: float, b: float, horizontal: bool) -> Array:
 
 
 # -----------------------------------------------------------------------------
-func _houses(minimal: bool) -> void:
+func _houses(_minimal: bool) -> void:
 	var houses_node := Node3D.new()
 	houses_node.name = "Houses"
 	root.add_child(houses_node)
@@ -164,6 +164,7 @@ func _houses(minimal: bool) -> void:
 		mb.transform = Transform3D(Basis.looking_at(Vector3(mf.x, 0, mf.y), Vector3.UP), Vector3(mp.x, 0, mp.y))
 		houses_node.add_child(mb)
 		refs["mailboxes"][lot["index"]] = mb
+		AddressSigns.mailbox_number(lot, mb)   # polish 5 §5: the number on its door
 		MeshKit.collider_box(houses_node, Vector3(mp.x, 0.7, mp.y), Vector3(0.3, 1.4, 0.3))
 		# Shrubs either side of the porch.
 		for u in [-3.6, 0.6]:
@@ -179,7 +180,6 @@ func _vegetation() -> void:
 	var bare := []
 	var tree_points := []
 	for lot in Layout.lots:
-		var r: Rect2 = lot["rect"]
 		var trng := RandomNumberGenerator.new()
 		trng.seed = lot["tree_seed"]
 		var count: int = lot["trees"]
@@ -187,7 +187,6 @@ func _vegetation() -> void:
 			count = 2
 		var hi := Layout.house_info(lot) if not lot["vacant"] else {}
 		for k in range(count):
-			var placed := false
 			for attempt in range(12):
 				var u := trng.randf_range(-12.5, 12.5)
 				var v := trng.randf_range(2.5, 26.0)
@@ -207,7 +206,6 @@ func _vegetation() -> void:
 				else:
 					bare.append(xf)
 				tree_points.append(p)
-				placed = true
 				break
 	# Bare trees on boulevards, evergreens around commercial lots and along the map edges.
 	var x := 10.0
@@ -417,13 +415,15 @@ func _commercial() -> void:
 				_label(Vector3(c.x, 3.0, front_z + 0.1), "ST. ANDREW'S", 64, Color(0.95, 0.95, 0.9))
 		# Roof snow (flat roofs carry a pillow).
 		kit.pillow(Mats.snow_soft(), Transform3D(Basis(), Vector3(c.x, h + 0.3, c.z)), r.size.x + 0.2, r.size.y + 0.2, 0.55, 0.15, 12, 4.0)
+		# Polish 5 §5: its number by the main entrance.
+		refs["building_numbers"][b["id"]] = AddressSigns.building_number(b, root)
 	# Snow dump sign and barriers.
 	var dr := Layout.dump_rect
 	_label(Vector3(dr.position.x - 2.0, 2.4, dr.position.y + 3), "MUNICIPAL\nSNOW DUMP", 64, Color(1, 0.85, 0.2))
 	kit.box(Mats.prop(Color(0.2, 0.3, 0.55), 0.5), Transform3D(Basis(), Vector3(dr.position.x - 2.0, 2.4, dr.position.y + 2.9)), Vector3(3.0, 1.4, 0.1))
 	for k in range(2):
 		kit.box(Mats.prop(Color(0.25, 0.26, 0.28), 0.5), Transform3D(Basis(), Vector3(dr.position.x - 3.2 + k * 2.4, 0.9, dr.position.y + 2.9)), Vector3(0.1, 1.8, 0.1))
-	var mi := kit.instance(root, "Commercial", true)
+	kit.instance(root, "Commercial", true)
 
 
 func _label(pos: Vector3, text: String, size: int, color: Color, yaw := 0.0) -> Label3D:

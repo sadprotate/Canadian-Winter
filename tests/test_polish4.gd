@@ -335,6 +335,7 @@ func test_indicator_at_pickup_then_landing_every_tool() -> void:
 		for view in ["fp", "tp"]:
 			for pitch in [-60.0, -45.0, -30.0]:
 				var u := -10.0 + float(spot % 6) * 1.6
+				@warning_ignore("integer_division")
 				var v := 3.0 + float((spot / 6) % 3) * 2.2
 				spot += 1
 				var p2 := Layout.lot_to_world(lot, Layout.gu(lot, u), v)
@@ -396,8 +397,9 @@ func test_indicator_at_pickup_then_landing_every_tool() -> void:
 	await _unload()
 
 
-## Red over the street (the load is kept), amber inside the box being cleared — on the one indicator.
-func test_indicator_red_over_street_amber_in_box() -> void:
+## Polish 5 §3 (Decision 12): over the street the indicator shows the landing like any other (it was
+## red there and the load was kept): released, the snow lands on the street where it showed.
+func test_indicator_over_street_like_any_other() -> void:
 	await _load_world("fun", 2024, 11.0, 1)
 	var pl: Player = world.player
 	var tc: ToolController = pl.tools
@@ -419,12 +421,16 @@ func test_indicator_red_over_street_amber_in_box() -> void:
 	pl.pitch = 0.0
 	pl.head.rotation.x = 0.0
 	await _frames(30)
-	runner.check(tc.ind_state == "landing" and tc.indicator.mesh == tc._ring_bad, "over the street: the indicator is out at the landing spot, red (%s)" % tc.ind_state)
-	var l1 := tc.load
+	var ring := tc.indicator.global_position
+	runner.check(tc.ind_state == "landing" and tc.indicator.mesh == tc._ring_ok and Snow.is_road(ring.x, ring.z), "over the street: the indicator is out at the landing spot, like any other (%s)" % tc.ind_state)
+	var n0 := world.find_children("*", "ThrownSnow", true, false).size()
 	Input.action_release("primary")
-	await _frames(10)
-	runner.check(tc.load > 0.0 and is_equal_approx(tc.load, l1) and tc.indicator.visible and tc.indicator.mesh == tc._ring_bad, "released over the street: the load is kept and the red marker stays")
-	tc.dump_at_feet(true)
+	await _tree().physics_frame
+	await _tree().physics_frame
+	var thrown := world.find_children("*", "ThrownSnow", true, false)
+	var lp: Vector3 = (thrown[thrown.size() - 1] as ThrownSnow).landing["pos"] if thrown.size() > n0 else Vector3.INF
+	runner.check(tc.load == 0.0 and thrown.size() > n0 and Vector2(ring.x - lp.x, ring.z - lp.z).length() < 0.25 and Snow.is_road(lp.x, lp.z), "released over the street: the snow is thrown and lands on the street where the indicator was")
+	await _frames(60)
 	_release_all()
 	await _unload()
 
@@ -798,17 +804,17 @@ func test_forecast_accuracy() -> void:
 					ps = ds
 			# The TV's day cards: a snowy day's total, called 3, 2, 1 and 0 days ahead.
 			for d in range(4, 121):
-				var tr := 0.0
+				var day_total := 0.0
 				for h in range(d * 24, d * 24 + 24):
-					tr += Weather.rate[h]
-				if tr < 1.0:
+					day_total += Weather.rate[h]
+				if day_total < 1.0:
 					continue
 				dn += 1
 				for k in range(4):
 					var fcs := 0.0
 					for h in range(d * 24, d * 24 + 24):
 						fcs += float(Weather.fc_hour(h, d * 24 - 24 * k)["rate"])
-					derr[k] += absf(fcs - tr) / tr
+					derr[k] += absf(fcs - day_total) / day_total
 	var m := {}
 	for L in leads:
 		m[L] = err[L] / maxf(cnt, 1)
@@ -817,8 +823,10 @@ func test_forecast_accuracy() -> void:
 	for k in range(4):
 		derr[k] /= maxf(dn, 1)
 	runner.check(dn > 100 and derr[0] < derr[1] and derr[1] < derr[2] and derr[2] < derr[3], "a day's snow is called better as it gets closer (mean relative error today %.2f, 1 day ahead %.2f, 2 days %.2f, 3 days %.2f; %d snowy days)" % [derr[0], derr[1], derr[2], derr[3], dn])
+	@warning_ignore("integer_division")
 	runner.check(radio_err < tv_err and radio_hit > tv_hit, "the radio's next hour is more right than the TV's three-day call (condition right %d%% vs %d%%, rate off %.2f vs %.2f cm/h)" % [100 * radio_hit / maxi(hits, 1), 100 * tv_hit / maxi(hits, 1), radio_err / maxf(hits, 1), tv_err / maxf(hits, 1)])
 	runner.check(conv_bad.is_empty(), "a forecast event's amount and timing errors only shrink as it approaches (converges)%s" % ("" if conv_bad.is_empty() else " — " + str(conv_bad.slice(0, 3))))
+	@warning_ignore("integer_division")
 	runner.check(revised > cnt / 2, "the forecast is revised every hour (%d of %d snowy hours changed between consecutive issues)" % [revised, cnt])
 	# Skill: scales the error down and the surprise horizon up.
 	var b: BalanceData = Catalog.balance
@@ -949,7 +957,7 @@ func test_weather_text_fits() -> void:
 				continue
 			for h in range(int(ev["start"]) - 3, mini(int(ceil(float(ev["end"]))) + 1, Weather.HOURS)):
 				Clock.minutes = h * 60.0 + 20.0
-				var t := "Radio: %s City grader expected %s." % [Weather.radio_bulletin(), Municipal.next_pass_text()]
+				var t: String = world.radio_text()   # polish 5 §11: its crews' line read from the game
 				if t.length() > longest.length():
 					longest = t
 	# The fullest TV: the moment of winter 1 with the most snow lines on its cards and an alert up.
@@ -1119,7 +1127,6 @@ func test_playthrough_from_the_menu_both_modes() -> void:
 		world = h.world
 		Clock.running = true
 		var pl: Player = world.player
-		var tc: ToolController = pl.tools
 		var lot := Layout.player_lot
 		var hi := Layout.house_info(lot)
 		# 1. The letter, from the moved mailbox (standing at the foot of the walk by the sidewalk).
@@ -1211,7 +1218,9 @@ func test_playthrough_from_the_menu_both_modes() -> void:
 		await _frames(2)
 		if world.modal_kind == "computer":
 			var c: ComputerUI = world.modal
-			c._open_app(0)
+			c._open_app(ComputerUI.app_index("board"))
+			await _frames(1)
+			_press_btn(c.content, "OK")   # polish 5 §7: name the company (the suggestion) the first time
 			await _frames(1)
 			for tries in range(4):
 				var sl := c.content.find_children("*", "HSlider", true, false)
@@ -1222,7 +1231,8 @@ func test_playthrough_from_the_menu_both_modes() -> void:
 				await _frames(1)
 			world.close_modal()
 		runner.check(not Contracts.bids.is_empty(), "%s: bids placed from the contract board" % mode)
-		Clock.skip(240.0)
+		# Polish 5 §10: bids are answered at the award, 9:01 p.m. (was: within a few hours).
+		Clock.skip(Contracts.next_9pm(Clock.minutes) + Contracts.AWARD_DELAY_MIN + 1.0 - Clock.minutes)
 		var won := false
 		for ct in Contracts.active:
 			if not ct.get("tutorial", false):
@@ -1238,9 +1248,9 @@ func test_playthrough_from_the_menu_both_modes() -> void:
 		runner.check(b["complete"], "%s: the path cleared to the 90 %% snap (%d strokes)" % [mode, st["strokes"]])
 		runner.check(st["pick"] > 20 and st["pick_bad"] == 0 and st["land"] > 0 and st["land_bad"] == 0 and st["after_bad"] == 0, "%s: the indicator was on the cut while scooping (%d frames, %d off), at the landing when loaded (%d strokes, %d not), gone after each throw (%d not)" % [mode, st["pick"], st["pick_bad"], st["land"], st["land_bad"], st["after_bad"]])
 		# 6. The TV and the radio.
-		var tr: Dictionary = await _use_tv_and_radio(h)
-		runner.check(tr["tv_open"] and str(tr["tv"]).contains("Forecast updated"), "%s: the TV's forecast, with when it was updated" % mode)
-		runner.check(str(tr["radio"]).begins_with("Radio: ") and str(tr["radio"]).to_lower().contains(Weather.hour_name(Weather.issued_hour() + 1)), "%s: the radio reads the next hours: \"%s\"" % [mode, tr["radio"]])
+		var heard: Dictionary = await _use_tv_and_radio(h)
+		runner.check(heard["tv_open"] and str(heard["tv"]).contains("Forecast updated"), "%s: the TV's forecast, with when it was updated" % mode)
+		runner.check(str(heard["radio"]).begins_with("Radio: ") and str(heard["radio"]).to_lower().contains(Weather.hour_name(Weather.issued_hour() + 1)), "%s: the radio reads the next hours: \"%s\"" % [mode, heard["radio"]])
 		# 7. Wait out the start of the next scheduled storm indoors, listening to the radio.
 		var ev: Dictionary = {}
 		for e in Weather.events:
@@ -1301,6 +1311,9 @@ func test_playthrough_from_the_menu_both_modes() -> void:
 		await h._stand_at(bp + bin.normalized() * 1.5, bed.global_position)
 		await _press_event("interact")
 		await _frames(2)
+		# A real click arrives outside the physics step; unpausing between the physics server's query
+		# flush and its step makes the engine print `p_elem->_root` (HANDOFF §13 item 12).
+		await _tree().process_frame
 		_press_btn(world.modal, "Sleep until 7:00 a.m.")
 		guard = 0
 		while (not Saves.has_save(mode) or Game.dirty_since_save) and guard < 900:

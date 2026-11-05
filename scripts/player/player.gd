@@ -42,6 +42,15 @@ var _sens := 0.25
 var _inv_x := false
 var _inv_y := false
 var _blocked_timer := 0.0
+## Polish 5 §13: snowshoes. Your feet stand on the snow under you — trodden down by snowshoes_sink
+## of its depth as you walk (Snow.wade: the track) — this high above the ground; the model, the
+## camera and the hip rule start from there. The body's capsule stays on the ground, so walls, roofs
+## and the map's edge stop you as before.
+var shoe_lift := 0.0
+var _head_base := HEAD_H
+var _shoe_trodden: Dictionary = {}    # cells the last few wades on snowshoes trod (Snow.wade)
+var _shoe_wades := 0
+var _shoes_shown := false
 
 
 func _ready() -> void:
@@ -92,9 +101,31 @@ func _ready() -> void:
 	tools.name = "Tools"
 	add_child(tools)
 	tools.setup(self)
+	refresh_equipment()
+	Game.inventory_changed.connect(refresh_equipment)
 	apply_camera_settings()
 	Settings.changed.connect(func(s, _k): if s == "camera": apply_camera_settings())
 	set_third_person(Game.camera_third)
+
+
+## Polish 5 §13: the coat on the model and the first-person sleeves (Survival only — Fun Mode shows
+## no coat), the snowshoes on the model while they're on outdoors.
+func refresh_equipment() -> void:
+	var coat := Equipment.coat_worn()
+	if coat != model.coat_on:
+		model.set_coat(coat)
+	if tools and tools.arms:
+		tools.arms.set_coat(coat)
+
+
+## Snowshoes are on your feet and working: on foot (or at the computer) and outdoors.
+func shoes_active() -> bool:
+	return Equipment.snowshoes_on() and not indoors and (state == "foot" or state == "frozen")
+
+
+## Where your feet are (world y): the ground under you, raised by the snow under snowshoes.
+func feet_y() -> float:
+	return global_position.y + shoe_lift
 
 
 func apply_camera_settings() -> void:
@@ -149,6 +180,9 @@ func _unhandled_input(event: InputEvent) -> void:
 func _physics_process(delta: float) -> void:
 	_update_location_flags()
 	if state == "vehicle":
+		if shoe_lift != 0.0:
+			shoe_lift = 0.0
+			model.position.y = 0.0
 		return
 	if freecam:
 		_freecam(delta)
@@ -158,8 +192,20 @@ func _physics_process(delta: float) -> void:
 		input = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 	var b: BalanceData = Catalog.balance
 	crouching = state == "foot" and Input.is_action_pressed("crouch") and state != "frozen"
+	# Snow resistance from the actual snow simulation.
+	snow_depth = 0.0 if indoors else Snow.depth_at(global_position.x, global_position.z)
+	# Polish 5 §13: on snowshoes you stand on the snow you have trodden down (the track: sunk in
+	# snowshoes_sink of the way, _wade_trench).
+	var shoes := shoes_active()
+	var sink := clampf(b.snowshoes_sink, 0.0, 1.0)
+	shoe_lift = move_toward(shoe_lift, snow_depth if shoes else 0.0, delta * 3.0)
+	model.position.y = shoe_lift
+	if shoes != _shoes_shown:
+		_shoes_shown = shoes
+		model.set_snowshoes(shoes)
 	var target_head := CROUCH_HEAD if crouching else HEAD_H
-	head.position.y = lerpf(head.position.y, target_head, delta * 10.0)
+	_head_base = lerpf(_head_base, target_head, delta * 10.0)
+	head.position.y = _head_base + shoe_lift
 	capsule.height = lerpf(capsule.height, 1.2 if crouching else 1.78, delta * 10.0)
 	collision.position.y = capsule.height * 0.5
 	var base := b.walk_speed
@@ -167,8 +213,6 @@ func _physics_process(delta: float) -> void:
 		base = b.crouch_speed
 	elif Input.is_action_pressed("sprint") and state == "foot" and not tools.is_engaged():
 		base = b.sprint_speed
-	# Snow resistance from the actual snow simulation.
-	snow_depth = 0.0 if indoors else Snow.depth_at(global_position.x, global_position.z)
 	var dir := (transform.basis * Vector3(input.x, 0, input.y))
 	dir.y = 0.0
 	if dir.length() > 1.0:
@@ -179,7 +223,8 @@ func _physics_process(delta: float) -> void:
 	if dir.length() > 0.01 and not indoors:
 		var ahead := global_position + dir.normalized() * 0.35
 		resist_d = maxf(snow_depth, Snow.depth_at(ahead.x, ahead.z))
-	var mult := snow_speed_mult(resist_d) * speed_mult_tool
+	# On snowshoes you wade only through the snow you sink into: much faster.
+	var mult := snow_speed_mult(resist_d * sink if shoes else resist_d) * speed_mult_tool
 	if state == "machine" and machine:
 		mult *= machine.speed_mult()
 	var want := dir * base * mult
@@ -195,8 +240,8 @@ func _physics_process(delta: float) -> void:
 	velocity.z = move_toward(velocity.z, want.z, accel * delta * maxf(base, 1.0))
 	if not is_on_floor():
 		velocity.y -= 9.8 * delta
-	elif Input.is_action_just_pressed("jump") and state == "foot" and snow_depth < 0.35 and not crouching:
-		velocity.y = b.jump_velocity * (1.0 - snow_depth)
+	elif Input.is_action_just_pressed("jump") and state == "foot" and (snow_depth * sink if shoes else snow_depth) < 0.35 and not crouching:
+		velocity.y = b.jump_velocity * (1.0 - (snow_depth * sink if shoes else snow_depth))
 	var before := global_position
 	move_and_slide()
 	current_speed = Vector2(velocity.x, velocity.z).length()
@@ -227,17 +272,30 @@ func _wade_trench(before: Vector3) -> void:
 	if Snow.depth_at(p.x, p.y) < Snow.WADE_MIN:
 		return
 	# Only the snow you're actually in (up to your hips) is trodden down; a taller wall stays a wall.
-	var v := Snow.wade(p, Vector2(velocity.x, velocity.z), 0.26, global_position.y + CharacterModel.HIP_HEIGHT)
+	# Polish 5 §13: on snowshoes, from where your feet are, and a much shallower trench — one pass
+	# treads each cell of the track once (the wades overlap: Snow.wade skips what the last few trod),
+	# down by snowshoes_sink of its depth.
+	var v := 0.0
+	if shoes_active():
+		_shoe_wades += 1
+		if _shoe_trodden.size() > 400:
+			for k in _shoe_trodden.keys():
+				if _shoe_wades - int(_shoe_trodden[k]) > Snow.RECENT_WADES:
+					_shoe_trodden.erase(k)
+		var keep := 1.0 - clampf(Catalog.balance.snowshoes_sink, 0.0, 0.99)
+		v = Snow.wade(p, Vector2(velocity.x, velocity.z), 0.26, feet_y() + CharacterModel.HIP_HEIGHT, keep, _shoe_trodden, _shoe_wades)
+	else:
+		v = Snow.wade(p, Vector2(velocity.x, velocity.z), 0.26, global_position.y + CharacterModel.HIP_HEIGHT)
 	if v > 0.01 and randf() < 0.5:
 		SnowFX.puff(Vector3(p.x, Snow.surface_height(p.x, p.y) + 0.1, p.y), 0.25)
 
 
 ## Can the player step into the snow at this point? Only if the snow surface there is no higher
-## than their hips above their feet.
+## than their hips above their feet (polish 5 §13: on snowshoes the feet are on the snow).
 func can_wade_into(probe: Vector3) -> bool:
 	var ahead := Snow.max_depth_in_radius(probe.x, probe.z, 0.12)
 	var top := Snow.ground_at(probe.x, probe.z) + ahead
-	return top - global_position.y <= CharacterModel.HIP_HEIGHT
+	return top - feet_y() <= CharacterModel.HIP_HEIGHT
 
 
 ## Speed multiplier for wading through snow of depth d (m): 1 on bare ground, a crawl at the hips.
@@ -475,7 +533,7 @@ func teleport(pos: Vector3, yaw_angle := INF) -> void:
 func _freecam(delta: float) -> void:
 	var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 	var up := (1.0 if Input.is_action_pressed("jump") else 0.0) - (1.0 if Input.is_action_pressed("crouch") else 0.0)
-	var basis := fp_cam.global_transform.basis
-	var v := basis * Vector3(input.x, 0, input.y) + Vector3.UP * up
+	var cam_basis := fp_cam.global_transform.basis
+	var v := cam_basis * Vector3(input.x, 0, input.y) + Vector3.UP * up
 	var spd := 25.0 if Input.is_action_pressed("sprint") else 9.0
 	global_position += v * spd * delta

@@ -132,7 +132,10 @@ func test_fixtures_load_and_play() -> void:
 		await _unload()
 		runner.check(Saves.load_game(mode), "%s: the autosave reloads" % name)
 		await _spawn_world()
-		runner.check(absf(Clock.minutes - t_saved) < 0.01 and Game.money == money_saved and Game.stage() >= stage, "%s: reloaded at the same time, money and stage" % name)
+		# Polish 5 §9: "the same time" = within the frame or so the clock runs while the world spawns
+		# (1.5 frames of play at 60 fps, read from the clock: 0.01 game minutes at the old rate).
+		var tol := 1.5 / 60.0 * Clock.GAME_MIN_PER_REAL_SEC
+		runner.check(absf(Clock.minutes - t_saved) < tol and Game.money == money_saved and Game.stage() >= stage, "%s: reloaded at the same time, money and stage (%.3f game min apart)" % [name, absf(Clock.minutes - t_saved)])
 		runner.check(world.player != null and is_instance_valid(world.player), "%s: the reloaded world has a player" % name)
 		if money_saved < money - 200:
 			runner.info("%s: money went from %d to %d over the night" % [name, money, money_saved])
@@ -326,13 +329,14 @@ func test_ninety_percent_snap_updates_everything() -> void:
 	l2["zones"] = [Contracts._zone("Sidewalk", [side["id"]])]
 	l2["type"] = "recurring"
 	var c2 := Contracts.force_award(int(l2["lid"]))
-	c2["snowed_min"] = 20.0 * 60.0
+	# Polish 5 §10: due times replace the 48-hour clock — the first visit is due.
+	runner.check(Contracts.hours_left(c2) < INF, "The recurring contract's first visit is due (%s)" % Contracts.due_text(c2))
 	var speak := Boxes.snow_volume(side, true)
 	_leave(side, speak, 0.095)
 	Boxes.measure(side, true)
 	Contracts.on_hour(Clock.day_index(), Clock.hour())
 	runner.check(side["complete"] and c2["status"] == "serviced" and c2["visits"] >= 1, "A recurring visit is done at 90 %% (%s, %d visits)" % [c2["status"], c2["visits"]])
-	runner.check(float(c2.get("snowed_min", 0.0)) < 1.0, "…and its 48-hour snowed-in clock resets (%.0f min)" % float(c2.get("snowed_min", 0.0)))
+	runner.check(Contracts.hours_left(c2) == INF and float(c2.get("due", 0.0)) < 0.0, "…and nothing is due any more until new snow (%s)" % Contracts.due_text(c2))
 	Clock.running = false
 	await _unload()
 
@@ -443,7 +447,6 @@ func test_shovel_pickup_at_75_percent() -> void:
 
 func test_tool_pickup_fully_exposed_and_after_snowfall() -> void:
 	await _load_world("fun", 2024, 11.0, 1)
-	var pl: Player = world.player
 	var spot := Layout.lot_to_world(Layout.player_lot, Layout.gu(Layout.player_lot, -4.0), 1.0)
 	Snow.set_rect(Rect2(spot - Vector2(3, 3), Vector2(6, 6)), 0.0)
 	world.spawn_tool_item("standard_shovel", Vector3(spot.x, 0.0, spot.y), 0.3)
@@ -584,16 +587,26 @@ func test_gerry_trail_is_outlined_without_flags() -> void:
 	world.player.teleport(Vector3((drv["rects"][0] as Rect2).get_center().x, 0.05, (drv["rects"][0] as Rect2).get_center().y))
 	await _frames(20)
 	runner.check(world.box_outline.visible and world.box_outline.box_id == drv["id"] and qo.visible, "Working another box shows its usual outline alongside")
-	# Real contracts keep their stakes.
+	# Real contracts: no stakes either since polish 5 §10 (the contract stakes and flags are now
+	# outlines) — every box of the job is outlined like the trail, in the job's money green, while the
+	# trail stays blue.
 	Contracts._add_lot_listing(Layout.lots[4], 0, RandomNumberGenerator.new())
 	var l: Dictionary = Contracts.listings[Contracts.listings.size() - 1]
 	var rc := Contracts.force_award(int(l["lid"]))
+	# (Outlines are laid near the player: stand at the job.)
+	var rmid := (Boxes.get_box(Contracts.contract_boxes(rc)[0])["rects"][0] as Rect2).get_center()
+	world.player.teleport(Vector3(rmid.x, Snow.surface_height(rmid.x, rmid.y) + 0.05, rmid.y + 6.0))
 	await _frames(40)
 	var rstakes := 0
 	for k in world.zone_markers._stakes.keys():
 		if str(k).begins_with("%d_" % int(rc["id"])):
 			rstakes += 1
-	runner.check(rstakes > 0, "Real contracts still get their stakes (%d)" % rstakes)
+	for n in world.zone_markers.get_children():
+		if n is MeshInstance3D and not (n is BoxOutline) and n != world.zone_markers._flash:
+			rstakes += 1
+	var rboxes := Contracts.contract_boxes(rc)
+	var routlined := rboxes.all(func(id): return world.zone_markers.outlines.has(id) and (world.zone_markers.outlines[id] as BoxOutline).visible and (world.zone_markers.outlines[id] as BoxOutline).job)
+	runner.check(rstakes == 0 and not rboxes.is_empty() and routlined and not qo.job, "Real contracts get no stakes (%d): their boxes are outlined like the trail, in the job's green (the trail stays blue)" % rstakes)
 	# Completion: the outline goes and the usual work outline behaviour returns.
 	_finish_trail()
 	await _frames(5)
@@ -652,7 +665,6 @@ func test_gerry_walks_in_and_player_follows() -> void:
 		runner.check(world.is_gerry_talking(), "%s: by the fire, Gerry talks you through the business" % mode)
 		var saw_computer := false
 		var saw_unlocked := false
-		var p_in := pl.global_position
 		guard = 0
 		while world.is_gerry_talking() and guard < 40:
 			var t: String = world.hud.speech_text.text
@@ -1298,7 +1310,9 @@ func test_playthrough_from_the_menu_both_modes() -> void:
 		var won := false
 		if world.modal_kind == "computer":
 			var c: ComputerUI = world.modal
-			c._open_app(0)
+			c._open_app(ComputerUI.app_index("board"))
+			await _frames(1)
+			_press_btn(c.content, "OK")   # polish 5 §7: name the company (the suggestion) the first time
 			await _frames(1)
 			for tries in range(4):
 				var sl := c.content.find_children("*", "HSlider", true, false)
@@ -1309,7 +1323,8 @@ func test_playthrough_from_the_menu_both_modes() -> void:
 				await _frames(1)
 			runner.check(not Contracts.bids.is_empty(), "%s: bids placed from the contract board" % mode)
 			world.close_modal()
-		Clock.skip(240.0)
+		# Polish 5 §10: bids are answered at the award, 9:01 p.m. (was: within a few hours).
+		Clock.skip(Contracts.next_9pm(Clock.minutes) + Contracts.AWARD_DELAY_MIN + 1.0 - Clock.minutes)
 		for ct in Contracts.active:
 			if not ct.get("tutorial", false):
 				won = true
@@ -1338,6 +1353,9 @@ func test_playthrough_from_the_menu_both_modes() -> void:
 		await _press_event("interact")
 		await _frames(2)
 		runner.check(world.modal_kind == "sleep", "%s: the sleep prompt" % mode)
+		# A real click arrives outside the physics step; unpausing between the physics server's query
+		# flush and its step makes the engine print `p_elem->_root` (HANDOFF §13 item 12).
+		await _tree().process_frame
 		_press_btn(world.modal, "Sleep until 7:00 a.m.")
 		guard = 0
 		while (not Saves.has_save(mode) or Game.dirty_since_save) and guard < 600:

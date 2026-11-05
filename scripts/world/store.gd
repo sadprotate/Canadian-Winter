@@ -2,7 +2,10 @@ class_name Store
 extends Node3D
 ## Northern Supply Co. (Part 16.4): no interior, no clerk. Every ready order physically appears in
 ## the parking lot: tools/crates on the pickup pad, walk-behind machines beside it, vehicles in bays.
-## Plow installation: drive your pickup into the lot while a plow order is ready.
+## Polish 5 §13: equipment (the coat, snowshoes, the heated pad) is a crate on the pad like an
+## upgrade; collecting it puts it on (or the pad in your arms).
+## Plow installation: drive your pickup into the lot while a plow order is ready (polish 5 §13: the
+## pickup's own upgrade, ItemUpgrades.PLOW_ID).
 
 var world: Node
 
@@ -16,6 +19,7 @@ func _pad_slot(i: int) -> Vector3:
 	var pad := Layout.store_pad
 	var cols := 6
 	var x := pad.position.x + 1.1 + (i % cols) * 2.2
+	@warning_ignore("integer_division")
 	var z := pad.position.y + 1.2 + (i / cols) * 1.6
 	return Vector3(x, 0, z)
 
@@ -79,8 +83,8 @@ func spawn_ready() -> void:
 				Game.vehicles.append(e3)
 				world.spawn_vehicle_node(e3)
 				Game.add_equipment_stat(Catalog.item_name(StringName(item)))
-			"upgrade", "utility":
-				if item == "pickup_plow":
+			"upgrade", "utility", "equipment":
+				if item == String(ItemUpgrades.PLOW_ID):
 					o["status"] = "spawned"
 					continue
 				var slot3 := _free_slot()
@@ -94,13 +98,14 @@ func spawn_ready() -> void:
 func _process(_delta: float) -> void:
 	var lot: Rect2 = (Layout.big_areas[1]["rect"] as Rect2).grow(2.0)
 	for o in Economy.orders:
-		if o["item"] == "pickup_plow" and o["status"] == "spawned":
+		if o["item"] == String(ItemUpgrades.PLOW_ID) and o["status"] == "spawned":
 			for v in world.vehicle_nodes():
 				var veh: Vehicle = v
 				if veh.data.kind == VehicleData.Kind.PICKUP and lot.has_point(Vector2(veh.global_position.x, veh.global_position.z)):
 					world.install_plow(veh)
 					Economy.mark_order(int(o["id"]), "collected")
-					Game.grant_upgrade(&"pickup_plow")
+					Game.grant_upgrade(ItemUpgrades.PLOW_ID)
 					Game.add_equipment_stat("Pickup front plow")
-					Notify.push("The store crew bolted a front plow onto your pickup! Left-click to drop the blade, Z/C to angle it.", Notify.GOOD)
+					Notify.push("The store crew bolted a front plow onto your pickup! %s to drop the blade, %s/%s to angle it." % [Settings.action_label("veh_tool"),
+						Settings.action_label("veh_aim_left"), Settings.action_label("veh_aim_right")], Notify.GOOD)
 					break

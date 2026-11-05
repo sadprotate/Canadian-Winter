@@ -169,6 +169,7 @@ func interact(p: Player) -> void:
 
 
 func enter_vehicle(p: Player) -> void:
+	Clock.drop_to_1x("vehicle")   # polish 5 §9: no fast-forward in a vehicle
 	driver = p
 	occupied = true
 	p.state = "vehicle"
@@ -181,7 +182,7 @@ func enter_vehicle(p: Player) -> void:
 	_set_camera()
 	# Snowed in? Say so straight away rather than letting the wheels spin in silence.
 	var wd := wheel_snow_depth()
-	if wd > data.clearance * 1.15:
+	if wd > stuck_depth():
 		Notify.push("The %s is snowed in: about %d cm of snow around the wheels. It won't move until you dig around them and clear a path." % [data.display_name.to_lower(), int(round(wd * 100.0))], Notify.WARN)
 	AudioMgr.play_at("engine_start", global_position, -3.0)
 	AudioMgr.play_at("door_close", global_position, -8.0, 1.3)
@@ -253,7 +254,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_set_camera()
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("veh_tool"):
-		_toggle_tool()
+		if Settings.accept_press("veh_tool"):   # polish 5 §2: capped per second
+			_toggle_tool()
 	elif event.is_action_pressed("veh_horn"):
 		AudioMgr.play_at("horn", global_position, 0.0)
 	elif event.is_action_pressed("veh_radio"):
@@ -308,12 +310,16 @@ func _physics_process(delta: float) -> void:
 		if Input.is_action_pressed("veh_aim_right"):
 			_aim(1.0, delta)
 	# Resistance: deep snow slows and eventually stops the vehicle.
+	# Polish 5 §12: the plain pickup reads its snow handling from the balance data.
+	var pickup := data.kind == VehicleData.Kind.PICKUP
+	var bal: BalanceData = Catalog.balance
 	var max_fwd := data.max_speed
-	var sink := d_wheels / c
+	var sink := d_wheels / (bal.pickup_drag_depth if pickup else c)
 	var drag := 1.0 / (1.0 + sink * sink * 2.5)
-	stuck = d_wheels > c * 1.15
+	var stuck_at := stuck_depth()
+	stuck = d_wheels > stuck_at
 	if stuck:
-		drag *= clampf(1.0 - (d_wheels - c * 1.15) / (c * 0.5), 0.0, 1.0) * 0.25
+		drag *= clampf(1.0 - (d_wheels - stuck_at) / (c * 0.5), 0.0, 1.0) * 0.25
 	max_fwd *= drag
 	var accel := data.acceleration * lerpf(0.35, 1.0, data.traction) * (1.0 / (1.0 + sink))
 	var work_drag := 1.0
@@ -322,10 +328,11 @@ func _physics_process(delta: float) -> void:
 		var bp: Vector3 = global_transform * Vector3(0, 0, info["blade_z"])
 		var face := fwd.rotated(deg_to_rad(blade_angle))
 		var adv := maxf(travel.dot(fwd), 0.0)
-		var hw := data.blade_width * 0.5 * Game.stat_value(&"vehicle_blade_width", 1.0)
-		var r := Snow.blade_push(Vector2(bp.x, bp.z), face, hw, adv + 0.1, data.blade_floor, true, 0.6)
+		var hw := data.blade_width * 0.5 * ItemUpgrades.mult(data.id, &"vehicle_blade_width")
+		# Polish 5 §3 (Decision 12): no road rule — a plow carries yard snow over the curb.
+		var r := Snow.blade_push(Vector2(bp.x, bp.z), face, hw, adv + 0.1, data.blade_floor, false, 0.6)
 		player_guard(Vector2(bp.x, bp.z), fwd, hw + 0.2)
-		var ratio: float = r["berm"] / (data.blade_capacity * Game.stat_value(&"vehicle_clear_speed", 1.0))
+		var ratio: float = r["berm"] / (data.blade_capacity * ItemUpgrades.mult(data.id, &"vehicle_clear_speed"))
 		work_drag = 1.0 / (1.0 + ratio * ratio)
 		Snow.stat_player_moved += r["moved"]
 		Game.stats_add("snow_moved", r["moved"])
@@ -340,21 +347,36 @@ func _physics_process(delta: float) -> void:
 		work_drag = 0.55
 	else:
 		work_snd.volume_db = move_toward(work_snd.volume_db, -80.0, delta * 60.0)
+		if pickup and speed > 0.05 and ahead > bal.pickup_shove_floor:
+			_shove(fwd, travel)
+	# Polish 5 §12: how hard the snow ahead pushes back on the pickup — its depth above the shove
+	# floor as a fraction of the bog depth's (1 = as hard as the engine pulls).
+	var shove_x := 0.0
+	if pickup:
+		shove_x = maxf(ahead - bal.pickup_shove_floor, 0.0) / maxf(bal.pickup_bog_depth - bal.pickup_shove_floor, 0.01)
 	if blade_node:
 		blade_node.rotation.y = lerp_angle(blade_node.rotation.y, -deg_to_rad(blade_angle), delta * 6.0)
 		blade_node.position.y = lerpf(blade_node.position.y, 0.0 if tool_on else 0.18, delta * 6.0)
 	max_fwd *= work_drag
 	# Snowbanks are solid for vehicles without a plow down.
-	var bank_block := ahead > c * 1.9 and throttle > 0.0
+	var bank_block := ahead > (bal.pickup_bank_max if pickup else c * 1.9) and throttle > 0.0
+	# Polish 5 §12: the pickup in snow deeper than the bog depth only goes on while it has speed.
+	var bogged := pickup and not bank_block and shove_x >= 1.0 and throttle > 0.0 and speed < bal.pickup_shove_min_speed
 	# Say exactly what's in the way (polish 2 §4) instead of just not moving.
 	blocked_reason = ""
 	if stuck:
 		blocked_reason = "Stuck: %d cm of snow under the wheels — this %s only clears about %d cm. Dig around the wheels and clear a path." % [
-			int(round(d_wheels * 100.0)), data.display_name.to_lower(), int(round(c * 115.0))]
+			int(round(d_wheels * 100.0)), data.display_name.to_lower(), int(round(bal.pickup_stuck_depth * 100.0)) if pickup else int(round(c * 115.0))]
+	elif bank_block and pickup:
+		blocked_reason = "Snowbank ahead: %d cm deep — too much to drive through (about %d cm at most, with a run-up). Clear it or back up." % [
+			int(round(ahead * 100.0)), int(round(bal.pickup_bank_max * 100.0))]
 	elif bank_block:
 		blocked_reason = "Snowbank ahead: %d cm deep — too much to drive through (about %d cm at most). Clear it or back up." % [
 			int(round(ahead * 100.0)), int(round(c * 190.0))]
-	if bank_block:
+	elif bogged:
+		blocked_reason = "Snowbank ahead: %d cm deep — too much to push from a standstill (about %d cm). Back up with %s and take a run at it, or clear it." % [
+			int(round(ahead * 100.0)), int(round(bal.pickup_bog_depth * 100.0)), Settings.action_label("veh_reverse")]
+	if bank_block or bogged:
 		max_fwd = 0.0
 		if _warn_timer <= 0.0:
 			_warn_timer = 2.0
@@ -371,8 +393,12 @@ func _physics_process(delta: float) -> void:
 		speed = move_toward(speed, 0.0, data.brake * delta)
 	else:
 		speed = move_toward(speed, target, (accel if absf(target) > absf(speed) else data.brake * 0.4) * delta)
-	if bank_block and speed > 0.0:
+	if (bank_block or bogged) and speed > 0.0:
 		speed = 0.0
+	# Polish 5 §12: the snow the pickup shoves pushes back — as hard as the engine pulls at the bog
+	# depth, plus a part that grows with the square of the speed.
+	if shove_x > 0.0 and speed > 0.0:
+		speed = maxf(speed - (accel * shove_x + bal.pickup_shove_drag * shove_x * speed * speed) * delta, 0.0)
 	steer = move_toward(steer, steer_in, delta * 2.5)
 	var turn := steer * data.turn_rate * clampf(absf(speed) / 3.0, 0.0, 1.0) * signf(speed) * lerpf(1.0, 0.55, clampf(absf(speed) / data.max_speed, 0, 1))
 	rotate_y(turn * delta)
@@ -392,6 +418,7 @@ func _physics_process(delta: float) -> void:
 		engine_snd.volume_db = -4.0
 		engine_snd.pitch_scale = data.engine_pitch * (0.75 + 0.7 * clampf(absf(speed) / data.max_speed, 0, 1) + (0.15 if stuck and absf(throttle) > 0 else 0.0))
 		tire_snd.volume_db = lerpf(-40.0, -6.0, clampf(absf(speed) / 6.0 * clampf(d_wheels * 8.0, 0.2, 1.0), 0, 1))
+		# Polish 5 §13 → §14: a cab bought for a vehicle without one is ItemUpgrades.has_heated_cab(id).
 		heat = minf(1.0, heat + delta / Catalog.balance.vehicle_heat_warmup_s) if data.heated_cabin else 0.0
 		Survival.vehicle_heat = heat
 		Game.player_pos = global_position
@@ -404,6 +431,49 @@ func _physics_process(delta: float) -> void:
 	else:
 		heat = maxf(0.0, heat - delta / 60.0)
 	_refresh_snow_visual(false)
+
+
+## Polish 5 §12: the pickup's front shoves the snow above `pickup_shove_floor` ahead and out to
+## both sides — the existing blade op, once for each half of the truck's width: a fixed V with its
+## point at the middle of the bumper and its arms SHOVE_SPLAY_DEG back to the front corners, each
+## arm casting its snow SHOVE_CAST m along its face, ahead of the truck and clear of its path. No
+## clean lane (the floor stays), no pavement, no angling. Volume is conserved (blade_push moves
+## snow).
+const SHOVE_SPLAY_DEG := 45.0
+const SHOVE_CAST := 1.5
+
+func _shove(fwd: Vector2, travel: Vector2) -> void:
+	var bp: Vector3 = global_transform * Vector3(0, 0, -data.length * 0.5)
+	var front := Vector2(bp.x, bp.z)
+	var right := Vector2(-fwd.y, fwd.x)
+	var ang := deg_to_rad(SHOVE_SPLAY_DEG)
+	var hw := data.width * 0.25 / cos(ang)   # each arm spans half the truck's width
+	var adv := maxf(travel.dot(fwd), 0.0)
+	var moved := 0.0
+	for s in [-1.0, 1.0]:
+		var mid: Vector2 = front - fwd * (data.width * 0.25 * tan(ang)) + right * (data.width * 0.25 * s)
+		var r := Snow.blade_push(mid, fwd.rotated(ang * s), hw, adv + 0.1, Catalog.balance.pickup_shove_floor, false, SHOVE_CAST)
+		moved += float(r["moved"])
+	# The truck's body holds back the snow that slumps around it, as the strip behind a plow's
+	# blade does (player_guard).
+	var tail := front - fwd * data.length
+	var side := right * (data.width * 0.5 + 0.1)
+	var mn := (front + side).min(front - side).min(tail + side).min(tail - side)
+	var mx := (front + side).max(front - side).max(tail + side).max(tail - side)
+	Snow.set_blade_guard(Rect2(mn, mx - mn))
+	Snow.stat_player_moved += moved
+	Game.stats_add("snow_moved", moved)
+	if moved > 0.002 and randf() < 0.4:
+		var s2 := -1.0 if randf() < 0.5 else 1.0
+		var out := fwd.rotated(ang * 2.0 * s2)
+		SnowFX.burst(Vector3(front.x, 0.5, front.y) + Vector3(right.x, 0, right.y) * (data.width * 0.45 * s2), 8, 1.0, Vector3(out.x, 0.9, out.y).normalized())
+
+
+## Polish 5 §12: the average snow depth under the wheels (m) at which this vehicle is stuck.
+func stuck_depth() -> float:
+	if data.kind == VehicleData.Kind.PICKUP:
+		return Catalog.balance.pickup_stuck_depth
+	return data.clearance * 1.15
 
 
 func player_guard(center: Vector2, fwd: Vector2, hw: float) -> void:
@@ -434,7 +504,7 @@ func _blow(delta: float, fwd: Vector2) -> void:
 	_land_timer -= delta
 	if _land_timer <= 0.0:
 		_land_timer = 0.15
-		_landing = Throw.compute(get_world_3d(), cp, cd, data.blower_throw * Game.stat_value(&"vehicle_blower", 1.0), 40.0, [get_rid()])
+		_landing = Throw.compute(get_world_3d(), cp, cd, data.blower_throw * ItemUpgrades.mult(data.id, &"vehicle_blower"), 40.0, [get_rid()])
 	work_snd.volume_db = move_toward(work_snd.volume_db, -3.0, delta * 40.0)
 	if stream_fx:
 		stream_fx.global_position = cp
@@ -446,11 +516,12 @@ func _blow(delta: float, fwd: Vector2) -> void:
 			stream_fx.emitting = false
 		if _warn_timer <= 0.0:
 			_warn_timer = 2.0
-			set_status("Chute aimed at the street — turn it (Z/C)!")
-			Notify.push("The blower won't discharge onto the street. Turn the chute with Z / C.", Notify.WARN)
+			var keys := "%s / %s" % [Settings.action_label("veh_aim_left"), Settings.action_label("veh_aim_right")]
+			set_status("Nowhere for the snow to land — turn the chute (%s)!" % keys)
+			Notify.push("The blower has nowhere to put the snow. Turn the chute with %s." % keys, Notify.WARN)
 		return
 	var fp := Vector2(global_position.x, global_position.z) + fwd * absf(float(info["blade_z"]))
-	var r := Snow.intake(fp, fwd, data.blower_width, 0.6, data.blower_rate * Game.stat_value(&"vehicle_blower", 1.0) * delta, 0.01)
+	var r := Snow.intake(fp, fwd, data.blower_width, 0.6, data.blower_rate * ItemUpgrades.mult(data.id, &"vehicle_blower") * delta, 0.01)
 	_stream_acc += r["volume"]
 	Snow.stat_player_moved += r["volume"]
 	Game.stats_add("snow_moved", r["volume"])
@@ -475,11 +546,8 @@ func _dump() -> void:
 		AudioMgr.play_at("snow_land_big", global_position, 0.0, 0.7)
 		return
 	var back := p + Vector2(global_transform.basis.z.x, global_transform.basis.z.z).normalized() * (data.length * 0.5 + 1.2)
-	if Snow.is_road(back.x, back.y):
-		set_status("You can't dump snow on the street. Use the snow dump lot.")
-		Notify.push("You can't dump snow on the street. Drive to the Municipal Snow Dump.", Notify.WARN)
-		return
-	Snow.deposit(back, bed_load, 1.6, false)
+	# Polish 5 §3 (Decision 12): no road rule — the load may be dumped on the street too.
+	Snow.deposit(back, bed_load, 1.6, true)
 	bed_load = 0.0
 	AudioMgr.play_at("snow_land_big", global_position, 0.0, 0.7)
 

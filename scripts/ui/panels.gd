@@ -17,6 +17,31 @@ static func _dim(parent: Control, alpha := 0.45) -> Control:
 	return root
 
 
+## Polish 5 §4: the framed photo by the front door, large on screen in its mat and frame, no text.
+## Interact or Esc closes it (game_root handles the keys).
+static func photo(parent: Control, tex: Texture2D) -> Control:
+	var root := _dim(parent, 0.7)
+	var center := CenterContainer.new()
+	UIKit.full_rect(center)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(center)
+	var frame := PanelContainer.new()
+	frame.name = "Photo"
+	var st := UIKit.sb(Color(0.93, 0.91, 0.86), 3, 12, Color(0.42, 0.27, 0.16), 30)
+	st.content_margin_top = 30
+	st.content_margin_bottom = 30
+	frame.add_theme_stylebox_override("panel", st)
+	center.add_child(frame)
+	var pr := TextureRect.new()
+	pr.name = "Print"
+	pr.texture = tex
+	pr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	pr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	pr.custom_minimum_size = Vector2(1200, 800)
+	frame.add_child(pr)
+	return root
+
+
 static func letter(parent: Control, title: String, body: String, on_close: Callable) -> Control:
 	var root := _dim(parent, 0.4)
 	var p := UIKit.center_panel(root, Vector2(820, 760))
@@ -127,11 +152,11 @@ static func sleep(parent: Control, on_pick: Callable, on_cancel: Callable) -> Co
 
 ## Polish 3 §3: the TV weather fills a 16:9 screen (bezel around it) with an even margin, centred
 ## both ways, in large type: current conditions biggest, then the 3-day forecast (the same
-## forecast-with-error entries as before), the latest alert and the grader line.
+## forecast-with-error entries as before), the latest alert and the city crews' line.
 const TV_SCREEN := Vector2(1280, 720)
 
 
-static func tv(parent: Control, on_close: Callable) -> Control:
+static func tv(parent: Control, on_close: Callable, jingle := true) -> Control:
 	var root := _dim(parent, 0.55)
 	var center := CenterContainer.new()
 	UIKit.full_rect(center)
@@ -185,28 +210,38 @@ static func tv(parent: Control, on_close: Callable) -> Control:
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	v.add_child(row)
 	for e in Weather.forecast(3):
-		var card := UIKit.panel(UIKit.sb(Color(1, 1, 1, 0.07), 10, 0, Color.TRANSPARENT, 18))
+		# Polish 5 §8: one line more per card (when the snow starts and ends) in the same screen —
+		# a smaller icon (88 → 72 px) and tighter spacing inside the card.
+		var csb := UIKit.sb(Color(1, 1, 1, 0.07), 10, 0, Color.TRANSPARENT, 18)
+		csb.content_margin_top = 8
+		csb.content_margin_bottom = 8
+		var card := UIKit.panel(csb)
 		card.custom_minimum_size = Vector2(368, 0)
 		row.add_child(card)
-		var cv := UIKit.vbox(6)
+		var cv := UIKit.vbox(2)
 		cv.alignment = BoxContainer.ALIGNMENT_CENTER
 		card.add_child(cv)
-		cv.add_child(UIKit.label(str(e["date"]), 28, gold, HORIZONTAL_ALIGNMENT_CENTER))
+		# Polish 5 §8: the card's words come from Weather.card_text (the computer shows the same):
+		# the strength, the snow as a range, when it should start and end, the high and low.
+		var ct := Weather.card_text(e)
+		cv.add_child(UIKit.label(ct["date"], 28, gold, HORIZONTAL_ALIGNMENT_CENTER))
 		var ic := CenterContainer.new()
-		ic.add_child(Icons.weather(e["cond"], 88))
+		ic.add_child(Icons.weather(e["cond"], 72))
 		cv.add_child(ic)
-		cv.add_child(UIKit.label(Weather.NAMES[e["cond"]], 32, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER))
-		cv.add_child(UIKit.label("High %d°  ·  Low %d°" % [int(e["hi"]), int(e["lo"])], 26, Color(0.88, 0.92, 1.0), HORIZONTAL_ALIGNMENT_CENTER))
-		var snow := Weather.snow_range_text(e)
-		if snow != "":
-			cv.add_child(UIKit.label("Snow " + snow, 24, Color(0.75, 0.9, 1.0), HORIZONTAL_ALIGNMENT_CENTER))
+		cv.add_child(UIKit.label(ct["title"], 32, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER))
+		if ct["amount"] != "":
+			cv.add_child(UIKit.label(ct["amount"], 26, Color(0.75, 0.9, 1.0), HORIZONTAL_ALIGNMENT_CENTER))
+		if ct["when"] != "":
+			cv.add_child(UIKit.label(ct["when"], 22, Color(0.75, 0.9, 1.0), HORIZONTAL_ALIGNMENT_CENTER))
+		cv.add_child(UIKit.label(ct["temps"], 24, Color(0.88, 0.92, 1.0), HORIZONTAL_ALIGNMENT_CENTER))
 	if not Weather.alerts.is_empty():
 		var a: Dictionary = Weather.alerts[Weather.alerts.size() - 1]
 		var al := UIKit.label("Latest alert: " + str(a["text"]), 24, UIKit.WARN, HORIZONTAL_ALIGNMENT_CENTER)
 		al.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		al.custom_minimum_size.x = 1100
 		v.add_child(al)
-	var grader := UIKit.label("City grader next expected: " + Municipal.next_pass_text(), 26, Color(0.85, 0.9, 1.0), HORIZONTAL_ALIGNMENT_CENTER)
+	# Polish 5 §11: the next crew day from the schedule ("City crews: Mon 7 a.m.").
+	var grader := UIKit.label(Municipal.crew_line(), 26, Color(0.85, 0.9, 1.0), HORIZONTAL_ALIGNMENT_CENTER)
 	v.add_child(grader)
 	# Polish 4 §1: the forecast is revised every game hour. One small line under the last one, in
 	# the screen's bottom margin, so the TV's layout and size stay as they were.
@@ -225,7 +260,8 @@ static func tv(parent: Control, on_close: Callable) -> Control:
 		on_close.call(), 22, 240)
 	b.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	col.add_child(b)
-	AudioMgr.play("radio_jingle", -6.0)
+	if jingle:
+		AudioMgr.play("radio_jingle", -6.0)
 	return root
 
 
@@ -248,15 +284,26 @@ static func inventory(parent: Control) -> Control:
 		var sel := " ◀" if i == Game.selected else ""
 		h.add_child(UIKit.label("%d.  %s%s" % [i + 1, Catalog.tool(StringName(id)).display_name if id != "" else "(empty — bare hands)", sel], 21, Color.WHITE if id != "" else UIKit.MUTED))
 	if Game.carried != "":
-		v.add_child(UIKit.label("Carrying: %s (Q to drop)" % Catalog.item_name(StringName(Game.carried)), 20, UIKit.WARN))
-	v.add_child(UIKit.label("Utility: %d heating pouch%s  (G to use)" % [Game.heat_pouches, "" if Game.heat_pouches == 1 else "es"], 20, UIKit.MUTED))
+		v.add_child(UIKit.label("Carrying: %s (%s to drop)" % [Catalog.item_name(StringName(Game.carried)), Settings.action_label("drop")], 20, UIKit.WARN))
+	v.add_child(UIKit.label("Utility: %d heating pouch%s  (%s to use)" % [Game.heat_pouches, "" if Game.heat_pouches == 1 else "es", Settings.action_label("use_pouch")], 20, UIKit.MUTED))
 	v.add_child(UIKit.label("Keys: %s" % ("pickup truck keys" if Game.flags.get("truck_keys", false) else "none found"), 20, UIKit.MUTED))
+	# Polish 5 §13: the equipment you have (the snowshoes come off and go on here, with Interact).
+	for line in Equipment.overview_lines():
+		v.add_child(UIKit.label(line, 20, Color(0.85, 0.92, 1.0)))
+	# Polish 5 §13: the upgrades of the tool in your hands (each item has its own), and clothing.
+	var cur := Game.current_tool()
 	var ups := []
+	var own := ItemUpgrades.summary(cur.id)
+	if own != "":
+		ups.append(own)
 	for id2 in Game.upgrades.keys():
 		var u: UpgradeData = Catalog.upgrade(StringName(id2))
-		if u and u.category in [UpgradeData.Category.TOOL, UpgradeData.Category.MACHINE, UpgradeData.Category.CLOTHING]:
+		if u and u.item == &"" and u.category == UpgradeData.Category.CLOTHING:
 			ups.append(u.display_name)
-	v.add_child(UIKit.label("Tool upgrades: %s" % (", ".join(ups) if not ups.is_empty() else "none"), 20, UIKit.MUTED))
+	var ul := UIKit.label("Upgrades — %s: %s" % [cur.display_name, ", ".join(ups) if not ups.is_empty() else "none"], 20, UIKit.MUTED)
+	ul.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	ul.custom_minimum_size.x = 700
+	v.add_child(ul)
 	v.add_child(UIKit.spacer(4))
 	var ctl := UIKit.label(ToolController.controls_hint(Game.current_tool()), 19, Color(0.85, 0.92, 1.0))
 	ctl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -346,7 +393,8 @@ static func summary(parent: Control, on_next: Callable) -> Control:
 		"Snow moved: %d m³   ·   Snow hauled to the dump: %d m³" % [int(st.get("snow_moved", 0.0)), int(st.get("snow_hauled", 0.0))],
 		"Total snowfall this winter: %d cm" % int(st.get("snowfall_cm", 0.0)),
 		"Missed deadlines: %d   ·   Hydro bills paid: %d" % [int(st.get("missed_deadlines", 0)), int(st.get("bills_paid", 0))],
-		"Reputation: %d / 100   ·   Balance: %s" % [int(Game.reputation), UIKit.money(Game.money)],
+		("Reputation: %d / 100   ·   Balance: %s" % [int(Game.reputation), UIKit.money(Game.money)]) if Game.company_name == "" else
+			("%s — reputation: %d / 100   ·   Balance: %s" % [Game.company_name, int(Game.reputation), UIKit.money(Game.money)]),
 		"Equipment acquired: %s" % (", ".join(st.get("equipment", [])) if not (st.get("equipment", []) as Array).is_empty() else "none"),
 	]
 	for l in lines:
@@ -358,7 +406,7 @@ static func summary(parent: Control, on_next: Callable) -> Control:
 	v.add_child(UIKit.label("Renew recurring contracts for next winter:", 22, UIKit.ACCENT))
 	var renew := {}
 	for c in Contracts.active:
-		if c["type"] != "one_time" and c["status"] != "expired":
+		if c["type"] != "one_time" and c["status"] != "expired" and c["status"] != "lost":
 			var cb := CheckBox.new()
 			cb.text = "%s — %s / visit" % [c["address"], UIKit.money(c["pay"])]
 			cb.button_pressed = true

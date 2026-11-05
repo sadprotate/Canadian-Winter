@@ -79,6 +79,11 @@ func restore_power() -> void:
 	Game.dirty_since_save = true
 
 
+## Polish 5 §9: a warmth rate per game hour as the player feels it — per real minute at 1×.
+static func per_real_minute(rate_per_game_hour: float) -> float:
+	return rate_per_game_hour * Clock.GAME_MIN_PER_REAL_SEC
+
+
 ## Cold exposure curve: warmth-% lost per game hour at a given (wind-chill) temperature.
 static func exposure(feels_c: float) -> float:
 	var pts: PackedVector2Array = Catalog.balance.exposure_curve
@@ -105,7 +110,8 @@ func outdoor_loss_per_hour() -> float:
 		Weather.C.HEAVY: mult = b.heavy_cold_mult
 		Weather.C.BLIZZARD: mult = b.blizzard_cold_mult
 	var loss := exposure(wc) * mult
-	loss *= Game.stat_value(&"cold_protection", 1.0)
+	# Polish 5 §13: the insulated coat (it replaces the old jacket and parka upgrades).
+	loss *= Equipment.cold_mult()
 	if Clock.minutes < pouch_until:
 		loss *= 0.6
 	return loss
@@ -118,7 +124,7 @@ func compute_rate() -> float:
 	if in_neighbor_house:
 		rate = gain
 	elif in_player_house:
-		var sheltered := exposure(Weather.temperature()) * 0.65 * Game.stat_value(&"cold_protection", 1.0)
+		var sheltered := exposure(Weather.temperature()) * 0.65 * Equipment.cold_mult()
 		var g := gain * Game.stat_value(&"house_warm", 1.0)
 		if near_fire and power_on:
 			g *= 1.4
@@ -128,7 +134,7 @@ func compute_rate() -> float:
 	else:
 		rate = -outdoor_loss_per_hour()
 	if Clock.minutes < pouch_until:
-		rate += 20.0
+		rate += b.pouch_warmth_per_hour   # polish 5 §9: was a fixed +20 (per game hour)
 	return rate
 
 
@@ -152,6 +158,7 @@ func on_advance(step_min: float) -> void:
 		_state = s
 		state_changed.emit(s)
 		if s > prev and s >= St.COLD:
+			Clock.drop_to_1x("cold")   # polish 5 §9: a cold warning stops fast-forward
 			Notify.push("You are %s." % STATE_NAMES[s].to_lower(), Notify.WARN if s < St.DANGER else Notify.BAD)
 	if Clock.skipping and warmth < 30.0:
 		Clock.request_interrupt("cold")

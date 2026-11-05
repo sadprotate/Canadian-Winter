@@ -1,0 +1,70 @@
+name: CI
+
+# Runs on every pull request and every push to main: imports the project with
+# Godot 4.7.2 (headless), runs the parse check, then the full automated test
+# suite (tests/test_runner.tscn). A red check means something that used to work
+# is broken; the logs are attached to the run.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: 4.7.2
+
+jobs:
+  test:
+    name: Godot import, parse check and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Godot
+        id: cache-godot
+        uses: actions/cache@v4
+        with:
+          path: ~/godot
+          key: godot-${{ env.GODOT_VERSION }}-linux-x86_64
+
+      - name: Download Godot ${{ env.GODOT_VERSION }}
+        if: steps.cache-godot.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/godot
+          curl -sSL -o /tmp/godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q /tmp/godot.zip -d ~/godot
+          mv ~/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64 ~/godot/godot
+
+      - name: Put Godot on the path
+        run: |
+          chmod +x ~/godot/godot
+          echo "$HOME/godot" >> "$GITHUB_PATH"
+
+      - name: Import the project (clean)
+        run: |
+          mkdir -p logs
+          godot --headless --path . --editor --quit 2>&1 | tee logs/import.log
+          # A clean import has no error lines.
+          if grep -E "ERROR|SCRIPT ERROR|Failed loading resource|Cannot open file" logs/import.log; then
+            echo "::error::The import printed errors (see above)."
+            exit 1
+          fi
+
+      - name: Parse check
+        run: godot --headless --path . res://tests/parse_all.tscn 2>&1 | tee logs/parse_all.log; exit ${PIPESTATUS[0]}
+
+      - name: Test suite
+        run: godot --headless --fixed-fps 60 --path . res://tests/test_runner.tscn 2>&1 | tee logs/tests.log; exit ${PIPESTATUS[0]}
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: godot-logs
+          path: logs/

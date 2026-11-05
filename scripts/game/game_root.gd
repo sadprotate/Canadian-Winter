@@ -11,12 +11,15 @@ var weather_fx: WeatherFX
 var player: Player
 var neighbor: Neighbor
 var grader: GraderNPC
+var crew: SidewalkCrew          # polish 5 §11: the city's sidewalk crew, following the grader
 var store: Store
 var zone_markers: ZoneMarkers
 var box_outline: BoxOutline
 var quest_outline: BoxOutline
 var ui: CanvasLayer
 var hud: HUD
+var time_layer: CanvasLayer     # polish 5 §9: the fast-forward control, above the modals
+var speed_ctrl: SpeedControl
 var modal: Control = null
 var modal_kind := ""
 var fade: ColorRect
@@ -36,6 +39,7 @@ var _rack_node: Node3D
 var _roof_timer := 0.0
 var _roof_idx := 0
 var _veh_snow_last := 0.0
+var pad_node: HeatedPad = null    # polish 5 §13: the heated pad where it lies (refresh_pad)
 
 
 func _ready() -> void:
@@ -55,6 +59,7 @@ func _ready() -> void:
 	objects.name = "Objects"
 	add_child(objects)
 	_build_interiors()
+	_build_photo_look()
 	_set_snow_hide(true)
 	_build_doors()
 	_build_mailbox()
@@ -72,8 +77,15 @@ func _ready() -> void:
 	quest_outline.quest_fn = func() -> String: return "gerry_trail" if Game.stage() == Game.Stage.NEIGHBOR_TALKED else ""
 	add_child(quest_outline)
 	box_outline.skip_fn = quest_outline.quest_fn
+	# Polish 5 §10: a box of one of your jobs is outlined in money green, also while you work it; its
+	# persistent outline (ZoneMarkers) gives way to the work outline on the same box.
+	box_outline.job_fn = func(id: String) -> bool: return ZoneMarkers.is_job_box(id)
+	zone_markers.work_outline = box_outline
 	grader = GraderNPC.new()
 	add_child(grader)
+	crew = SidewalkCrew.new()
+	crew.grader = grader
+	add_child(crew)
 	Municipal.world_handles_passes = true
 	_spawn_player()
 	_spawn_objects()
@@ -92,15 +104,31 @@ func _ready() -> void:
 	# makes the engine log SelfList errors when it unpauses.
 	Clock.winter_ended.connect(_on_winter_end, CONNECT_DEFERRED)
 	Weather.alert_issued.connect(func(_t): pass)
+	Clock.hour_changed.connect(_on_hour_displays)
 	_on_power(Survival.power_on)
 	snow_renderer.build_all(player.global_position)
+	# Polish 5 §9: fast-forward runs the world's tick once more per extra clock substep; a world
+	# always starts at 1×.
+	Clock.world_tick = sim_tick
+	Clock.speed = 1
+	Clock.drop_reason = ""
 	Clock.running = true
 	Game.in_game = true
 	AudioMgr.set_menu_music(false)
 	AudioMgr.set_ambience_enabled(true)
 	_fade_in()
+	# Polish 5 §13: an old save's global upgrades were carried over to every item: one notification.
+	if ItemUpgrades.pending_note != "":
+		Notify.push(ItemUpgrades.pending_note, Notify.GOOD)
+		ItemUpgrades.pending_note = ""
+	if Equipment.pending_note != "":
+		Notify.push(Equipment.pending_note, Notify.GOOD)   # polish 5 §13: jacket and parka → the coat
+		Equipment.pending_note = ""
 	if Game.stage() == Game.Stage.START and Clock.day_index() == 0 and Clock.minutes < Clock.at(0, 8.0):
-		get_tree().create_timer(1.5).timeout.connect(func(): subtitle("December 1. The storm is over... and everything is buried.", 5.0))
+		_morning_line_due = true     # polish 5 §4: the door line waits for it
+		get_tree().create_timer(1.5).timeout.connect(func():
+			_morning_line_due = false
+			subtitle("December 1. The storm is over... and everything is buried.", 5.0))
 	if Clock.has_ended():
 		call_deferred("_on_winter_end")
 
@@ -108,6 +136,9 @@ func _ready() -> void:
 func _exit_tree() -> void:
 	_set_snow_hide(false)
 	Clock.running = false
+	Clock.speed = 1
+	if Clock.world_tick.is_valid() and Clock.world_tick.get_object() == self:
+		Clock.world_tick = Callable()
 	Game.in_game = false
 	Municipal.world_handles_passes = false
 	AudioMgr.stop_all_ambience()
@@ -127,6 +158,19 @@ func _build_interiors() -> void:
 	interior = InteriorBuilder.build_player(self, root, Layout.player_lot)
 	fireplace_pos = interior["fireplace_pos"]
 	neighbor_interior = InteriorBuilder.build_neighbor(root, Layout.neighbor_lot)
+
+
+## Polish 5 §4: "[E] Look at the photo" on the picture by the front door — the shovel in it is a
+## hint, too small to make out on the wall. The box lies flat over the frame, within 3.5 cm of the
+## wall, so nothing stands in front of the picture.
+func _build_photo_look() -> void:
+	var ph: FramedPhoto = interior.get("photo")
+	if ph == null:
+		return
+	var n := ph.global_transform.basis.z.normalized()
+	var sz := FramedPhoto.outer_size()
+	Interactable.make(self, ph.global_position + n * 0.0175, Vector3(sz.x, sz.y, 0.035),
+		func(_p): return "[E] Look at the photo", func(_p): open_photo(), atan2(n.x, n.z))
 
 
 ## No ground-snow mesh is drawn inside the two houses with interiors (see snow_ground.gdshader).
@@ -260,6 +304,23 @@ func _spawn_objects() -> void:
 		spawn_machine_node(m)
 	for v in Game.vehicles:
 		spawn_vehicle_node(v)
+	refresh_pad()
+
+
+## Polish 5 §13: the heated pad's node follows Game.equipment — there when it's down, gone when
+## it's in your arms (or not yours yet).
+func refresh_pad() -> void:
+	if pad_node != null and is_instance_valid(pad_node):
+		pad_node.queue_free()
+	pad_node = null
+	if not Equipment.pad_placed():
+		return
+	pad_node = HeatedPad.new()
+	pad_node.name = "HeatedPad"
+	var p := Equipment.pad_pos()
+	pad_node.position = Vector3(p.x, Snow.ground_at(p.x, p.z), p.z)
+	pad_node.rotation.y = Equipment.pad_yaw()
+	objects.add_child(pad_node)
 
 
 func spawn_item_node(e: Dictionary) -> ToolItem:
@@ -334,6 +395,8 @@ func _spawn_neighbor() -> void:
 
 ## The trail is done: Gerry comes down it to meet you by his mailbox (polish 3 §4).
 func _on_stage_changed(s: int) -> void:
+	if s == Game.Stage.TRAIL_DONE:
+		_end_talk_if("tip")    # polish 5 §4: the job is done, the snow tips with it
 	if s == Game.Stage.TRAIL_DONE and neighbor and is_instance_valid(neighbor):
 		neighbor.come_down()
 
@@ -367,6 +430,15 @@ func _build_ui() -> void:
 	UIKit.full_rect(fade)
 	fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ui.add_child(fade)
+	# Polish 5 §9: 1× / 2× / 10× beside the HUD clock, on a layer of its own so it can be clicked
+	# with the computer, the map or the TV open (it hides under the fade, dialogs and menus).
+	time_layer = CanvasLayer.new()
+	time_layer.layer = ui.layer + 1
+	add_child(time_layer)
+	speed_ctrl = SpeedControl.new()
+	speed_ctrl.world = self
+	speed_ctrl.hud = hud
+	time_layer.add_child(speed_ctrl)
 
 
 func _ui_root() -> Control:
@@ -374,6 +446,7 @@ func _ui_root() -> Control:
 
 
 func subtitle(text: String, seconds := 3.0) -> void:
+	_end_talk_if("thought")      # polish 5 §4: never the door line and another line at once
 	hud.subtitle(text, seconds)
 
 
@@ -391,6 +464,8 @@ func _fade_out(t := 0.8) -> Tween:
 
 
 func open_modal(c: Control, kind: String, pause := false) -> void:
+	if not (kind in FF_MODALS):
+		Clock.drop_to_1x("dialog")   # polish 5 §9: no fast-forward during a dialog or sleep
 	modal = c
 	modal_kind = kind
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -413,11 +488,25 @@ func close_modal() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if _dead:
 		return
+	if Game.typing():
+		return   # polish 5 §7: while a text field has the focus, no game action fires
+	if event.is_action_pressed("fast_forward") and player.state != "vehicle":
+		# Polish 5 §9: the fast-forward key cycles 1× → 2× → 10× → 1× (on foot, indoors and at the
+		# computer; in a vehicle the same key is its radio).
+		get_viewport().set_input_as_handled()
+		if Settings.accept_press("fast_forward") and not Clock.cycle_speed() and speed_ctrl:
+			speed_ctrl.refused()
+		return
 	if is_gerry_talking() and modal == null and event.is_action_pressed("interact") and (player.focus == null or player.focus == neighbor):
 		# Interact moves Gerry on to his next line (unless you're looking at something else to use,
 		# like his door).
 		get_viewport().set_input_as_handled()
 		_talk_next()
+		return
+	if modal_kind == "photo" and event.is_action_pressed("interact"):
+		# Polish 5 §4: Interact (or Esc, below) puts the photo down again.
+		get_viewport().set_input_as_handled()
+		close_modal()
 		return
 	if event.is_action_pressed("debug") and Settings.debug_enabled():
 		if modal_kind == "debug":
@@ -434,7 +523,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		if modal_kind == "pause":
 			close_modal()
-		elif modal_kind in ["computer", "map", "tv", "debug", "letter"]:
+		elif modal_kind in ["computer", "map", "tv", "debug", "letter", "photo"]:
 			close_modal()
 		elif modal == null:
 			_open_pause()
@@ -442,7 +531,15 @@ func _unhandled_input(event: InputEvent) -> void:
 	if modal != null:
 		return
 	if event.is_action_pressed("interact"):
-		player.try_interact()
+		if Settings.accept_press("interact"):   # polish 5 §2: capped per second
+			# Polish 5 §13: with the Tab overview up, Interact takes the snowshoes off or puts them on.
+			if inventory_panel != null and Equipment.has(Equipment.SHOES) and player.state == "foot":
+				Equipment.toggle_snowshoes()
+				AudioMgr.play("paper", -10.0)
+				inventory_panel.queue_free()
+				inventory_panel = Panels.inventory(hud)
+			else:
+				player.try_interact()
 	elif event.is_action_pressed("camera_toggle") and player.state != "vehicle":
 		player.set_third_person(not player.third_person)
 	elif event.is_action_pressed("map"):
@@ -466,7 +563,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _process(delta: float) -> void:
 	# Tab overview (hold).
-	var want_inv := Input.is_action_pressed("inventory") and modal == null
+	var want_inv := Input.is_action_pressed("inventory") and modal == null and not Game.typing()
 	if want_inv and inventory_panel == null:
 		inventory_panel = Panels.inventory(hud)
 	elif not want_inv and inventory_panel != null:
@@ -485,16 +582,7 @@ func _process(delta: float) -> void:
 	if not roofs.is_empty():
 		_roof_idx = (_roof_idx + 1) % roofs.size()
 		(roofs[_roof_idx] as RoofSnow).refresh()
-	_roof_timer -= delta
-	if _roof_timer <= 0.0:
-		_roof_timer = 1.0
-		# Snow accumulates on parked vehicles.
-		var fall := Snow.fall_total - _veh_snow_last
-		if fall > 0.0:
-			for v in vehicle_nodes():
-				(v as Vehicle).add_snowfall(fall)
-		_veh_snow_last = Snow.fall_total
-		RenderingServer.global_shader_parameter_set("snow_cover", clampf(0.45 + Snow.roof_depth * 0.9, 0.35, 1.0))
+	_vehicle_snow_step(delta)
 	# Interior lights follow the power.
 	var on := Survival.power_on
 	for l in interior["lights"]:
@@ -504,6 +592,113 @@ func _process(delta: float) -> void:
 	(interior["fire_mesh"] as Node3D).visible = on
 	(interior["tv_screen"] as Node3D).visible = on
 	(interior["ups_led"] as MeshInstance3D).material_override = Mats.emissive(Color(1.0, 0.6, 0.1), 3.0) if not on and fmod(Time.get_ticks_msec() / 1000.0, 1.0) < 0.5 else null
+
+
+## Snow accumulates on parked vehicles (once a real second).
+func _vehicle_snow_step(delta: float) -> void:
+	_roof_timer -= delta
+	if _roof_timer <= 0.0:
+		_roof_timer = 1.0
+		var fall := Snow.fall_total - _veh_snow_last
+		if fall > 0.0:
+			for v in vehicle_nodes():
+				(v as Vehicle).add_snowfall(fall)
+		_veh_snow_last = Snow.fall_total
+		RenderingServer.global_shader_parameter_set("snow_cover", clampf(0.45 + Snow.roof_depth * 0.9, 0.35, 1.0))
+
+
+# -----------------------------------------------------------------------------
+# Polish 5 §9: fast-forward
+# -----------------------------------------------------------------------------
+
+## Modals fast-forward keeps running under (the computer, the map, the TV, the letter, the photo).
+## Any other — Gerry's dialogue, the sleep prompt, the pause menu, F1, the winter summary — stops it.
+const FF_MODALS := ["computer", "map", "tv", "letter", "photo"]
+## A scripted mover (the grader, Gerry walking) this close to the player holds fast-forward at 1×.
+const FF_HOLD_DIST := 40.0
+
+var _sleeping := false
+
+
+## The world's share of one frame on the clock, run once more for every extra fast-forward
+## substep (Clock._process), in the order a frame at 1× runs it: the vehicle snow, the snow's
+## syncing and relaxation, then the grader and (polish 5 §11) the sidewalk crew behind it (whose
+## own steps at 1× come first in the next frame, in the same order).
+func sim_tick(delta: float) -> void:
+	if get_tree().paused:
+		return
+	_vehicle_snow_step(delta)
+	if snow_renderer:
+		snow_renderer.sim_step()
+	if grader:
+		grader.sim_step(delta)
+	if crew:
+		crew.sim_step(delta)
+
+
+## No modal, or one fast-forward keeps running under.
+func ff_modal_ok() -> bool:
+	return modal == null or modal_kind in FF_MODALS
+
+
+## Why fast-forward isn't available now ("" when it is): on foot, indoors or at the computer only.
+func ff_unavailable() -> String:
+	if _dead:
+		return "dead"
+	if _sleeping:
+		return "sleep"
+	if player == null or not is_instance_valid(player):
+		return "no player"
+	var st: String = player.state
+	if st == "frozen":
+		st = str(player.get_meta("prev_state", "foot"))
+	if st == "vehicle" or player.vehicle != null:
+		return "vehicle"
+	if st == "machine" or player.machine != null:
+		return "machine"
+	if not ff_modal_ok():
+		return "sleep" if modal_kind == "sleep" else "dialog"
+	if is_gerry_talking():
+		return "gerry"
+	return ""
+
+
+## A substep's relaxation that took longer than this (µs) caps 10× at 2× (see ff_cap).
+const FF_RELAX_US := 500
+
+
+## The world's frame-budget cap on fast-forward ({} when none): while the grader drives its route,
+## or snow is slumping hard enough that a substep's relaxation took over FF_RELAX_US (a big pile
+## settling right after the player moved a lot of snow), 10× runs at 2× — every substep runs a
+## frame's relaxation (up to 2.5 ms), so 10× could spend 25 ms a frame on it (measured in
+## tests/perf.tscn: the grader's pass away from the player 28 ms a frame at 10×, 8 ms at 2×; a
+## 75 m³ pile settling 30 ms at 10×, 10 ms at 2×). It takes effect within the frame (the clock
+## re-reads it after every substep). Polish 5 §11: the sidewalk crew too (its mounds relax like the
+## grader's windrows; it is out a little longer than the grader only when the grader skips streets).
+func ff_cap() -> Dictionary:
+	if grader and grader.active:
+		return {"max": 2, "why": "grader on the streets"}
+	if crew and crew.active:
+		return {"max": 2, "why": "sidewalk crew out"}
+	if snow_renderer and snow_renderer.relax_us_last > FF_RELAX_US:
+		return {"max": 2, "why": "snow settling"}
+	return {}
+
+
+## Why fast-forward is held at 1× now ("" when it isn't): the grader, the sidewalk crew (polish 5
+## §11) or Gerry moving near the player.
+func ff_hold() -> String:
+	if player == null or not is_instance_valid(player):
+		return ""
+	var pp := Vector2(player.global_position.x, player.global_position.z)
+	if grader and grader.active and Vector2(grader.global_position.x, grader.global_position.z).distance_to(pp) < FF_HOLD_DIST:
+		return "grader"
+	if crew and crew.active and Vector2(crew.global_position.x, crew.global_position.z).distance_to(pp) < FF_HOLD_DIST:
+		return "crew"
+	if neighbor and is_instance_valid(neighbor) and neighbor.is_walking() \
+			and Vector2(neighbor.global_position.x, neighbor.global_position.z).distance_to(pp) < FF_HOLD_DIST:
+		return "gerry"
+	return ""
 
 
 func is_night() -> bool:
@@ -580,13 +775,40 @@ func open_tv() -> void:
 	open_modal(root, "tv")
 
 
+## Polish 5 §4: the photo by the front door, large on screen, no text; Interact or Esc closes it.
+func open_photo() -> void:
+	var ph: FramedPhoto = interior.get("photo")
+	if ph == null or modal != null:
+		return
+	open_modal(Panels.photo(hud, ph.texture), "photo")
+	AudioMgr.play("paper", -10.0)
+
+
 func radio_forecast() -> void:
 	AudioMgr.play("radio_jingle", -6.0)
-	# Polish 4 §1: the next three game hours, from the forecast model (the grader line as before).
-	subtitle("Radio: %s City grader expected %s." % [Weather.radio_bulletin(), Municipal.next_pass_text()], 10.0)
+	# Polish 4 §1: the next three game hours, from the forecast model, and the city crews' line.
+	subtitle(radio_text(), 10.0)
+
+
+## Polish 5 §11: the crews' line is the next crew day ("City crews: Mon 7 a.m."; was "City grader
+## expected Dec 18 07:33.").
+func radio_text() -> String:
+	return "Radio: %s %s" % [Weather.radio_bulletin(), Municipal.crew_line()]
+
+
+## Polish 5 §8: the forecast is issued every game hour, and the displays follow it — a TV left on
+## shows the new hour's forecast, and a radio bulletin still on screen is read again for the new hour.
+func _on_hour_displays(_day: int, _hour: int) -> void:
+	if modal_kind == "tv" and modal != null and is_instance_valid(modal):
+		var old := modal
+		modal = Panels.tv(hud, close_modal, false)
+		old.queue_free()
+	if hud != null and hud.subtitle_box.visible and hud.subtitle_l.text.begins_with("Radio: "):
+		subtitle(radio_text(), maxf(hud._subtitle_t, 0.5))
 
 
 func open_mailbox() -> void:
+	_end_talk_if("thought")      # polish 5 §4: the letter takes over from the door line
 	AudioMgr.play("mailbox", -4.0)
 	var title := ""
 	var body := ""
@@ -595,7 +817,7 @@ func open_mailbox() -> void:
 		body = "Dear Customer,\n\nA reminder that your residential hydro and heating service at %s must be paid every month.\n\nYour monthly hydro/heating bill of $%d is due on the 15th of every month. Unpaid accounts will be disconnected.\n\nThank you for choosing Maple Ridge Hydro. Stay warm this winter!\n\n— Customer Accounts" % [Layout.player_lot["address"], Catalog.balance.hydro_bill]
 	else:
 		title = "Welcome to Winter in Maple Ridge!"
-		body = "Neighbours!\n\nThe Maple Ridge Community Association wishes everyone a safe and cozy winter.\n\n• Please keep snow off the streets — the city grader needs the room.\n• Check on your neighbours after big storms.\n• The Northern Supply Co. on Cedar Lane is open 7:00–21:00 for all your winter needs.\n\nHappy shovelling!\n— Your Community Association"
+		body = "Neighbours!\n\nThe Maple Ridge Community Association wishes everyone a safe and cozy winter.\n\n• Please keep snow off the streets — the city grader needs the room.\n• Check on your neighbours after big storms.\n• Northern Supply Co. at %s is open 7:00–21:00 for all your winter needs.\n\nHappy shovelling!\n— Your Community Association" % Layout.building_by_id("store")["address"]
 	var first: bool = not Game.flags.get("mail_read", false)
 	Game.flags["mail_read"] = true
 	var root := Panels.letter(hud, title, body, func():
@@ -639,11 +861,14 @@ func neighbor_dialogue(n: Neighbor) -> void:
 				var pay := int(Game.flags.get("tutorial_pay", 45))
 				Contracts.create_tutorial_contract(pay)
 				Game.set_stage(Game.Stage.NEIGHBOR_TALKED)
-				Notify.push("Contract accepted: Gerry's path — %s. Clear the outlined path from his steps down to his mailbox." % UIKit.money(pay), Notify.GOOD))
+				Notify.push("Contract accepted: Gerry's path, %s — %s. Clear the outlined path from his steps down to his mailbox." % [Layout.neighbor_lot["address"], UIKit.money(pay)], Notify.GOOD)
+				# Polish 5 §4: then, on the HUD (you keep walking), the two ways to move snow.
+				say_gerry(HelpText.snow_tips()))
 		open_modal(root, "dialogue")
 	elif st == Game.Stage.NEIGHBOR_TALKED:
-		var r2 := Panels.dialogue(hud, [{"speaker": "Gerry", "text": "Just the path from my steps down to the mailbox — it's marked out for you. You're doing great!"}], func(_i): return [], close_modal)
-		open_modal(r2, "dialogue")
+		# Polish 5 §4: talking to him again during the job repeats the tip (on the HUD, with the
+		# keys bound now).
+		say_gerry(HelpText.snow_tips())
 	elif st == Game.Stage.TRAIL_DONE:
 		# Polish 3 §4: Gerry's lines from here on are spoken on the HUD; you keep walking.
 		if not n.invited:
@@ -652,7 +877,10 @@ func neighbor_dialogue(n: Neighbor) -> void:
 		elif not _talk_started:
 			say_gerry([{"speaker": "Gerry", "text": "Come on in — it's warm by the fire!"}])
 	elif st >= Game.Stage.COMPLETE and not is_gerry_talking():
-		say_gerry([{"speaker": "Gerry", "text": "Off you go now — and good luck with the business!"}])
+		if not Game.flags.get("truck_keys", false):
+			say_gerry([HelpText.keys_line()])     # polish 5 §4: until the keys are found
+		else:
+			say_gerry([{"speaker": "Gerry", "text": "Off you go now — and good luck with the business!"}])
 
 
 # --- Gerry's lines on the HUD (non-blocking: the player keeps control) ----------------------
@@ -684,6 +912,9 @@ static func line_seconds(text: String) -> float:
 
 func _talk_next() -> void:
 	_talk_i += 1
+	# Polish 5 §4: a line with "unless_flag" is skipped once that Game flag is set (the keys line).
+	while _talk_i < _talk.size() and _skip_line(_talk[_talk_i]):
+		_talk_i += 1
 	if _talk_i >= _talk.size():
 		_talk.clear()
 		hud.say("", "")
@@ -694,13 +925,75 @@ func _talk_next() -> void:
 		return
 	var ln: Dictionary = _talk[_talk_i]
 	_talk_t = line_seconds(str(ln.get("text", "")))
-	hud.say(str(ln.get("speaker", "")), str(ln.get("text", "")), _talk_i < _talk.size() - 1)
-	AudioMgr.play(AudioMgr.variant("neighbor_talk", 3), -6.0)
+	var more := false
+	for k in range(_talk_i + 1, _talk.size()):
+		more = more or not _skip_line(_talk[k])
+	hud.say(str(ln.get("speaker", "")), str(ln.get("text", "")), more)
+	if not ln.get("thought", false):     # the player's own thought (polish 5 §4) has no voice
+		AudioMgr.play(AudioMgr.variant("neighbor_talk", 3), -6.0)
 	if _talk_on_line.is_valid():
 		_talk_on_line.call(ln)
 
 
+static func _skip_line(ln: Dictionary) -> bool:
+	return ln.has("unless_flag") and bool(Game.flags.get(str(ln["unless_flag"]), false))
+
+
+## Polish 5 §4: stop what's being said if its current line is marked `key` ("thought": the door
+## line; "tip": Gerry's snow tips once the trail is done). Nothing else runs after it.
+func _end_talk_if(key: String) -> void:
+	if _talk.is_empty() or _talk_i < 0 or _talk_i >= _talk.size():
+		return
+	if not bool((_talk[_talk_i] as Dictionary).get(key, false)):
+		return
+	_talk.clear()
+	_talk_done = Callable()
+	_talk_on_line = Callable()
+	hud.say("", "")
+
+
+# --- Polish 5 §4: the door line --------------------------------------------------------------
+
+const DOOR_LINE := "Wow, that's a lot of snow. Better find my shovel."
+var _door_was_open := false
+var _door_line_due := false       # the door was opened: say it once the screen is free
+var _door_line_done := false      # the first opening from inside has happened (this session)
+var _morning_line_due := false    # the opening's "December 1…" subtitle is still to come
+
+
+## A shovel in your hands, slots or on the rack (the one buried outside doesn't count).
+static func has_shovel() -> bool:
+	var held: Array = Game.slots + [Game.carried] + Game.rack
+	for id in held:
+		var t: ToolData = Catalog.tool(StringName(str(id))) if str(id) != "" else null
+		if t != null and t.kind == ToolData.Kind.SHOVEL:
+			return true
+	return false
+
+
+## The first time the player opens the front door from inside, during the opening (before the
+## letter) and with no shovel, they think the line once, on the HUD: timed by its length, no modal,
+## never stopped. Derived from the stage and the tools held; nothing is saved. It waits while
+## another line is up (the morning's subtitle), and gives way to the letter and Gerry's cry.
+func _update_door_line() -> void:
+	var is_open := player_door != null and player_door.open
+	if is_open and not _door_was_open and not _door_line_done and player.in_player_house:
+		_door_line_done = true
+		_door_line_due = true
+	_door_was_open = is_open
+	if not _door_line_due:
+		return
+	if Game.stage() != Game.Stage.START or has_shovel():
+		_door_line_due = false
+		return
+	if modal != null or is_gerry_talking() or hud.subtitle_box.visible or _morning_line_due:
+		return
+	_door_line_due = false
+	say_gerry([{"speaker": "You", "text": DOOR_LINE, "thought": true}])
+
+
 func _update_tutorial(delta: float) -> void:
+	_update_door_line()
 	if not _talk.is_empty():
 		_talk_t -= delta
 		if _talk_t <= 0.0:
@@ -717,7 +1010,8 @@ func _update_tutorial(delta: float) -> void:
 		# Both inside, Gerry by the fire: he talks you through the business.
 		if not _talk_started and player.in_neighbor_house and neighbor.mode == "inside":
 			_talk_started = true
-			say_gerry(HelpText.explanation(Game.is_survival()), _finish_tutorial, func(ln):
+			# Polish 5 §4: his last line sends you to your truck keys (skipped once they're found).
+			say_gerry(HelpText.explanation(Game.is_survival()) + [HelpText.keys_line()], _finish_tutorial, func(ln):
 				if str(ln["text"]).contains("computer") and neighbor and neighbor.mode == "inside":
 					neighbor.walk(Neighbor.path_fire_to_computer(), "computer"))
 	hud.set_objective(obj)
@@ -761,11 +1055,25 @@ func open_sleep() -> void:
 	open_modal(root, "sleep", true)
 
 
+## Polish 5 §3: the money plant in the living room, a testing aid (HANDOFF §13: remove or hide it
+## before release). Each Interact (capped per second like every press) adds to the money only — not
+## to the earnings in the stats or the end-of-winter summary.
+func plant_money() -> void:
+	Game.money += InteriorBuilder.PLANT_MONEY
+	Game.money_changed.emit(Game.money)
+	Game.dirty_since_save = true
+	Notify.push("+%s" % UIKit.money(InteriorBuilder.PLANT_MONEY), Notify.GOOD)
+
+
+## Sleep, a skip, the end of the winter: the rest of the city's pass as a batch — the grader's
+## lanes, then (polish 5 §11) the sidewalks the crew hadn't done yet.
 func finish_grader_now() -> void:
 	if grader and grader.active:
 		grader.finish()
 	elif Municipal.in_progress:
 		Municipal.finish_now()
+	if crew:
+		crew.stop()
 
 
 ## Sleeping always ends at the next 7:00 a.m. (polish §12).
@@ -776,6 +1084,8 @@ static func next_wake_time(now_min: float) -> float:
 
 
 func _do_sleep(_days := 0) -> void:
+	_sleeping = true             # polish 5 §9: no fast-forward from here to the wake-up
+	Clock.drop_to_1x("sleep")
 	player.freeze(true)
 	var tw := _fade_out(1.0)
 	await tw.finished
@@ -792,6 +1102,7 @@ func _do_sleep(_days := 0) -> void:
 	collect_state()
 	var ok := Saves.save_game()
 	player.freeze(false)
+	_sleeping = false
 	_sleep_label(false)
 	_fade_in(1.2)
 	if interrupted == "cold":
@@ -865,9 +1176,9 @@ func _exit_to_menu() -> void:
 
 func _quit() -> void:
 	if Game.dirty_since_save:
-		Panels.confirm(hud, "Quit to desktop? Progress since your last sleep will be lost.", "Quit", func(): get_tree().quit())
+		Panels.confirm(hud, "Quit to desktop? Progress since your last sleep will be lost.", "Quit", func(): AudioMgr.quit())
 	else:
-		get_tree().quit()
+		AudioMgr.quit()
 
 
 # -----------------------------------------------------------------------------

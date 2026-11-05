@@ -4,8 +4,11 @@ extends Node
 ## Missing or invalid saves never crash the game.
 
 ## Version 2 (polish pass): clearing boxes, loose-snow flags, contract snowed-in timers.
-## Version 1 saves are migrated on load (see _migrate).
-const SAVE_VERSION := 2
+## Version 3 (polish 5 §7): game.company_name and contracts.job_history (both optional). Polish 5
+## §10 adds optional keys inside contracts (the listings' bids and rivals, the contracts' due times,
+## tier_noted); a save without them gets due times on load (Contracts._migrate_due_times).
+## Older saves are migrated on load, in order: 1 -> 2 (_migrate_v1), 2 -> 3 (_migrate_v2).
+const SAVE_VERSION := 3
 const MIN_VERSION := 1
 const DIR := "user://saves/"
 
@@ -40,7 +43,12 @@ func _read(path: String) -> Dictionary:
 		return {}
 	var txt := f.get_as_text()
 	f.close()
-	var parsed = JSON.parse_string(txt)
+	# JSON.parse rather than JSON.parse_string: the same result, but a corrupt file is reported as
+	# no save without the engine printing "Parse JSON failed" (polish 5 §1, a clean log).
+	var json := JSON.new()
+	if json.parse(txt) != OK:
+		return {}
+	var parsed = json.data
 	if not (parsed is Dictionary):
 		return {}
 	var d: Dictionary = parsed
@@ -139,6 +147,8 @@ func load_game(mode: String) -> bool:
 	Survival.deserialize(d["survival"])
 	if ver < 2:
 		_migrate_v1()
+	if ver < 3:
+		_migrate_v2()
 	Game.dirty_since_save = false
 	return true
 
@@ -150,6 +160,13 @@ func _migrate_v1() -> void:
 		Survival.active = true
 	if Game.stage() >= Game.Stage.COMPLETE:
 		Game.flags["computer_unlocked"] = true
+
+
+## Version 2 -> 3 (polish 5 §7): the company has no name yet (the computer asks for one) and an
+## empty contract history (the old list of completed one-time jobs stays as it was).
+func _migrate_v2() -> void:
+	Game.company_name = ""
+	Contracts.job_history = []
 
 
 func delete_save(mode: String) -> void:

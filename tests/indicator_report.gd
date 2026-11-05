@@ -41,6 +41,7 @@ func _one(tool: String, view: String, pitch: float, spot: int) -> void:
 	var lot := Layout.player_lot
 	# A fresh patch of deep yard snow each time, facing along the lawn.
 	var u := -10.0 + float(spot % 6) * 1.6
+	@warning_ignore("integer_division")
 	var v := 3.0 + float((spot / 6) % 3) * 2.2
 	var p2 := Layout.lot_to_world(lot, Layout.gu(lot, u), v)
 	Snow.set_rect(Rect2(p2 - Vector2(2.5, 2.5), Vector2(5, 5)), 0.6)

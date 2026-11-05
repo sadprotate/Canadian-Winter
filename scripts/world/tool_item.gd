@@ -78,21 +78,15 @@ func buried_depth() -> float:
 
 
 ## Sample points on the tool (world space): along the grip and shaft, and across the blade.
+## Polish 5 §6: from the model itself (ToolModels.sample_points: nine on the shaft, two rows of four
+## on the blade — by its back and by its front edge).
 func sample_points() -> PackedVector3Array:
 	var out := PackedVector3Array()
 	if mesh == null or is_crate():
 		return out
 	var xf := mesh.global_transform
-	var tipp := ToolModels.tip(tool_id)
-	for k in range(9):
-		out.append(xf * (tipp * (k / 9.0)))
-	var t: ToolData = Catalog.tool(StringName(tool_id))
-	var w := clampf(t.width if t else 0.4, 0.25, 1.0)
-	var fwd := tipp.normalized() if tipp.length() > 0.01 else Vector3(0, 0, -1)
-	for k in range(4):
-		var u := -0.5 + k / 3.0
-		out.append(xf * (tipp + Vector3(u * w * 0.9, 0, 0)))
-		out.append(xf * (tipp + Vector3(u * w * 0.9, 0, 0) + fwd * 0.18))
+	for p in ToolModels.sample_points(tool_id):
+		out.append(xf * p)
 	return out
 
 
@@ -133,18 +127,20 @@ func interact_prompt(_p: Player) -> String:
 	return "[E] Pick up %s" % Catalog.tool(StringName(tool_id)).display_name
 
 
-func interact(p: Player) -> void:
-	if not can_pick_up():
+func interact(_p: Player) -> void:
+	# Polish 5 §2: two presses in one frame reach it before queue_free(); the second must not
+	# collect it again (a burst of E duplicated tools).
+	if is_queued_for_deletion() or not can_pick_up():
 		return
 	if is_crate():
 		_open_crate()
 		return
 	if not Game.add_tool(tool_id):
-		Notify.push("Your hands and tool slots are full. Drop something first (Q).", Notify.WARN)
+		Notify.push("Your hands and tool slots are full. Drop something first (%s)." % Settings.action_label("drop"), Notify.WARN)
 		return
 	if tool_id == "small_shovel" and not Game.flags.get("found_shovel", false):
 		Game.flags["found_shovel"] = true
-		Notify.push("You found a small snow shovel! Hold left mouse and sweep it through the snow to fill it, release to throw, hold right mouse to push.", Notify.GOOD)
+		Notify.push("You found a small snow shovel! Hold %s and sweep it through the snow to fill it, release to throw, hold %s to push." % [Settings.action_label("primary"), Settings.action_label("secondary")], Notify.GOOD)
 	if entry.has("order_id"):
 		Economy.mark_order(int(entry["order_id"]), "collected")
 		Game.add_equipment_stat(Catalog.tool(StringName(tool_id)).display_name)
@@ -156,7 +152,18 @@ func interact(p: Player) -> void:
 func _open_crate() -> void:
 	var id := crate_item()
 	var sid := StringName(id)
-	if Catalog.UTILITY.has(sid):
+	# Polish 5 §13: equipment is put on as it's collected (the pad goes into your arms — not while
+	# they're full); an old jacket or parka crate is the insulated coat now.
+	if Catalog.RETIRED_UPGRADE_IDS.has(sid):
+		sid = Equipment.COAT
+		id = String(sid)
+	if Catalog.EQUIPMENT.has(sid):
+		if not Equipment.collect(sid):
+			Notify.push(Settings.with_keys("Your arms are full. Put down what you're carrying first ({drop})."), Notify.WARN)
+			return
+		Game.add_equipment_stat(Catalog.item_name(sid))
+		Notify.push(Equipment.collected_text(sid), Notify.GOOD)
+	elif Catalog.UTILITY.has(sid):
 		Game.heat_pouches += int(Catalog.UTILITY[sid]["count"])
 		Notify.push("Collected %s." % Catalog.UTILITY[sid]["name"], Notify.GOOD)
 	elif Catalog.upgrades.has(sid):

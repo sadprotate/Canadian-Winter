@@ -16,6 +16,7 @@ var relax_usec := 2500         # …and a time budget per frame (µs) for the lo
 var sync_budget := 1           # snowfall chunk syncs per frame
 var mesh_usec := 3500          # time budget for chunk mesh updates per frame (µs)
 var updates_last_frame := 0
+var relax_us_last := 0         # polish 5 §9: µs the last sim_step spent on relaxation
 var detail := 1                # 0 low, 1 medium, 2 high (from settings)
 
 var _mi: Array = []            # MeshInstance3D per chunk
@@ -96,15 +97,25 @@ func _process(delta: float) -> void:
 	if _lod_timer <= 0.0:
 		_lod_timer = 0.3
 		_update_lods(cam_pos)
-	if Snow.auto_process:
-		Snow.sync_round_robin(sync_budget)
-		Snow.process_relax(relax_budget, relax_usec)
+	sim_step()
 	_update_dirty(cam_pos)
+
+
+## The snow's share of a frame: snowfall syncing and relaxation. Polish 5 §9: fast-forward runs it
+## once more for every extra clock substep (through the world's tick), so the snow comes out the
+## same at any speed; the meshes are still updated once per frame.
+func sim_step() -> void:
+	if Snow.auto_process and _built and Snow.initialized:
+		Snow.sync_round_robin(sync_budget)
+		var t0 := Time.get_ticks_usec()
+		Snow.process_relax(relax_budget, relax_usec)
+		relax_us_last = Time.get_ticks_usec() - t0
 
 
 func _update_lods(cam_pos: Vector3) -> void:
 	for ci in range(Snow.CW * Snow.CH):
 		var cx := (ci % Snow.CW) * CHUNK * CELL + CHUNK * CELL * 0.5
+		@warning_ignore("integer_division")
 		var cz := (ci / Snow.CW) * CHUNK * CELL + CHUNK * CELL * 0.5
 		var d := Vector2(cx, cz).distance_to(Vector2(cam_pos.x, cam_pos.z)) - CHUNK * CELL * 0.5
 		var want := 1
@@ -126,6 +137,7 @@ func _update_dirty(cam_pos: Vector3) -> void:
 	for ci in range(Snow.CW * Snow.CH):
 		if _lod[ci] != _want_lod[ci] or Snow.is_dirty(ci):
 			var cx := (ci % Snow.CW) * CHUNK * CELL + CHUNK * CELL * 0.5
+			@warning_ignore("integer_division")
 			var cz := (ci / Snow.CW) * CHUNK * CELL + CHUNK * CELL * 0.5
 			cands.append([Vector2(cx, cz).distance_squared_to(Vector2(cam_pos.x, cam_pos.z)), ci])
 	if cands.is_empty():
@@ -151,6 +163,7 @@ func _update_dirty(cam_pos: Vector3) -> void:
 func _indices(step: int) -> PackedInt32Array:
 	if _index_cache.has(step):
 		return _index_cache[step]
+	@warning_ignore("integer_division")
 	var n := CHUNK / step + 1
 	var idx := PackedInt32Array()
 	for vz in range(n - 1):
@@ -211,6 +224,7 @@ func _vertex_height(gx: int, gz: int) -> float:
 
 func _full_build(ci: int) -> void:
 	var step := _lod[ci]
+	@warning_ignore("integer_division")
 	var n := CHUNK / step + 1
 	var verts := PackedVector3Array()
 	var norms := PackedVector3Array()
@@ -227,6 +241,7 @@ func _full_build(ci: int) -> void:
 
 func _partial(ci: int, r: Rect2i) -> void:
 	var step := _lod[ci]
+	@warning_ignore("integer_division")
 	var n := CHUNK / step + 1
 	var vx0 := clampi(int(floor((r.position.x - 1) / float(step))), 0, n - 1)
 	var vz0 := clampi(int(floor((r.position.y - 1) / float(step))), 0, n - 1)
@@ -237,8 +252,10 @@ func _partial(ci: int, r: Rect2i) -> void:
 
 func _recompute(ci: int, vx0: int, vz0: int, vx1: int, vz1: int) -> void:
 	var step := _lod[ci]
+	@warning_ignore("integer_division")
 	var n := CHUNK / step + 1
 	var gx0 := (ci % Snow.CW) * CHUNK
+	@warning_ignore("integer_division")
 	var gz0 := (ci / Snow.CW) * CHUNK
 	var verts: PackedVector3Array = _verts[ci]
 	var norms: PackedVector3Array = _norms[ci]

@@ -6,6 +6,7 @@ extends Control
 var world: Node
 var date_l: Label
 var time_l: Label
+var clock_panel: PanelContainer   # polish 5 §9: the fast-forward control sits beside it
 var weather_icon: Icons
 var weather_l: Label
 var temp_l: Label
@@ -56,6 +57,7 @@ func _ready() -> void:
 	var tl := UIKit.panel(UIKit.sb(Color(0.07, 0.09, 0.15, 0.6), 12, 0, Color.TRANSPARENT, 14))
 	tl.position = Vector2(24, 20)
 	add_child(tl)
+	clock_panel = tl
 	var tlv := UIKit.vbox(0)
 	tl.add_child(tlv)
 	date_l = UIKit.shadow_label("", 20, UIKit.MUTED)
@@ -63,17 +65,17 @@ func _ready() -> void:
 	tlv.add_child(date_l)
 	tlv.add_child(time_l)
 	# Top-right: weather
-	var tr := UIKit.panel(UIKit.sb(Color(0.07, 0.09, 0.15, 0.6), 12, 0, Color.TRANSPARENT, 14))
-	tr.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	tr.custom_minimum_size = Vector2(306, 0)
+	var top_right := UIKit.panel(UIKit.sb(Color(0.07, 0.09, 0.15, 0.6), 12, 0, Color.TRANSPARENT, 14))
+	top_right.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	top_right.custom_minimum_size = Vector2(306, 0)
 	# Pinned to the right edge and growing leftward, so "-14 °C (feels -29)" never runs off-screen.
-	tr.grow_horizontal = Control.GROW_DIRECTION_BEGIN
-	tr.offset_right = -20.0
-	tr.offset_left = -326.0
-	tr.offset_top = 20.0
-	add_child(tr)
+	top_right.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	top_right.offset_right = -20.0
+	top_right.offset_left = -326.0
+	top_right.offset_top = 20.0
+	add_child(top_right)
 	var trh := UIKit.hbox(12)
-	tr.add_child(trh)
+	top_right.add_child(trh)
 	weather_icon = Icons.weather(0, 64)
 	trh.add_child(weather_icon)
 	var trv := UIKit.vbox(0)
@@ -163,6 +165,9 @@ func _ready() -> void:
 	var cv := UIKit.vbox(4)
 	contract_panel.add_child(cv)
 	contract_l = UIKit.label("", 19)
+	# Polish 5 §10: one line, as wide as it needs (the panel stays centred, _fit_contract_panel).
+	contract_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	contract_l.custom_minimum_size.x = BOX_LINE_MIN_W - 24.0
 	cv.add_child(contract_l)
 	contract_bar = UIKit.progress(0.0, UIKit.ACCENT, 14)
 	cv.add_child(contract_bar)
@@ -296,6 +301,43 @@ func _on_notify(text: String, kind: int) -> void:
 
 
 const SUBTITLE_MAX_W := 1100.0
+## Polish 5 §10: the box line's panel width (px): at least as before, at most this (longer text wraps).
+const BOX_LINE_MIN_W := 520.0
+const BOX_LINE_MAX_W := 1000.0
+
+
+## The HUD box line for box `b`; `c` is the contract that owns it ({} for none). Polish 5 §10: in a
+## box of one of your jobs it is one line — "Your contract · 31 Birch Avenue — Driveway 73% · due 9
+## p.m. Tue"; in any other box it reads as before ("‹place› — ‹box›   73%", Gerry's trail "Contract ·
+## ‹place› — ‹box›   73%").
+static func box_line(b: Dictionary, c: Dictionary) -> String:
+	var amount := "clear ✓" if b["complete"] else "%d%%" % int(floor(float(b["progress"]) * 100.0))
+	if not c.is_empty() and not c.get("tutorial", false):
+		var line := "Your contract · %s — %s %s" % [b["place"], b["name"], amount]
+		var dt := Contracts.due_text(c)
+		if dt != "":
+			line += " · due " + dt
+		return line
+	var head := "%s — %s" % [b["place"], b["name"]]
+	if not c.is_empty():
+		head = "Contract · " + head
+	return "%s   %s" % [head, amount]
+
+
+## Keep the box line's panel snug around its line (BOX_LINE_MIN_W … BOX_LINE_MAX_W) and centred.
+func _fit_contract_panel() -> void:
+	var font := contract_l.get_theme_font("font")
+	var fs := contract_l.get_theme_font_size("font_size")
+	var tw := BOX_LINE_MAX_W
+	if font:
+		tw = 0.0
+		for ln in contract_l.text.split("\n"):
+			tw = maxf(tw, font.get_string_size(ln, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x)
+	var pad := contract_panel.get_theme_stylebox("panel").get_minimum_size().x
+	var w := clampf(ceilf(tw) + pad + 2.0, BOX_LINE_MIN_W, BOX_LINE_MAX_W)
+	contract_l.custom_minimum_size.x = w - pad
+	contract_panel.offset_left = -w * 0.5
+	contract_panel.offset_right = w * 0.5
 
 
 ## Show a spoken line (speaker, text); empty text hides the box. `more` shows the "next" hint.
@@ -344,7 +386,7 @@ func _refresh_slots() -> void:
 		(slot_icons[i] as Control).modulate.a = 1.0 if (id != "" or sel) else 0.35
 		(slots[i] as PanelContainer).add_theme_stylebox_override("panel", UIKit.sb(Color(0.07, 0.09, 0.15, 0.65 if not sel else 0.85), 10, 3 if sel else 2, UIKit.ACCENT if sel else Color(1, 1, 1, 0.12), 6))
 	if Game.carried != "":
-		tool_name_l.text = "Carrying: %s  (Q to drop)" % Catalog.item_name(StringName(Game.carried))
+		tool_name_l.text = "Carrying: %s  (%s to drop)" % [Catalog.item_name(StringName(Game.carried)), Settings.action_label("drop")]
 	else:
 		var id2: String = Game.slots[Game.selected]
 		tool_name_l.text = "Bare hands" if id2 == "" else Catalog.tool(StringName(id2)).display_name
@@ -412,7 +454,8 @@ func _process(delta: float) -> void:
 	for c in Contracts.active:
 		var left: float = Contracts.hours_left(c)
 		if left <= Catalog.balance.contract_warn_hours:
-			alerts.append("⚠ %s: %d h left to clear" % [c["address"], int(ceil(maxf(left, 0.0)))])
+			# Polish 5 §10: the due time (was the snowed-in hours left).
+			alerts.append("⚠ %s: due %s — %d h left" % [c["address"], Contracts.due_text(c), int(ceil(maxf(left, 0.0)))])
 	alert_l.text = "\n".join(alerts)
 	if surv:
 		var w := Survival.warmth
@@ -421,12 +464,14 @@ func _process(delta: float) -> void:
 		var col: Color = [Color(1.0, 0.7, 0.35), Color(0.9, 0.8, 0.5), Color(0.6, 0.8, 1.0), Color(0.45, 0.65, 1.0), Color(0.75, 0.85, 1.0), Color.WHITE][st]
 		warmth_bar.add_theme_stylebox_override("fill", UIKit.sb(col, 6, 0, Color.TRANSPARENT, 0))
 		var trend := ""
-		if Survival.last_rate > 1.0:
+		# Polish 5 §9: the arrows follow the rate as felt — warmth per real minute.
+		var felt := Survival.per_real_minute(Survival.last_rate)
+		if felt > TREND_PER_REAL_MIN:
 			trend = "  ▲ warming"
-		elif Survival.last_rate < -1.0:
+		elif felt < -TREND_PER_REAL_MIN:
 			trend = "  ▼"
 		warmth_l.text = "Warmth: %s%s" % [Survival.STATE_NAMES[st], trend]
-		pouch_l.text = "Heating pouches: %d (G)" % Game.heat_pouches if Game.heat_pouches > 0 else ""
+		pouch_l.text = "Heating pouches: %d (%s)" % [Game.heat_pouches, Settings.action_label("use_pouch")] if Game.heat_pouches > 0 else ""
 		var cold := clampf((45.0 - w) / 45.0, 0.0, 1.0)
 		frost_mat.set_shader_parameter("amount", cold)
 		frost_mat.set_shader_parameter("pulse", 1.0 if w < 15.0 else 0.0)
@@ -443,16 +488,11 @@ func _process(delta: float) -> void:
 		contract_panel.visible = not b.is_empty()
 		if not b.is_empty():
 			var c := Contracts.contract_for_box(b["id"])
-			var head := "%s — %s" % [b["place"], b["name"]]
-			if not c.is_empty():
-				head = "Contract · " + head
 			var pr := float(b["progress"])
-			var line := "%s   %s" % [head, "clear ✓" if b["complete"] else "%d%%" % int(floor(pr * 100.0))]
-			if not c.is_empty() and not c.get("tutorial", false):
-				var left: float = Contracts.hours_left(c)
-				if left < INF:
-					line += "\nSnowed in — %d h left before %s gives up%s" % [int(ceil(maxf(left, 0.0))), c["client"], "  (clock paused: storm)" if Contracts.storming() else ""]
-			contract_l.text = line
+			var line := box_line(b, c)
+			if line != contract_l.text:
+				contract_l.text = line
+				_fit_contract_panel()
 			contract_bar.value = 1.0 if b["complete"] else pr
 	else:
 		contract_panel.visible = false
@@ -465,6 +505,11 @@ func _process(delta: float) -> void:
 			int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)), Snow.relax_pending()]
 	else:
 		perf_l.text = ""
+
+
+## Polish 5 §9: the warmth arrows show once warmth moves faster than this per real minute (as the
+## old 1 % per game hour at 2.5 real minutes a game hour).
+const TREND_PER_REAL_MIN := 0.4
 
 
 func _cold_audio(w: float) -> void:

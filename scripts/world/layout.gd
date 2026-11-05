@@ -26,6 +26,17 @@ const STREET_MAPLE := "Maple Street"
 const STREET_BIRCH := "Birch Avenue"
 const STREET_CEDAR := "Cedar Lane"
 
+## Polish 5 §5 — addresses. The layout is the one source: every house's number and street are its
+## lot's ("24 Maple Street"), unchanged since the first build. The scheme: odd numbers on one side
+## of the street and even on the other, rising along it by 4 per 28 m lot (Maple Street and Birch
+## Avenue: odd on the north side, 11–31, even on the south side, 12–32, rising west to east). The
+## school, the store and the church had none; they take the street their lots open onto, Cedar Lane,
+## in the same scheme (rising north to south, so odd on the east side, as on the other streets where
+## odd numbers are on the left going up; 4 per 28 m of frontage from the lane's north end): the store
+## 11 and the school 12 at the north end, the church 40 at the south end. `place` is the one name
+## the UI shows for a place (place_name()): a lot's address, "<building>, <address>" for a building
+## and its parking lot, a street section's name.
+
 static var _built := false
 static var roads: Array = []        # [{name, rect, horizontal}]
 static var sidewalks: Array = []    # Rect2
@@ -80,11 +91,29 @@ static func _build() -> void:
 	dump_rect = Rect2(122, 196, 54, 22)
 	store_pad = Rect2(114, 21, 14, 4)
 	store_bays = [Rect2(132, 26, 10, 14), Rect2(143, 26, 10, 14), Rect2(154, 26, 10, 14), Rect2(165, 26, 10, 14)]
+	# Polish 5 §5: every building has an address in the houses' scheme (see the note at the top).
+	# number_at: where its number is [x, y, z] and the way it faces [fx, fz] — by the main entrance
+	# (the front, where its name is), on the wall the street sees: the school's east end wall by
+	# its front corner and flagpole, the store's front beside its name board, the church's east
+	# wall (to its lot and the lane) at the tower end. AddressSigns builds them.
 	buildings = [
-		{"id": "school", "name": "Maple Ridge School", "rect": Rect2(16, 5, 44, 13), "height": 7.0, "kind": "school"},
-		{"id": "store", "name": "Northern Supply Co.", "rect": Rect2(112, 6, 30, 12), "height": 6.5, "kind": "store"},
-		{"id": "church", "name": "St. Andrew's Church", "rect": Rect2(20, 199, 24, 16), "height": 8.0, "kind": "church"},
+		{"id": "school", "name": "Maple Ridge School", "rect": Rect2(16, 5, 44, 13), "height": 7.0, "kind": "school", "number": 12, "street": STREET_CEDAR,
+			"number_at": [60.05, 5.0, 15.0, 1.0, 0.0]},
+		{"id": "store", "name": "Northern Supply Co.", "rect": Rect2(112, 6, 30, 12), "height": 6.5, "kind": "store", "number": 11, "street": STREET_CEDAR,
+			"number_at": [115.6, 5.4, 18.05, 0.0, 1.0]},
+		{"id": "church", "name": "St. Andrew's Church", "rect": Rect2(20, 199, 24, 16), "height": 8.0, "kind": "church", "number": 40, "street": STREET_CEDAR,
+			"number_at": [44.05, 6.2, 212.5, 1.0, 0.0]},
 	]
+	for b in buildings:
+		b["address"] = "%d %s" % [b["number"], b["street"]]
+		b["place"] = "%s, %s" % [b["name"], b["address"]]
+	# Each parking lot belongs to its building and is named by its address.
+	var lot_of := {"school_lot": "school", "store_lot": "store", "church_lot": "church"}
+	for a in big_areas:
+		var ob := building_by_id(str(lot_of.get(a["id"], "")))
+		a["building"] = ob.get("id", "")
+		a["address"] = ob.get("address", "")
+		a["place"] = ob.get("place", a["name"])
 
 	# --- Residential lots ---
 	lots.clear()
@@ -262,14 +291,79 @@ static func is_road_point(p: Vector2) -> bool:
 	return false
 
 
+static func building_by_id(id: String) -> Dictionary:
+	ensure()
+	for b in buildings:
+		if b["id"] == id:
+			return b
+	return {}
+
+
+## Polish 5 §5: the name the UI shows for a contract target / box owner ("lot:9", "area:store_lot",
+## "road:maple_w"), read from the layout; "" if the target is unknown.
+static func place_name(target: String) -> String:
+	ensure()
+	if target.begins_with("lot:"):
+		var idx := int(target.substr(4))
+		return str(lots[idx]["address"]) if idx >= 0 and idx < lots.size() else ""
+	if target.begins_with("area:"):
+		for a in big_areas:
+			if a["id"] == target.substr(5):
+				return str(a["place"])
+	if target.begins_with("road:"):
+		for seg in road_segments:
+			if seg["id"] == target.substr(5):
+				return str(seg["name"])
+	if target.begins_with("walk:"):
+		return walk_section_name(target.substr(5))
+	return ""
+
+
+## Polish 5 §10: a city sidewalk section — the lots of one row on one side of Cedar Lane ("A_w":
+## row A, west), whose sidewalk boxes a city sidewalk contract covers.
+static func walk_section_lots(sec: String) -> Array:
+	ensure()
+	var out := []
+	var row := sec.substr(0, 1)
+	var west := sec.ends_with("_w")
+	for lot in lots:
+		if lot["row"] == row and (float(lot["center_x"]) < 96.0) == west:
+			out.append(lot)
+	return out
+
+
+## "Sidewalks, 11–19 Maple Street" ("" for an unknown section).
+static func walk_section_name(sec: String) -> String:
+	var ls := walk_section_lots(sec)
+	if ls.is_empty():
+		return ""
+	var nums := ls.map(func(l): return int(l["number"]))
+	nums.sort()
+	return "Sidewalks, %d–%d %s" % [nums[0], nums[-1], ls[0]["street"]]
+
+
+## Polish 5 §5: text saved by an older build (a history entry, a transaction) with its places named
+## as they are now. Before §5 a parking lot was named "<building> parking lot"; it is now named by
+## its building and address. Nothing else changes.
+static func current_place(text: String) -> String:
+	ensure()
+	for a in big_areas:
+		if a["place"] != a["name"]:
+			text = text.replace(str(a["name"]), str(a["place"]))
+	return text
+
+
 ## Human-readable location name for a point (used by map / notifications).
 static func describe_point(p: Vector2) -> String:
 	var l := lot_at(p)
 	if not l.is_empty():
 		return l["address"]
+	for b in buildings:
+		if (b["rect"] as Rect2).grow(1.0).has_point(p):
+			return b["place"]
 	for a in big_areas:
-		if (a["rect"] as Rect2).has_point(p):
-			return a["name"]
+		if (a["rect"] as Rect2).has_point(p) or (a["apron"] as Rect2).has_point(p):
+			return a["place"]
 	for r in roads:
 		if (r["rect"] as Rect2).has_point(p):
 			return r["name"]

@@ -301,9 +301,9 @@ func _add_shot(pos: Array, look: Array) -> void:
 		var tin := Vector3.ZERO
 		var tout := Vector3.ZERO
 		if i > 0 and i < pos.size() - 1:
-			var tan: Vector3 = (pos[i + 1] - pos[i - 1]) * 0.25
-			tin = -tan
-			tout = tan
+			var tangent: Vector3 = (pos[i + 1] - pos[i - 1]) * 0.25
+			tin = -tangent
+			tout = tangent
 		pc.add_point(p, tin, tout)
 		var q: Vector3 = look[i]
 		var lin := Vector3.ZERO
@@ -453,7 +453,7 @@ func _exit() -> void:
 	if quit_hook.is_valid():
 		quit_hook.call()
 		return
-	get_tree().quit()
+	AudioMgr.quit()
 
 
 func _show_settings() -> void:

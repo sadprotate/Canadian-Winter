@@ -17,3 +17,9 @@ enum Category { TOOL, MACHINE, VEHICLE, CLOTHING, PROPERTY, WEATHER }
 @export var requires: StringName = &""
 ## True if the upgrade is a physical item collected at the store (e.g. truck plow install).
 @export var requires_pickup: bool = false
+## Polish 5 §13 (Decision 8): an item's own upgrade level (built by ItemUpgrades, not a .tres): the
+## item type it belongs to ("" for the upgrades that aren't an item's: clothing, weather, property),
+## its track and its level (1 = the first).
+@export var item: StringName = &""
+@export var track: StringName = &""
+@export var level: int = 0

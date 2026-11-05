@@ -51,6 +51,95 @@ extends Node
 ##   --seq=N --every=F        capture N frames, one every F frames, to <out>_00.png, _01.png …
 ##   --menu_shot=k --menu_at=f   (menu) jump the background camera to shot k (0..2), fraction f
 ##                            of the way along it, then wait --menu_frames (default 40)
+## Polish 5 additions:
+##   --ui=settings [--settings_tab=n] [--settings_scroll=px]  the settings screen as opened from
+##                            the pause menu, on tab n (0 Audio … 4 Controls, the default),
+##                            scrolled down px
+##   --ui=photo               (§4) the framed photo by the front door, large on screen (waits for
+##                            the capture first)
+##   --door_line=frames       (§4) the opening: the player in the hall facing the front door opens
+##                            it (Interact, real input); wait this many frames (the line waits for
+##                            the morning subtitle to finish); with --hour < 8 on day 0
+##   --gerry_tips=k           (§4) take Gerry's job through his dialogue ($55) standing at the foot
+##                            of his walk, then move his snow tips on to line k (0-3)
+##   --views="x,y,z>lx,ly,lz;…"  (§5) several free-camera views in one run (world coords, camera >
+##                            look-at point), each captured to <out>_00.png, _01.png …; waits
+##                            --views_frames (default 20) per view; --fov as for --cam
+##   --hud=0                  (§5) hide the HUD and the rest of the game's UI layer
+##   --award=n                (§5) win the first n listings on the board (as F1's "Win first
+##                            listing" does), so contracts show on the map
+##   --slots=a,b,c,d          (§6) the four tool slots (tool ids, empty = bare hands), e.g.
+##                            --slots=small_shovel,,wide_pusher, ; --selected=n selects slot n (0-3)
+##   --ui=icons               (§6) every tool's icon at the hotbar's size in its slot panel (dimmed
+##                            as an empty slot in the last row), at the store's and the inventory's
+##                            sizes and large; waits for the rendered set
+##   --comp_scroll=px         (§6) with --ui=computer: scroll the open app down px
+##   --comp_state=1           (§7) a business for the computer's apps: $3,000, three listings won
+##                            (one cleared, one lost: the contract history), a store order, the
+##                            month's hydro bill paid; works on older builds too
+##   --company=name           (§7) the company's name before the computer opens (empty: the name
+##                            form shows on Contracts / Contract board)
+##   --comp_apps=all|i,j,…    (§7) with --ui=computer: open each app (index into ComputerUI.APPS of
+##                            the build) and capture it to <out>_NN.png (NN = the index)
+##   --comp_tab=n             (§7) the Contracts app's tab (0 Active, 1 History) when it opens
+##   --tv_tier=light|storm|major [--tv_hour=h]  (§8) a morning (h, default 9) whose TV shows that
+##                            strength on tomorrow's or the next day's card, with as many other
+##                            strengths on the other cards as can be found (forecast systems, nothing
+##                            unforecast; the same moment on any build: winters 1–5 of the seed, then
+##                            the next seeds); with --ui=tv or --ui=computer (opens on Weather)
+##   --showcase=x,z,yaw       (§6) every tool model in a row on the ground from world (x, z), facing
+##                            yaw: the hand tools standing on their blades as if held, the blowers;
+##                            use with --cam/--look or --views
+##   --ff=1|2|10              (§9) choose that fast-forward speed before the frames are waited (and
+##                            again just before the capture); with --weather=4 (heavy snow) 10× shows
+##                            its cap
+##   --board_state=1          (§10) with --ui=computer: live bidding on the board — a bid winning, a
+##                            bid outbid by a rival, a parking lot locked above the tier, the first
+##                            rival bids on every listing (use --tab=2 to open on the board); §10b: a
+##                            street section too (with --rep=85 it shows the vehicle lock)
+##   --jobs=spec,…            (§10b) win these jobs outright right after the world spawns (so their
+##                            outlines are laid during --frames): lot:<index>:<box kind> (driveway,
+##                            path, sidewalk), area:<id> (school_lot, store_lot, church_lot),
+##                            road:<segment id>, walk:<section> (A_w … D_e; this build only); works on
+##                            older builds too (there: stakes, flags and the orange line)
+##   --rep=N                  (§10b) set the reputation (the tier follows) before the jobs / the board
+##   --city_snow=m            (§11) m metres more snow everywhere right after spawning (as if it fell)
+##   --city_pass=1            (§11) the city's pass as a sleep runs it — a batch of the grader's whole
+##                            route, then (this build) the sidewalk crew — and the snow settled; works
+##                            on older builds too (the grader alone), from the same snow
+##   --crew_watch=steps       (§11) the city's pass in the world: the grader driving and the sidewalk
+##                            plow following it, stepped `steps` frames of 1/60 s; without --cam the
+##                            camera looks along the sidewalk at the plow from behind it, lawn side
+##                            (--crew_back=m, --crew_side=m, --crew_h=m move it)
+##   --upgrades_state=1       (§13) for the Upgrades app: $3,000; the standard shovel and the wide
+##                            pusher in the slots, a small blower by the house (the small shovel stays
+##                            buried, the pickup in the driveway); bought: this build — the standard
+##                            shovel's capacity 1 and throw 1, the small blower's intake 1, and the
+##                            small shovel's capacity 1 on order; older builds — the global capacity
+##                            1, throw 1 and blower intake, and the global capacity 2 on order. Open
+##                            the app with --tab=<its index> (4 here, 3 on the baseline)
+##   --pickup_bank=h          (§12) a bank h m high across Maple Street at x = --bank_x (default 52,
+##                            in front of 16 Maple Street; a 2 m flat top with 0.5 m shoulders at
+##                            half height), the street bare around it; a pickup in the south lane
+##                            --bank_run m (default 16) before it drives into it at full throttle
+##                            until its front is --bank_in m (default 1.2) into the bank or it has
+##                            stopped, then holds still there; without --cam the camera looks at its
+##                            front from across the street. Run with --fixed-fps 60. Works on older
+##                            builds too (there the truck stops at the bank)
+##   --equip=coat,shoes,pad   (§13b) the equipment picked up before the world spawns: the insulated
+##                            coat (worn; Survival only), snowshoes (on), the heated pad (carried —
+##                            or put down with --pad); quietly ignored on builds without equipment
+##   --pad=u,v                (§13b) the heated pad lying at player-lot coords (u, v) on the snow
+##                            there, long side along the lot's depth; --pad_snow=m3 throws that much
+##                            snow onto it (a few splats, settled), --pad_melt=min then runs the
+##                            clock that long (the snow on it melts)
+##   --heated=driveway,path   (§13b) the house upgrades bought, the boxes bare and complete (as if
+##                            they had kept up); --fall_h=h then a light snowfall (0.6 cm an hour)
+##                            for h game hours run through the clock (a skip), the sky clear after
+##   --comp_section=text      (§13b) with --ui=computer --tab=n: scroll the app to the section
+##                            heading with that text (e.g. Equipment, Property)
+##   --shoes_walk=frames      (§13b) walk forward that many frames (real input) before the shot —
+##                            with snowshoes on, a shallow track behind the player
 
 var args := {}
 var game: Node = null
@@ -96,6 +185,8 @@ func _ready() -> void:
 	if args.has("scoop"):
 		await _scoop_shot()
 		return
+	if args.has("ff"):
+		Clock.set_speed(int(args["ff"]))   # polish 5 §9
 	if args.has("work"):
 		# Keep "working" in the box while the frames go by (the outline fades when work stops).
 		var bb := Boxes.get_box(Boxes.lot_box(Layout.player_lot, str(args["work"])))
@@ -104,9 +195,30 @@ func _ready() -> void:
 			await get_tree().process_frame
 	else:
 		await _wait(int(args.get("frames", "40")))
+	if args.has("award"):
+		# Polish 5 §5: contracts on the board, won outright (F1's "Win first listing").
+		for k in range(int(args["award"])):
+			if Contracts.listings.is_empty():
+				break
+			Contracts.force_award(int(Contracts.listings[0]["lid"]))
+	if args.get("hud", "1") == "0":
+		game.ui.visible = false
+		if game.get("time_layer") != null:
+			game.time_layer.visible = false   # §10b: the fast-forward control too (§9's layer)
 	if args.has("ui"):
-		_open_ui(str(args["ui"]))
+		await _open_ui(str(args["ui"]))
 		await _wait(int(args.get("ui_frames", "6")))
+	if args.has("ff") and Clock.speed != int(args["ff"]):
+		Clock.set_speed(int(args["ff"]))
+		await _wait(4)
+	if args.has("comp_apps") and game.modal_kind == "computer":
+		await _capture_apps(game.modal)
+		get_tree().quit()
+		return
+	if args.has("views"):
+		await _capture_views()
+		get_tree().quit()
+		return
 	if args.has("photo_out") and game.interior.has("photo"):
 		# Polish 4 §5: the photograph's own texture, saved at full size.
 		var ph = game.interior["photo"]
@@ -284,8 +396,16 @@ func _setup_world_state() -> void:
 		Game.flags["mail_read"] = true
 		Game.flags["computer_unlocked"] = true
 		Game.set_stage(Game.Stage.COMPLETE)
+	if args.has("comp_state"):
+		_comp_state()
+	if args.has("upgrades_state"):
+		_upgrades_state()
+	if args.has("equip") or args.has("heated") or args.has("pad"):
+		_equip_state()
 	if args.has("storm"):
 		_storm_clock()
+	if args.has("tv_tier"):
+		_tv_tier_clock()
 	if Game.is_survival():
 		Survival.activate()
 
@@ -293,8 +413,23 @@ func _setup_world_state() -> void:
 func _setup_after_spawn() -> void:
 	var w = game
 	var lot := Layout.player_lot
+	if args.has("rep"):
+		Game.reputation = clampf(float(args["rep"]), 0.0, 100.0)   # §10b (quietly: no tier notification)
+		if "tier_noted" in Contracts:
+			Contracts.set("tier_noted", Contracts.call("tier_index"))
+	if args.has("jobs"):
+		_win_jobs(str(args["jobs"]))
 	if args.has("tool"):
 		Game.add_tool(str(args["tool"]))
+	if args.has("slots"):
+		# Polish 5 §6: fill the hotbar.
+		var sl := str(args["slots"]).split(",")
+		for k in range(4):
+			Game.slots[k] = sl[k] if k < sl.size() else ""
+		Game.selected = clampi(int(args.get("selected", "0")), 0, 3)
+		Game.inventory_changed.emit()
+	if args.has("showcase"):
+		_showcase(w)
 	if args.has("player"):
 		var p := str(args["player"]).split(",")
 		var pp := Layout.lot_to_world(lot, Layout.gu(lot, float(p[0])), float(p[1]))
@@ -354,6 +489,10 @@ func _setup_after_spawn() -> void:
 				await get_tree().process_frame
 			w.neighbor_dialogue(w.neighbor)
 			await _wait(int(args["gerry_invite"]))
+	if args.has("door_line"):
+		await _door_line_shot(w)
+	if args.has("gerry_tips"):
+		await _gerry_tips_shot(w)
 	if args.has("snow_all"):
 		Snow.set_rect(Rect2(0, 0, Layout.MAP_W, Layout.MAP_D), float(args["snow_all"]))
 	if args.has("expose_shovel") or args.has("shovel_h"):
@@ -386,6 +525,17 @@ func _setup_after_spawn() -> void:
 		var c4 := mb - inw * 7.5 + sd * 4.0
 		args["cam"] = "%f,3.0,%f" % [c4.x, c4.y]
 		args["look"] = "%f,0.7,%f" % [mb.x + inw.x * 2.0, mb.y + inw.y * 2.0]
+	if args.has("city_snow"):
+		Snow.add_snowfall(float(args["city_snow"]))
+		Snow.sync_all()
+	if args.has("pad_snow") or args.has("fall_h") or args.has("shoes_walk"):
+		await _equip_after(w)
+	if args.has("city_pass"):
+		_city_pass()
+	if args.has("crew_watch"):
+		_crew_watch(w)
+	if args.has("pickup_bank"):
+		await _pickup_bank(w)
 	if args.has("cam") or args.has("lotcam") or args.has("hcam"):
 		_cam = Camera3D.new()
 		_cam.fov = float(args.get("fov", "62"))
@@ -411,6 +561,141 @@ func _setup_after_spawn() -> void:
 		_cam.look_at(look)
 		_cam.current = true
 		w.snow_renderer.build_all(cpos)
+
+
+## Polish 5 §13b: --equip / --pad / --heated — the equipment and the heated boxes before spawning.
+func _equip_state() -> void:
+	if not ("equipment" in Game):
+		return
+	var lot := Layout.player_lot
+	var eq: Dictionary = Game.get("equipment")
+	for e in str(args.get("equip", "")).split(","):
+		match e:
+			"coat":
+				eq["insulated_coat"] = {}
+			"shoes":
+				eq["snowshoes"] = {"on": true}
+			"pad":
+				eq["heated_pad"] = {}
+				Game.carried = "heated_pad"
+	if args.has("pad"):
+		var q := str(args["pad"]).split(",")
+		var c := Layout.lot_to_world(lot, Layout.gu(lot, float(q[0])), float(q[1]))
+		eq["heated_pad"] = {"pos": [c.x, 0.0, c.y], "yaw": 0.0}
+		if Game.carried == "heated_pad":
+			Game.carried = ""
+	for h in str(args.get("heated", "")).split(","):
+		if h in ["driveway", "path"]:
+			Game.upgrades["heated_" + h] = true
+			var b := Boxes.get_box(Boxes.lot_box(lot, h))
+			for r2 in b["rects"]:
+				Snow.set_rect(r2, 0.0)
+			Boxes.measure(b, true)
+
+
+func _equip_after(w) -> void:
+	if args.has("pad_snow"):
+		var eqs = load("res://scripts/data/equipment.gd")
+		var pr: Rect2 = eqs.pad_rect()
+		var vol := float(args["pad_snow"])
+		var rng := RandomNumberGenerator.new()
+		rng.seed = 31
+		for k in range(8):
+			var at := pr.get_center() + Vector2(rng.randf_range(-0.35, 0.35), rng.randf_range(-0.8, 0.8))
+			Snow.deposit(at, vol / 8.0, rng.randf_range(0.5, 0.8))
+		Snow.relax_until_stable()
+		if args.has("pad_melt"):
+			var left := float(args["pad_melt"])
+			while left > 0.0:
+				Clock.advance(minf(left, 1.0))
+				Snow.relax_until_stable()
+				left -= 1.0
+	if args.has("fall_h"):
+		var hours := float(args["fall_h"])
+		Weather.force(Weather.C.LIGHT, hours, 0.6)
+		Clock.skip(hours * 60.0)
+		Weather.force(Weather.C.CLEAR, 48.0)
+		Snow.relax_until_stable()
+		Boxes.measure_all(true)
+	if args.has("shoes_walk"):
+		Game.force_input = true
+		Input.action_press("move_forward")
+		await _wait(int(args["shoes_walk"]))
+		Input.action_release("move_forward")
+		await _wait(20)
+	w.snow_renderer.build_all(w.player.global_position)
+
+
+## Polish 5 §11: --city_pass — the whole pass at once (a sleep's batch), then the snow settles.
+func _city_pass() -> void:
+	if "crew_pending" in Municipal:
+		Municipal.set("crew_pending", Municipal.call("crew_route"))
+	Municipal.run_batch(Municipal.route_lanes())
+	Snow.relax_until_stable()
+
+
+## Polish 5 §11: --crew_watch=steps — the pass in the world, `steps` frames on; the camera on the plow.
+func _crew_watch(w) -> void:
+	Municipal.next_pass = Clock.minutes
+	Municipal.on_hour(Clock.day_index(), Clock.hour())
+	for i in range(int(args["crew_watch"])):
+		w.grader.sim_step(1.0 / 60.0)
+		w.crew.sim_step(1.0 / 60.0)
+		if i % 4 == 0:
+			Snow.process_relax(96)
+	Snow.relax_until_stable()   # the windrows and the mounds settled, as they are a little behind the movers
+	if not args.has("cam") and w.crew.active:
+		var e: Dictionary = w.crew.runs[w.crew.run_i]
+		var dir := (Vector2(e["b"]) - Vector2(e["a"])).normalized()
+		var lawn := -Vector2(e["out"])
+		var cp := Vector2(w.crew.global_position.x, w.crew.global_position.z)
+		var c := cp - dir * float(args.get("crew_back", "7.5")) + lawn * float(args.get("crew_side", "4.0"))
+		args["cam"] = "%f,%s,%f" % [c.x, args.get("crew_h", "3.2"), c.y]
+		args["look"] = "%f,0.5,%f" % [cp.x + dir.x * 3.0 - lawn.x * 1.0, cp.y + dir.y * 3.0 - lawn.y * 1.0]
+	print("crew_watch: grader at %s (lane %d), plow at %s on %s" % [str(w.grader.global_position), w.grader.lane_i, str(w.crew.global_position), str(w.crew.runs[w.crew.run_i]["box"]) if w.crew.active else "-"])
+
+
+## Polish 5 §12: --pickup_bank=h — the pickup driven into a bank across the street (see the top).
+func _pickup_bank(w) -> void:
+	var h := float(args["pickup_bank"])
+	var bx := float(args.get("bank_x", "52"))
+	var lane := 84.95
+	Snow.set_rect(Rect2(bx - 30.0, 79, 42.0, 8), 0.03)
+	Snow.set_rect(Rect2(bx, 79, 2.0, 8), h)
+	Snow.set_rect(Rect2(bx - 0.5, 79, 0.5, 8), h * 0.5)
+	Snow.set_rect(Rect2(bx + 2.0, 79, 0.5, 8), h * 0.5)
+	Snow.relax_until_stable()
+	Game.flags["truck_keys"] = true
+	Game.flags["help_vehicle_0"] = true   # no controls panel over the shot
+	Game.force_input = true
+	var run := float(args.get("bank_run", "16"))
+	var e := {"uid": Game.uid(), "id": "pickup", "pos": Vector3(bx - 0.5 - run - 2.7, 0, lane), "yaw": -PI * 0.5, "snow": 0.0}
+	Game.vehicles.append(e)
+	var v: Vehicle = w.spawn_vehicle_node(e)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	v.enter_vehicle(w.player)
+	Input.action_press("veh_accelerate")
+	var target := bx + float(args.get("bank_in", "1.2"))
+	var still := 0
+	var vmax := 0.0
+	var vmin := INF
+	for i in range(600):
+		await get_tree().physics_frame
+		vmax = maxf(vmax, v.speed)
+		if v.global_position.x + v.data.length * 0.5 > bx - 0.5:
+			vmin = minf(vmin, v.speed)
+		still = still + 1 if absf(v.speed) < 0.05 and i > 30 else 0
+		if v.global_position.x + v.data.length * 0.5 >= target or still > 20:
+			break
+	Input.action_release("veh_accelerate")
+	v.set_physics_process(false)   # hold it there for the shot
+	print("pickup_bank: front x %.2f (bank %.1f-%.1f, %.2f m), speed %.1f m/s (top %.1f, lowest in the bank %.1f), status '%s'" % [
+		v.global_position.x + v.data.length * 0.5, bx - 0.5, bx + 2.5, h, v.speed, vmax, vmin, v.status_text])
+	if not args.has("cam"):
+		var fx := v.global_position.x + v.data.length * 0.5
+		args["cam"] = "%f,2.4,%f" % [fx + 5.5, lane - 5.2]
+		args["look"] = "%f,0.6,%f" % [fx - 1.2, lane + 0.3]
 
 
 ## --pose=hold|scoop|push|toss [--load=0.5] [--toss=0.5]: freeze the hands / tool in a pose.
@@ -443,15 +728,35 @@ func _open_ui(which: String) -> void:
 	match which:
 		"computer":
 			Game.flags["computer_unlocked"] = true
+			if args.has("company"):
+				Game.set("company_name", str(args["company"]))   # §7 (no such state on older builds)
+			if args.has("board_state"):
+				_board_state()
 			w.open_computer()
 			if args.has("tab"):
 				var c = w.modal
 				c.call("_open_app", int(args["tab"]))
+				if args.has("comp_tab") and c.has_method("show_contracts_tab"):
+					c.call("show_contracts_tab", int(args["comp_tab"]))
+			if args.has("comp_scroll"):
+				for i in range(4):
+					await get_tree().process_frame
+				(w.modal as ComputerUI).scroll.scroll_vertical = int(args["comp_scroll"])
+			if args.has("comp_section"):
+				# §13b: scroll the open app to the section heading with this text.
+				for i in range(4):
+					await get_tree().process_frame
+				var cu: ComputerUI = w.modal
+				for n in cu.content.get_children():
+					if n is Label and (n as Label).text == str(args["comp_section"]):
+						cu.scroll.scroll_vertical = int((n as Label).position.y) - 8
+			await _wait_icons()
 		"map":
 			var m := MapUI.new()
 			w.ui.add_child(m)
 			w.open_modal(m, "map")
 		"inventory":
+			Input.action_press("inventory")   # held, as the game shows it (polish 5 §13b)
 			w.inventory_panel = Panels.inventory(w.hud)
 		"pause":
 			w._open_pause()
@@ -468,6 +773,289 @@ func _open_ui(which: String) -> void:
 			w.radio_forecast()
 		"sleep":
 			w.open_sleep()
+		"icons":
+			await _icons_sheet(w)
+		"photo":
+			var ph = w.interior.get("photo")
+			for i in range(240):
+				if ph == null or ph.captured or DisplayServer.get_name() == "headless":
+					break
+				await get_tree().process_frame
+			w.open_photo()
+		"settings":
+			w._open_pause()
+			var sm := SettingsMenu.new()
+			w.ui.add_child(sm)
+			sm.tabs.current_tab = int(args.get("settings_tab", "4"))
+			if args.has("settings_scroll"):
+				_scroll_settings(sm, int(args["settings_scroll"]))
+
+
+## --settings_scroll: once the page is laid out, scroll the open settings tab down.
+func _scroll_settings(sm: SettingsMenu, px: int) -> void:
+	for i in range(3):
+		await get_tree().process_frame
+	var sc := sm.tabs.get_current_tab_control() as ScrollContainer
+	if sc:
+		sc.scroll_vertical = px
+
+
+## --ui=icons (polish 5 §6): every icon of the set in the hotbar's slot panel at its size (70 px),
+## the last row dimmed as an empty slot is; then at the store's (72), the inventory's (48) and a large
+## size, on the computer's dark page colour.
+func _icons_sheet(w: Node) -> void:
+	var root := Control.new()
+	root.theme = UIKit.theme()
+	UIKit.full_rect(root)
+	w.ui.add_child(root)
+	var bg := ColorRect.new()
+	bg.color = Color(0.1, 0.12, 0.19)
+	UIKit.full_rect(bg)
+	root.add_child(bg)
+	var v := UIKit.vbox(16)
+	v.position = Vector2(40, 30)
+	root.add_child(v)
+	var list := _icon_ids()
+	for dim in [false, true]:
+		var row := UIKit.hbox(10)
+		v.add_child(row)
+		for id in list:
+			var p := UIKit.panel(UIKit.sb(Color(0.07, 0.09, 0.15, 0.65), 10, 2, Color(1, 1, 1, 0.12), 6))
+			p.custom_minimum_size = Vector2(98, 86)
+			row.add_child(p)
+			var ov := Control.new()
+			p.add_child(ov)
+			var ic := Icons.tool(id, 70)
+			ic.position = Vector2(8, 2)
+			ov.add_child(ic)
+			if dim:
+				ic.modulate.a = 0.35 if id == "" else 1.0
+	for px in [72, 48, 128]:
+		var row2 := UIKit.hbox(14)
+		v.add_child(row2)
+		for id in list:
+			var c := UIKit.card()
+			row2.add_child(c)
+			c.add_child(Icons.tool(id, px))
+	var names := UIKit.label("  ".join(list.map(func(x): return "hands" if x == "" else x)), 16, UIKit.MUTED)
+	v.add_child(names)
+	await _wait_icons()
+
+
+## The rendered icon set's script (polish 5 §6), looked up at run time so this helper also runs on
+## builds from before it (the "before" shots), where it is null.
+func _icon_script() -> Script:
+	var p := "res://scripts/ui/tool_icons.gd"
+	return load(p) if ResourceLoader.exists(p) else null
+
+
+func _icon_ids() -> Array:
+	var ti := _icon_script()
+	if ti:
+		return ti.call("ids")
+	var out := [""]
+	for id in Catalog.TOOL_IDS:
+		if id != &"hands":
+			out.append(String(id))
+	return out
+
+
+## Wait (a few seconds at most) for the rendered tool icons.
+func _wait_icons() -> void:
+	var ti := _icon_script()
+	if ti == null:
+		return
+	ti.call("request")
+	for i in range(600):
+		if ti.get("state") != "rendering":
+			break
+		await get_tree().process_frame
+	print("tool icons: %s, %d ms (stage %d ms, read back and cut %d ms), %d frames drawn, image %s" % [ti.get("state"), ti.get("render_ms"), ti.get("build_ms"), ti.get("cut_ms"), ti.get("render_frames"), ti.get("image_px")])
+	await _wait(3)
+
+
+## --comp_state=1 (polish 5 §7): a business for the computer's apps, made with the game's own calls
+## (they exist on older builds too): money, three listings won (the first cleared by the box rule,
+## the second lost), a store order, the month's hydro bill paid.
+func _comp_state() -> void:
+	Game.money = 3000
+	var won := []
+	for k in range(3):
+		if Contracts.listings.is_empty():
+			break
+		won.append(Contracts.force_award(int(Contracts.listings[0]["lid"])))
+	if won.size() > 0:
+		for z in won[0]["zones"]:
+			for id in z["boxes"]:
+				var bx := Boxes.get_box(id)
+				for r in bx["rects"]:
+					Snow.set_rect(r, 0.0)
+				Boxes.measure(bx, true)
+	if won.size() > 1:
+		Contracts._lose(won[1])
+	Economy.buy("standard_shovel")
+	for bl in Economy.bills.duplicate():
+		Economy.pay_bill(int(bl["month"]))
+
+
+## --upgrades_state=1 (polish 5 §13): a player with a few tools and upgrades, made with the game's
+## own calls (the per-item levels on this build, the global upgrades on older builds).
+func _upgrades_state() -> void:
+	Game.money = 3000
+	Game.slots = ["standard_shovel", "wide_pusher", "", ""]
+	var lot := Layout.player_lot
+	var p := Layout.lot_to_world(lot, Layout.gu(lot, 2.0), lot["setback"] - 2.0)
+	Game.machines.append({"uid": Game.uid(), "tool": "small_blower", "pos": Vector3(p.x, 0, p.y), "yaw": 0.0})
+	if Catalog.has_method("upgrade_ids"):
+		for id in ["standard_shovel:capacity:1", "standard_shovel:throw:1", "small_blower:intake:1"]:
+			Game.grant_upgrade(StringName(id))
+		Economy.buy("small_shovel:capacity:1")
+	else:
+		for id in ["shovel_capacity_1", "throw_1", "blower_intake_1"]:
+			Game.grant_upgrade(StringName(id))
+		Economy.buy("shovel_capacity_2")
+	Game.inventory_changed.emit()
+	Notify.clear()
+
+
+## --board_state=1 (polish 5 §10): live bidding on the board, made with the game's own calls — every
+## listing's first rival bid in, a parking lot (locked below Commercial), your bid winning on one
+## residential listing and outbid on another.
+func _board_state() -> void:
+	if not Contracts.has_method("bid_status"):
+		return
+	Contracts.on_advance(0.0)   # the board posted for the time the clock was set to
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	if not Contracts.listings.any(func(l): return str(l.get("tier", "")) == "commercial"):
+		Contracts._add_area_listing(Layout.big_areas[2], Clock.day_index(), rng)
+	if not Contracts.listings.any(func(l): return str(l.get("target", "")).begins_with("road:")):
+		# §10b: a street section too (locked by reputation, or at the City tier without a plow or a
+		# blower vehicle).
+		Contracts._add_municipal_listing(Layout.road_segments[1], Clock.day_index(), rng)
+	for l in Contracts.listings:
+		if not (l["rivals"] as Array).is_empty():
+			Contracts._rival_bid(l, 0, int(l["rivals"][0]["open"]), Clock.minutes)
+	var res: Array = Contracts.listings.filter(func(l): return str(l.get("tier", "")) == "residential")
+	if res.size() > 0:
+		var low := int(Contracts.bid_status(res[0])["lowest"])
+		Contracts.place_bid(int(res[0]["lid"]), maxi(low - 2, Contracts.bid_floor(res[0])) if low > 0 else int(res[0]["budget"]))
+	if res.size() > 1:
+		Contracts.place_bid(int(res[1]["lid"]), int(res[1]["budget"]) + 6)
+		Contracts._rival_bid(res[1], 0, int(res[1]["budget"]) - 2, Clock.minutes)
+	Notify.clear()
+
+
+## --jobs=spec,… (polish 5 §10b): win these jobs outright, made with the game's own calls (the same on
+## older builds: a lot's listing is made, then given the one box asked for).
+func _win_jobs(spec: String) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 10
+	var day := Clock.day_index()
+	for item in spec.split(","):
+		var p := item.split(":")
+		var n0 := Contracts.listings.size()
+		match p[0]:
+			"lot":
+				var lt: Dictionary = Layout.lots[int(p[1])]
+				Contracts.call("_add_lot_listing", lt, day, rng)
+				if Contracts.listings.size() > n0:
+					var kind := p[2] if p.size() > 2 else "driveway"
+					var l0: Dictionary = Contracts.listings[-1]
+					l0["zones"] = [Contracts._zone({"driveway": "Driveway", "path": "Path to the house", "sidewalk": "Sidewalk"}.get(kind, kind), [Boxes.lot_box(lt, kind)])]
+					l0["type"] = "one_time"
+					l0["job"] = kind
+			"area":
+				for a in Layout.big_areas:
+					if str(a["id"]) == p[1]:
+						Contracts.call("_add_area_listing", a, day, rng)
+			"road":
+				for seg in Layout.road_segments:
+					if str(seg["id"]) == p[1]:
+						Contracts.call("_add_municipal_listing", seg, day, rng)
+			"walk":
+				if Contracts.has_method("_add_walk_listing"):
+					Contracts.call("_add_walk_listing", p[1], day, rng)
+		if Contracts.listings.size() > n0:
+			Contracts.force_award(int(Contracts.listings[-1]["lid"]))
+	Notify.clear()
+
+
+## --comp_apps=all|i,j,… (polish 5 §7): each app of the open computer, captured to <out>_NN.png.
+func _capture_apps(c: Node) -> void:
+	var names: Array = ComputerUI.APPS
+	var want: Array = []
+	if str(args["comp_apps"]) == "all":
+		want = range(names.size())
+	else:
+		for s in str(args["comp_apps"]).split(","):
+			want.append(int(s))
+	var out: String = args.get("out", "user://shot.png")
+	for i in want:
+		c.call("_open_app", i)
+		if args.has("comp_tab") and c.has_method("show_contracts_tab") and c.get("current") == c.call("app_index", "contracts"):
+			c.call("show_contracts_tab", int(args["comp_tab"]))
+		await _wait(int(args.get("ui_frames", "6")))
+		await RenderingServer.frame_post_draw
+		var img := get_viewport().get_texture().get_image()
+		var p := out.get_basename() + "_%02d.png" % i
+		img.save_png(p)
+		print("saved ", p, " ", img.get_size(), " app ", names[i])
+
+
+## --showcase=x,z,yaw (polish 5 §6): every tool's model in a row on the ground.
+func _showcase(w: Node) -> void:
+	var p := str(args["showcase"]).split(",")
+	var at := Vector3(float(p[0]), 0, float(p[1]))
+	var yaw := float(p[2]) if p.size() > 2 else 0.0
+	var b := Basis(Vector3.UP, yaw)
+	var x := 0.0
+	for id in ["small_shovel", "standard_shovel", "wide_pusher", "snow_scraper", "large_scraper", "snow_sleigh", "electric_shovel", "small_blower", "large_blower"]:
+		var t: ToolData = Catalog.tool(StringName(id))
+		var mi := MeshInstance3D.new()
+		mi.mesh = ToolModels.mesh_for(id)
+		w.add_child(mi)
+		var half := maxf(t.width, 0.35) * 0.5 + 0.25
+		x += half
+		var base := at + b * Vector3(x, 0, 0)
+		base.y = Snow.surface_height(base.x, base.z)
+		if t.kind == ToolData.Kind.WALK_BLOWER:
+			mi.global_transform = Transform3D(b, base)
+			if (ToolModels as Script).get_script_method_list().any(func(md): return md["name"] == "chute_mesh"):
+				var ch := MeshInstance3D.new()
+				ch.mesh = (ToolModels as Script).call("chute_mesh", id)
+				mi.add_child(ch)
+				ch.position = Vector3(0, 0.62, -0.25)   # WalkBehind's chute pivot
+				ch.rotation.y = -deg_to_rad(30.0)
+		else:
+			# Standing on its blade as if held: the tip at the ground, the grip up behind.
+			var tp := ToolModels.tip(id)
+			mi.global_transform = Transform3D(b, base - b * tp + Vector3(0, 0.02, 0))
+		x += half
+
+
+## --views="x,y,z>lx,ly,lz;…" (polish 5 §5): one free camera moved through several views, each
+## captured to <out>_NN.png after --views_frames frames (the snow chunks around it built first).
+func _capture_views() -> void:
+	var cam := Camera3D.new()
+	cam.fov = float(args.get("fov", "62"))
+	cam.far = 500.0
+	add_child(cam)
+	cam.current = true
+	var out: String = args.get("out", "user://shot.png")
+	var views := str(args["views"]).split(";", false)
+	for k in range(views.size()):
+		var pair := views[k].split(">")
+		var cpos := _v3(pair[0])
+		cam.global_position = cpos
+		cam.look_at(_v3(pair[1]))
+		game.snow_renderer.build_all(cpos)
+		await _wait(int(args.get("views_frames", "20")))
+		await RenderingServer.frame_post_draw
+		var img := get_viewport().get_texture().get_image()
+		var p := out.get_basename() + "_%02d.png" % k
+		img.save_png(p)
+		print("saved ", p, " ", img.get_size())
 
 
 ## --seq=N --every=F: a short series of frames (menu camera path, Gerry walking…).
@@ -566,6 +1154,57 @@ func _storm_clock() -> void:
 				t = h + 0.5
 	Clock.reset(t * 60.0)
 	print("storm shot: %s %.1f-%.1f h (%.0f cm), at %.1f h: %s, %.2f cm/h" % [tier, st, float(found["end"]), float(found["total"]), t, Weather.NAMES[Weather.condition()], Weather.snow_rate()])
+
+
+## --tv_tier=light|storm|major [--tv_hour=h]: (§8) the clock at h (default 9:00) on a day whose TV
+## shows that strength on one of its three cards, with as many other strengths on the others as can
+## be found: forecast systems dropping at least 1 cm on each day, nothing unforecast on them — read
+## from the schedule, so any build picks the same moment. Winters 1–5 of the seed are searched,
+## then the next seeds.
+func _tv_tier_clock() -> void:
+	var hr := float(args.get("tv_hour", "9"))
+	var rank := {"light": 1, "storm": 2, "major": 3}
+	var want: int = rank.get(str(args["tv_tier"]), 2)
+	var pick := []
+	var pick_n := 0
+	for k in range(20):
+		for y in range(1, 6):
+			Weather.generate(y, Game.weather_seed + y * 13)
+			var best := []
+			var odd := []
+			for d in range(121):
+				best.append(0)
+				odd.append(false)
+			for ev in Weather.events:
+				var per := {}
+				for hv in (ev["hours"] as Dictionary).keys():
+					var d0 := int(floor(int(hv) / 24.0))
+					per[d0] = float(per.get(d0, 0.0)) + float(ev["hours"][hv])
+				for d1 in per.keys():
+					if ev["surprise"]:
+						odd[d1] = true
+					elif float(per[d1]) >= 1.0:
+						best[d1] = maxi(best[d1], rank[Weather.tier_of(ev)])
+			for d in range(3, 118):
+				if odd[d] or odd[d + 1] or odd[d + 2] or not (best[d + 1] == want or best[d + 2] == want):
+					continue
+				var seen := {}
+				for j in range(3):
+					if best[d + j] > 0:
+						seen[best[d + j]] = true
+				if seen.size() > pick_n:
+					pick_n = seen.size()
+					pick = [Game.weather_seed, y, d, [best[d], best[d + 1], best[d + 2]]]
+		if pick_n >= 3 or (pick_n >= 2 and k >= 4):
+			break
+		Game.weather_seed += 1
+	if pick.is_empty():
+		return
+	Game.weather_seed = int(pick[0])
+	Game.year = int(pick[1])
+	Weather.generate(Game.year, Game.weather_seed + Game.year * 13)
+	Clock.reset(Clock.at(int(pick[2]), hr))
+	print("tv_tier shot: seed %d, winter %d, %s %.1f h: %s" % [Game.weather_seed, Game.year, Clock.date_string(int(pick[2]), true), hr, str(pick[3])])
 
 
 ## --scoop=mid|loaded|glide [--tool=id] [--player=u,v,yaw] [--pitch=deg] [--tp=1]: a real scoop
@@ -679,3 +1318,64 @@ func _grid() -> void:
 					img.save_png(out)
 					print("saved ", out)
 	tc.pose_override = ""
+
+
+## --door_line=frames (polish 5 §4): stand in the hall facing the front door, open it with
+## Interact, and wait while the thought comes up on the HUD.
+func _door_line_shot(w: Node) -> void:
+	Game.force_input = true
+	var L := HouseBuilder.lot_transform(Layout.player_lot)
+	var sb: float = Layout.player_lot["setback"]
+	var at := L * Vector3(-1.5, Layout.PORCH_H, sb + 1.6)
+	w.player.teleport(at + Vector3(0, 0.05, 0))
+	var door: Vector3 = L * Vector3(-1.5, Layout.PORCH_H + 1.2, sb)
+	var d: Vector3 = door - (at + Vector3(0, 1.6, 0))
+	w.player.set_yaw(atan2(-d.x, -d.z))
+	w.player.pitch = atan2(d.y, Vector2(d.x, d.z).length())
+	w.player.head.rotation.x = w.player.pitch
+	Clock.running = true
+	await _wait(4)
+	var ev := InputEventAction.new()
+	ev.action = "interact"
+	ev.pressed = true
+	Input.parse_input_event(ev)
+	await _wait(2)
+	var up := InputEventAction.new()
+	up.action = "interact"
+	up.pressed = false
+	Input.parse_input_event(up)
+	await _wait(int(args["door_line"]))
+	print("door open %s, speech: %s" % [w.player_door.open, w.hud.speech_text.text])
+
+
+## --gerry_tips=k (polish 5 §4): Gerry's job agreed through his dialogue, then his snow tips on the
+## HUD moved on to line k, the player at the foot of his walk looking up at him.
+func _gerry_tips_shot(w: Node) -> void:
+	await _wait(150)      # past the fade-in and the start-up controls reminder
+	Game.flags["mail_read"] = true
+	Game.set_stage(Game.Stage.LETTER_READ)
+	var g: Node3D = w.neighbor
+	var out := -Vector2(Layout.neighbor_lot["inward"]).normalized()
+	var at := Vector2(g.global_position.x, g.global_position.z) + out * 3.2
+	w.player.teleport(Vector3(at.x, Snow.surface_height(at.x, at.y) + 0.05, at.y))
+	var to := Vector2(g.global_position.x, g.global_position.z) - at
+	w.player.set_yaw(atan2(-to.x, -to.y))
+	w.neighbor_dialogue(g)
+	await _wait(2)
+	for i in range(30):
+		if w.modal == null:
+			break
+		var pressed := false
+		for b in w.modal.find_children("*", "Button", true, false):
+			if (b as Button).text.contains("$55") or (b as Button).text.contains("Continue"):
+				(b as Button).pressed.emit()
+				pressed = true
+				break
+		if not pressed:
+			break
+		await _wait(2)
+	for k in range(int(args["gerry_tips"])):
+		w._talk_next()
+	await _wait(3)
+	print("stage %d, speech: %s" % [Game.stage(), w.hud.speech_text.text])
+
