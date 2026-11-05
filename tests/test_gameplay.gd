@@ -552,7 +552,9 @@ func test_vehicle_plow_and_stuck_pickup() -> void:
 	await _frames(120)
 	_release_all()
 	var moved := truck.global_position.distance_to(p0)
-	runner.check(moved < 2.0, "Truck is stuck in the opening's deep snow (moved %.2f m)" % moved)
+	# Polish 5 §12: the pickup's snow thresholds are balance values.
+	runner.check(moved < 2.0 and truck.wheel_snow_depth() > Catalog.balance.pickup_stuck_depth, "Truck is stuck in the opening's deep snow (moved %.2f m; %d cm around the wheels, stuck from %d cm)" % [
+		moved, int(round(truck.wheel_snow_depth() * 100.0)), int(round(Catalog.balance.pickup_stuck_depth * 100.0))])
 	truck.exit_vehicle()
 	await _frames(2)
 	# A plow truck on Maple Street.
@@ -1602,8 +1604,13 @@ func test_truck_keys_end_to_end() -> void:
 		var p0 := truck.global_position
 		await _hold("veh_reverse", 90)
 		runner.info("%s: stuck drive moved %.2f m, status '%s'" % [mode, truck.global_position.distance_to(p0), truck.status_text])
+		# Polish 5 §12: the pickup's snow thresholds are balance values — the opening's snow around the
+		# wheels is deeper than it starts in, and the message gives that depth.
+		var stuck_cm := int(round(Catalog.balance.pickup_stuck_depth * 100.0))
+		runner.check(truck.wheel_snow_depth() > Catalog.balance.pickup_stuck_depth, "%s: the opening's snow around the wheels (%d cm) is deeper than the pickup starts in (%d cm)" % [mode, int(round(truck.wheel_snow_depth() * 100.0)), stuck_cm])
 		runner.check(truck.global_position.distance_to(p0) < 1.5, "%s: deep snow holds the truck" % mode)
 		runner.check(truck.status_text.contains("cm") and (truck.status_text.to_lower().contains("wheel") or truck.status_text.to_lower().contains("bank")), "%s: the game says what's blocking (%s)" % [mode, truck.status_text])
+		runner.check(truck.status_text.contains("about %d cm" % stuck_cm), "%s: …with the pickup's limit from the balance (%d cm)" % [mode, stuck_cm])
 		await _press_event("interact")
 		await _frames(3)
 		runner.check(pl.state == "foot", "%s: out of the truck again" % mode)

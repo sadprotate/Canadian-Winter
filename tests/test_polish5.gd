@@ -5866,3 +5866,300 @@ func test_s11_displays() -> void:
 	runner.check(ok and Municipal.is_crew_start(Municipal.next_pass) and is_equal_approx(Municipal.next_pass, Municipal.next_crew_time(Clock.minutes)),
 		"§11 a pass-4 save: the next pass on the schedule (%s %s)" % [Clock.weekday(int(Municipal.next_pass / 1440.0), Game.year), Clock.format_time(Municipal.next_pass)])
 	Saves.delete_save("fun")
+
+
+# =============================================================================
+# §12 The pickup truck in snow
+# =============================================================================
+# The targets are balance values (data/balance.tres, BalanceData "Pickup truck"); the tests read
+# them, and the storm and major-event sizes from the weather's own balance values.
+
+## The top of the pickup's front bumper (VehicleModels: the bar at 0.45 m, 0.18 m tall).
+const S12_BUMPER := 0.54
+
+
+## A fresh world (fun, seed 2024, Wed Dec 2 noon, clear, the clock stopped), keys found.
+func _s12_world(day := 1, hour := 12.0) -> void:
+	await _unload()
+	Game.force_input = true
+	Game.new_game("fun", 2024)
+	Game.flags["mail_read"] = true
+	Game.flags["computer_unlocked"] = true
+	Game.flags["truck_keys"] = true
+	Game.flags["help_vehicle_0"] = true
+	Game.set_stage(Game.Stage.COMPLETE)
+	Clock.reset(Clock.at(day, hour))
+	await _spawn_world()
+	Clock.running = false
+	Weather.force(Weather.C.CLEAR, 48.0)
+
+
+## A pickup at (x, z) facing `yaw` (−π/2: east along the street), with the player in it.
+func _s12_truck(x: float, z := 84.95, yaw := -PI * 0.5) -> Vehicle:
+	var e := {"uid": Game.uid(), "id": "pickup", "pos": Vector3(x, 0, z), "yaw": yaw, "snow": 0.0}
+	Game.vehicles.append(e)
+	var v: Vehicle = world.spawn_vehicle_node(e)
+	await _frames(2)
+	v.enter_vehicle(world.player)
+	await _frames(1)
+	return v
+
+
+## Out of the truck and the truck gone (to start the next run in the same world).
+func _s12_drop(v: Vehicle) -> void:
+	v.exit_vehicle()
+	Game.vehicles.erase(v.entry)
+	v.queue_free()
+	await _frames(2)
+
+
+## Hold `action` up to `frames`; stop early when the front passes x = stop_x (driving east) or the
+## truck has stood still for a second. Returns {dist, vmax, v_from (the speed as the front reached
+## x = from_x), vmin (the lowest speed after that), stuck, blocked (frames), reasons, front}.
+func _s12_drive(v: Vehicle, frames: int, action := "veh_accelerate", stop_x := INF, from_x := INF) -> Dictionary:
+	var p0 := v.global_position
+	var fwd := -v.global_transform.basis.z
+	var r := {"vmax": 0.0, "vmin": INF, "v_from": -1.0, "stuck": 0, "blocked": 0, "reasons": []}
+	Input.action_press(action)
+	var still := 0
+	for f in range(frames):
+		await _tree().physics_frame
+		var front := v.global_position.x + v.data.length * 0.5
+		r["vmax"] = maxf(r["vmax"], v.speed)
+		if front > from_x:
+			if r["v_from"] < 0.0:
+				r["v_from"] = v.speed
+			r["vmin"] = minf(r["vmin"], v.speed)
+		if v.stuck:
+			r["stuck"] += 1
+		if v.blocked_reason != "":
+			r["blocked"] += 1
+			if not (r["reasons"] as Array).has(v.blocked_reason):
+				r["reasons"].append(v.blocked_reason)
+		still = still + 1 if absf(v.speed) < 0.05 and f > 20 else 0
+		if still > 60 or front > stop_x:
+			break
+	Input.action_release(action)
+	await _frames(1)
+	r["dist"] = (v.global_position - p0).dot(fwd)
+	r["front"] = v.global_position.x + v.data.length * 0.5
+	return r
+
+
+## A bank across Maple Street (west section): a flat top 2 m long at height h from x, with 0.5 m
+## shoulders at half height; the rest of the section at 3 cm.
+func _s12_bank(x: float, h: float) -> void:
+	Snow.set_rect(Rect2(0, 79, 92, 8), 0.03)
+	Snow.set_rect(Rect2(x, 79, 2.0, 8), h)
+	Snow.set_rect(Rect2(x - 0.5, 79, 0.5, 8), h * 0.5)
+	Snow.set_rect(Rect2(x + 2.0, 79, 0.5, 8), h * 0.5)
+
+
+## After a typical storm (the weather's storm sizes, 15–30 cm) the pickup drives anywhere on the
+## street — along both lanes and across it — without shoving (storm snow passes under the
+## bumper), slower the deeper the snow; never stuck, never blocked.
+func test_s12_street_at_storm_depth() -> void:
+	var b: BalanceData = Catalog.balance
+	await _s12_world()
+	runner.check(b.storm_cm_max / 100.0 <= b.pickup_shove_floor and b.pickup_shove_floor < b.pickup_stuck_depth,
+		"§12 storm snow (%d–%d cm) passes under the bumper (shove floor %d cm, stuck at %d cm)" % [int(b.storm_cm_min), int(b.storm_cm_max), int(round(b.pickup_shove_floor * 100.0)), int(round(b.pickup_stuck_depth * 100.0))])
+	var tops := []
+	for cm in [b.storm_cm_min, (b.storm_cm_min + b.storm_cm_max) * 0.5, b.storm_cm_max]:
+		var d: float = cm / 100.0
+		Snow.set_rect(Rect2(0, 79, 92, 8), d)
+		var moved0 := Snow.stat_player_moved
+		var v := await _s12_truck(6.0)
+		var r := await _s12_drive(v, 360)
+		runner.check(r["stuck"] == 0 and r["blocked"] == 0 and r["dist"] > 25.0 and is_equal_approx(Snow.stat_player_moved, moved0),
+			"§12 %.1f cm on the street: 6 s from a standstill along the lane, %.1f m, top %.1f km/h, never stuck or blocked, nothing shoved" % [cm, r["dist"], r["vmax"] * 3.6])
+		tops.append(r["vmax"])
+		await _s12_drop(v)
+	runner.check(tops[0] > tops[1] and tops[1] > tops[2], "§12 slower the deeper: %s km/h" % str(tops.map(func(t): return int(t * 3.6))))
+	# The deepest storm: the other lane (westbound) and across the street at 30°.
+	var dmax := b.storm_cm_max / 100.0
+	Snow.set_rect(Rect2(0, 79, 92, 8), dmax)
+	var v2 := await _s12_truck(86.0, 81.05, PI * 0.5)
+	var r2 := await _s12_drive(v2, 300)
+	runner.check(r2["stuck"] == 0 and r2["blocked"] == 0 and r2["dist"] > 20.0, "§12 %d cm: the westbound lane, %.1f m" % [int(b.storm_cm_max), r2["dist"]])
+	await _s12_drop(v2)
+	var v3 := await _s12_truck(20.0, 85.0, -PI * 0.5 + deg_to_rad(30.0))
+	var z0 := v3.global_position.z
+	var r3 := await _s12_drive(v3, 150)
+	runner.check(r3["stuck"] == 0 and r3["blocked"] == 0 and v3.global_position.z < 83.0, "§12 %d cm: across the street at 30°, over the centre line (z %.1f → %.1f)" % [int(b.storm_cm_max), z0, v3.global_position.z])
+	await _s12_drop(v3)
+	await _unload()
+
+
+## The largest typical storm, then the city's pass (grader and sidewalk crew, as a sleep runs
+## it): the grader's windrow across the cleared driveway's apron — taller than the shove floor and
+## than the old pickup's bank limit — and the pickup drives out of the driveway across it onto the
+## street, shoving it aside, the snow's volume unchanged.
+func test_s12_windrow_across_an_apron() -> void:
+	var b: BalanceData = Catalog.balance
+	await _s12_world()
+	var drv: Rect2 = Boxes.get_box(Boxes.lot_box(Layout.player_lot, "driveway"))["rects"][0]
+	Snow.set_rect(Rect2(0, 79, Layout.MAP_W, 8), 0.03)         # the street after an earlier pass
+	Snow.set_rect(drv, 0.0)
+	Snow.add_layer_rect(Rect2(0, 70, Layout.MAP_W, 30), b.storm_cm_max / 100.0)
+	Snow.set_rect(drv, 0.0)                                      # the driveway cleared after the storm
+	Municipal.crew_pending = Municipal.crew_route()
+	Municipal.run_batch(Municipal.route_lanes())
+	Snow.relax_until_stable()
+	var cx := drv.get_center().x
+	var peak := 0.0
+	for k in range(40):
+		peak = maxf(peak, Snow.depth_at(cx, 85.0 + k * 0.125))
+	runner.check(peak > b.pickup_shove_floor and peak > 0.57, "§12 a %d cm storm and the city's pass: a windrow %d cm high across the apron (the old pickup stopped at 57 cm)" % [int(b.storm_cm_max), int(round(peak * 100.0))])
+	var region := Rect2(drv.position.x - 8.0, 74.0, drv.size.x + 16.0, 30.0)
+	var vol0 := Snow.volume_in_rect(region)
+	var moved0 := Snow.stat_player_moved
+	var truck: Vehicle = world.vehicle_nodes()[0]
+	truck.enter_vehicle(world.player)
+	await _frames(2)
+	Input.action_press("veh_accelerate")
+	var stuck := 0
+	for f in range(360):
+		await _tree().physics_frame
+		stuck += 1 if truck.stuck else 0
+		if truck.global_position.z + truck.data.length * 0.5 < 86.5:
+			break
+	_release_all()
+	await _frames(2)
+	var rear := truck.global_position.z + truck.data.length * 0.5
+	runner.check(rear < 87.0 and stuck == 0, "§12 …the pickup drives out of the driveway across it: its tailgate past the curb (z %.1f < 87), never stuck" % rear)
+	runner.check(Snow.stat_player_moved > moved0 + 0.05, "§12 …shoving %.2f m³ of it aside" % (Snow.stat_player_moved - moved0))
+	runner.near(Snow.volume_in_rect(region), vol0, 1e-4, "§12 …the snow's volume unchanged (%.6f → %.6f m³)" % [vol0, Snow.volume_in_rect(region)])
+	truck.exit_vehicle()
+	await _unload()
+
+
+## A bank about as high as the bumper: with a run-up the pickup shoves through it, slowing; a
+## taller one (between the bog depth and the most it can take) stops it from a standstill with the
+## message and the reverse key — backing up and taking a run at it gets it through.
+func test_s12_bank_with_a_run_up() -> void:
+	var b: BalanceData = Catalog.balance
+	await _s12_world()
+	_s12_bank(30.0, S12_BUMPER)
+	var region := Rect2(0, 70, 92, 26)
+	var vol0 := Snow.volume_in_rect(region)
+	var v := await _s12_truck(29.5 - 15.0 - 2.7)            # a 15 m run-up
+	var r := await _s12_drive(v, 600, "veh_accelerate", 40.0, 29.5)
+	runner.check(r["front"] > 40.0 and r["blocked"] == 0 and r["stuck"] == 0,
+		"§12 a %d cm bank (bumper high), 15 m run-up: shoved through (front at x %.1f, the bank ends at 32.5), never blocked or stuck" % [int(round(S12_BUMPER * 100.0)), r["front"]])
+	runner.check(r["vmin"] < r["v_from"] * 0.9, "§12 …slowing as it goes: %.1f → %.1f km/h in the bank" % [r["v_from"] * 3.6, r["vmin"] * 3.6])
+	runner.near(Snow.volume_in_rect(region), vol0, 1e-4, "§12 …volume unchanged (%.6f m³)" % vol0)
+	await _s12_drop(v)
+	# Taller: between the bog depth and the most the pickup takes (snow above the grille stops it).
+	var h := (b.pickup_bog_depth + b.pickup_bank_max) * 0.5
+	_s12_bank(30.0, h)
+	var v2 := await _s12_truck(29.5 - 0.3 - 2.7)            # its bumper at the bank
+	var r2 := await _s12_drive(v2, 240)
+	var msg := ""
+	for t in r2["reasons"]:
+		if str(t).contains("standstill"):
+			msg = str(t)
+	runner.check(r2["front"] < 31.0 and msg.contains("%d cm" % int(round(b.pickup_bog_depth * 100.0))) and msg.contains("Back up with %s" % Settings.action_label("veh_reverse")) and msg.begins_with("Snowbank ahead"),
+		"§12 a %d cm bank from a standstill: held at its face (front x %.1f), \"%s\"" % [int(round(h * 100.0)), r2["front"], msg])
+	var r3 := await _s12_drive(v2, 200, "veh_reverse")
+	runner.check(r3["dist"] < -9.0, "§12 …backs up %.1f m" % -r3["dist"])
+	var r4 := await _s12_drive(v2, 600, "veh_accelerate", 40.0, 29.5)
+	runner.check(r4["front"] > 40.0, "§12 …and takes a run at it: through (front at x %.1f, %.1f → %.1f km/h in the bank)" % [r4["front"], r4["v_from"] * 3.6, r4["vmin"] * 3.6])
+	await _s12_drop(v2)
+	await _unload()
+
+
+## A long stretch of untouched snow: 10 cm under the bog depth the pickup keeps going, slowly; at
+## the bog depth it bogs down after its run-up (the snow it casts aside adds a few cm in front, so
+## a long stretch stops it from about 65 cm: §12 report); a major event (its smallest, a metre, its
+## largest) stops it at the edge.
+func test_s12_bogging_down_in_deep_snow() -> void:
+	var b: BalanceData = Catalog.balance
+	await _s12_world()
+	var cases := [b.pickup_bog_depth - 0.1, b.pickup_bog_depth, b.major_cm_min / 100.0, 1.0, b.major_cm_max / 100.0]
+	for d in cases:
+		Snow.set_rect(Rect2(0, 79, 20, 8), 0.03)
+		Snow.set_rect(Rect2(20, 79, 72, 8), d)
+		var v := await _s12_truck(4.0)                   # a 13 m run-up on a bare street
+		var r := await _s12_drive(v, 900, "veh_accelerate", 52.0)
+		var into: float = r["front"] - 20.0
+		var text := str(r["reasons"][0]) if not (r["reasons"] as Array).is_empty() else ""
+		if d < b.pickup_bog_depth - 0.01:
+			runner.check(into > 15.0 and r["blocked"] == 0 and r["stuck"] == 0 and absf(v.speed) > b.pickup_shove_min_speed,
+				"§12 %d cm untouched (10 cm under the %d cm bog depth): keeps going — %.1f m in, still at %.1f km/h" % [int(round(d * 100.0)), int(round(b.pickup_bog_depth * 100.0)), into, v.speed * 3.6])
+		elif d < b.major_cm_min / 100.0 - 0.01:
+			runner.check(into > 2.0 and into < 25.0 and text.contains("standstill") and absf(v.speed) < 0.05,
+				"§12 %d cm untouched: bogs down %.1f m in after its run-up (\"%s\")" % [int(round(d * 100.0)), into, text.substr(0, 60)])
+		else:
+			runner.check(into < 1.5 and text.begins_with("Snowbank ahead") and absf(v.speed) < 0.05,
+				"§12 %d cm (a major event): stopped within %.1f m, \"%s\"" % [int(round(d * 100.0)), maxf(into, 0.0), text])
+			if d >= 1.0:
+				runner.check(into < 0.5 and text.contains("about %d cm at most, with a run-up" % int(round(b.pickup_bank_max * 100.0))), "§12 …a metre and more is a wall to it: at the edge (%.1f m in)" % into)
+		await _s12_drop(v)
+	await _unload()
+
+
+## The shove moves snow and nothing else: the whole map's snow before and after a run through
+## deep snow and a bank is the same.
+func test_s12_volume_conserved() -> void:
+	await _s12_world()
+	Snow.set_rect(Rect2(0, 79, 20, 8), 0.03)
+	Snow.set_rect(Rect2(20, 79, 15, 8), 0.6)
+	_s12_bank_at(45.0, 0.75)
+	Snow.sync_all()
+	var before := Snow.total_volume()
+	var moved0 := Snow.stat_player_moved
+	var v := await _s12_truck(4.0)
+	var r := await _s12_drive(v, 900, "veh_accelerate", 60.0)
+	await _frames(30)
+	Snow.relax_until_stable()
+	var after := Snow.total_volume()
+	runner.check(Snow.stat_player_moved - moved0 > 2.0, "§12 the pickup shoved %.2f m³ (%.1f m)" % [Snow.stat_player_moved - moved0, r["dist"]])
+	runner.near(after, before, 1e-4, "§12 the map's snow: %.6f → %.6f m³ (%+.7f)" % [before, after, after - before])
+	await _s12_drop(v)
+	await _unload()
+
+
+## A bank like _s12_bank without resetting the street around it.
+func _s12_bank_at(x: float, h: float) -> void:
+	Snow.set_rect(Rect2(x, 79, 2.0, 8), h)
+	Snow.set_rect(Rect2(x - 0.5, 79, 0.5, 8), h * 0.5)
+	Snow.set_rect(Rect2(x + 2.0, 79, 0.5, 8), h * 0.5)
+
+
+## The opening, by the numbers: the truck stands in the first morning's snow, deeper than it can
+## start in, so its wheels still need digging out ("Stuck: … clears about N cm" from the balance);
+## dug out around the wheels only, the driveway's snow ahead is deeper than it can push from a
+## standstill; with the driveway cleared it drives out.
+func test_s12_opening_by_the_numbers() -> void:
+	var b: BalanceData = Catalog.balance
+	await _s12_world(0, 7.6)
+	var truck: Vehicle = world.vehicle_nodes()[0]
+	var wd := truck.wheel_snow_depth()
+	runner.check(wd > b.pickup_stuck_depth and truck.stuck_depth() == b.pickup_stuck_depth,
+		"§12 the opening: %d cm of snow around the wheels, the pickup is stuck from %d cm" % [int(round(wd * 100.0)), int(round(b.pickup_stuck_depth * 100.0))])
+	Notify.history.clear()
+	truck.enter_vehicle(world.player)
+	await _frames(2)
+	runner.check(_s12_notified("snowed in"), "§12 …getting in says it's snowed in")
+	var r := await _s12_drive(truck, 120)
+	runner.check(absf(r["dist"]) < 0.5 and str(r["reasons"]).contains("only clears about %d cm" % int(round(b.pickup_stuck_depth * 100.0))),
+		"§12 …it doesn't move (%.2f m): %s" % [r["dist"], str(r["reasons"])])
+	var tp := Vector2(truck.global_position.x, truck.global_position.z)
+	Snow.set_rect(Rect2(tp - Vector2(1.6, 2.75), Vector2(3.2, 5.5)), 0.0)    # dug out around the wheels
+	var front := tp + Vector2(0, -1).rotated(-truck.rotation.y) * 3.05
+	var r2 := await _s12_drive(truck, 150)
+	runner.check(Snow.depth_at(front.x, front.y) > b.pickup_bog_depth and r2["dist"] < 1.5 and str(r2["reasons"]).contains("standstill"),
+		"§12 …dug out around the wheels: the driveway ahead (%d cm) is more than it pushes from a standstill (%.1f m, %s)" % [int(round(Snow.depth_at(front.x, front.y) * 100.0)), r2["dist"], str(r2["reasons"]).substr(0, 70)])
+	var drv: Rect2 = Boxes.get_box(Boxes.lot_box(Layout.player_lot, "driveway"))["rects"][0]
+	Snow.set_rect(drv, 0.03)
+	var r3 := await _s12_drive(truck, 240)
+	runner.check(truck.global_position.z < drv.position.y + 1.0 and r3["stuck"] == 0, "§12 …the driveway cleared: out onto the street (truck z %.1f), through the opening's %d cm of street snow" % [truck.global_position.z, int(round(b.initial_road_depth_year1 * 100.0))])
+	truck.exit_vehicle()
+	await _unload()
+
+
+func _s12_notified(word: String) -> bool:
+	for n in Notify.history:
+		if str(n.get("text", n)).to_lower().contains(word):
+			return true
+	return false

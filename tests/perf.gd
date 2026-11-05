@@ -26,6 +26,11 @@ extends Node
 ## Polish 5 §11 (last): the city's pass by the player's house at 1× — the grader and the sidewalk
 ## plow behind it (the grader alone before §11) passing the player in the front yard.
 ##   -- --only=pass    runs just the world and the pass
+## Polish 5 §12 (last): the player driving the pickup along Maple Street through a long stretch of
+## 60 cm untouched snow (under its bog depth, so it keeps shoving the whole time) at 1× — two blade
+## pushes a frame at the bumper, the snow cast aside settling, the chunks around the player
+## re-meshed (before §12 the pickup stops at the snow's edge).
+##   -- --only=pickup  runs just the world and the pickup
 
 ## Polish 4 §1: the highest hourly snowfall of any major event (seed 2024 and 20 other seeds,
 ## winters 1–5) once storms open with a lead-in (pass 3: 52.2 cm/h). Measured at the game's own
@@ -107,6 +112,10 @@ func _ready() -> void:
 		return
 	if only == "pass":
 		await _city_pass_near(pl)
+		AudioMgr.quit()
+		return
+	if only == "pickup":
+		await _pickup_shove(pl)
 		AudioMgr.quit()
 		return
 	# Polish 4: indoors, the desk with the computer screen and the photo by the door in view.
@@ -206,6 +215,7 @@ func _ready() -> void:
 	await _board_live(pl, p)
 	await _jobs_live(pl, p)
 	await _city_pass_near(pl)
+	await _pickup_shove(pl)
 	# AudioMgr.quit: stop every sound before quitting, so nothing is reported leaked at exit
 	# (HANDOFF §13 item 13).
 	AudioMgr.quit()
@@ -415,6 +425,31 @@ func _city_pass_near(pl: Player) -> void:
 			seen[0] += 1)
 	print("  city pass: grader %s, sidewalk plow %s (within 20 m of the player for %d of 900 frames)" % ["driving" if world.grader.active else "done", "none" if crew == null else ("driving" if crew.active else "done"), seen[0]])
 	world.finish_grader_now()
+	Weather.override_cond = -1
+
+
+## Polish 5 §12: the player in the pickup shoving through 60 cm of untouched snow on Maple Street.
+func _pickup_shove(pl: Player) -> void:
+	Weather.force(Weather.C.CLEAR, 12.0)
+	Clock.set_speed(1)
+	Game.flags["truck_keys"] = true
+	Game.flags["help_vehicle_0"] = true
+	Snow.set_rect(Rect2(0, 79, 24, 8), 0.03)
+	Snow.set_rect(Rect2(24, 79, 68, 8), 0.6)
+	var e := {"uid": Game.uid(), "id": "pickup", "pos": Vector3(8, 0, 84.95), "yaw": -PI * 0.5, "snow": 0.0}
+	Game.vehicles.append(e)
+	var v: Vehicle = world.spawn_vehicle_node(e)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	v.enter_vehicle(pl)
+	Input.action_press("veh_accelerate")
+	for k in range(150):        # the run-up: into the snow before measuring
+		await get_tree().physics_frame
+	var moved0 := Snow.stat_player_moved
+	await _measure("pickup shoving deep snow (1×)", 600, func(_i): pass)
+	Input.action_release("veh_accelerate")
+	print("  pickup: front at x %.1f (the snow from x 24), %.2f m³ shoved while measured, %.1f km/h at the end" % [v.global_position.x + v.data.length * 0.5, Snow.stat_player_moved - moved0, v.speed * 3.6])
+	v.exit_vehicle()
 	Weather.override_cond = -1
 
 

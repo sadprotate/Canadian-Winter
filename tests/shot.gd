@@ -111,6 +111,14 @@ extends Node
 ##                            plow following it, stepped `steps` frames of 1/60 s; without --cam the
 ##                            camera looks along the sidewalk at the plow from behind it, lawn side
 ##                            (--crew_back=m, --crew_side=m, --crew_h=m move it)
+##   --pickup_bank=h          (§12) a bank h m high across Maple Street at x = --bank_x (default 52,
+##                            in front of 16 Maple Street; a 2 m flat top with 0.5 m shoulders at
+##                            half height), the street bare around it; a pickup in the south lane
+##                            --bank_run m (default 16) before it drives into it at full throttle
+##                            until its front is --bank_in m (default 1.2) into the bank or it has
+##                            stopped, then holds still there; without --cam the camera looks at its
+##                            front from across the street. Run with --fixed-fps 60. Works on older
+##                            builds too (there the truck stops at the bank)
 
 var args := {}
 var game: Node = null
@@ -499,6 +507,8 @@ func _setup_after_spawn() -> void:
 		_city_pass()
 	if args.has("crew_watch"):
 		_crew_watch(w)
+	if args.has("pickup_bank"):
+		await _pickup_bank(w)
 	if args.has("cam") or args.has("lotcam") or args.has("hcam"):
 		_cam = Camera3D.new()
 		_cam.fov = float(args.get("fov", "62"))
@@ -553,6 +563,49 @@ func _crew_watch(w) -> void:
 		args["cam"] = "%f,%s,%f" % [c.x, args.get("crew_h", "3.2"), c.y]
 		args["look"] = "%f,0.5,%f" % [cp.x + dir.x * 3.0 - lawn.x * 1.0, cp.y + dir.y * 3.0 - lawn.y * 1.0]
 	print("crew_watch: grader at %s (lane %d), plow at %s on %s" % [str(w.grader.global_position), w.grader.lane_i, str(w.crew.global_position), str(w.crew.runs[w.crew.run_i]["box"]) if w.crew.active else "-"])
+
+
+## Polish 5 §12: --pickup_bank=h — the pickup driven into a bank across the street (see the top).
+func _pickup_bank(w) -> void:
+	var h := float(args["pickup_bank"])
+	var bx := float(args.get("bank_x", "52"))
+	var lane := 84.95
+	Snow.set_rect(Rect2(bx - 30.0, 79, 42.0, 8), 0.03)
+	Snow.set_rect(Rect2(bx, 79, 2.0, 8), h)
+	Snow.set_rect(Rect2(bx - 0.5, 79, 0.5, 8), h * 0.5)
+	Snow.set_rect(Rect2(bx + 2.0, 79, 0.5, 8), h * 0.5)
+	Snow.relax_until_stable()
+	Game.flags["truck_keys"] = true
+	Game.flags["help_vehicle_0"] = true   # no controls panel over the shot
+	Game.force_input = true
+	var run := float(args.get("bank_run", "16"))
+	var e := {"uid": Game.uid(), "id": "pickup", "pos": Vector3(bx - 0.5 - run - 2.7, 0, lane), "yaw": -PI * 0.5, "snow": 0.0}
+	Game.vehicles.append(e)
+	var v: Vehicle = w.spawn_vehicle_node(e)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	v.enter_vehicle(w.player)
+	Input.action_press("veh_accelerate")
+	var target := bx + float(args.get("bank_in", "1.2"))
+	var still := 0
+	var vmax := 0.0
+	var vmin := INF
+	for i in range(600):
+		await get_tree().physics_frame
+		vmax = maxf(vmax, v.speed)
+		if v.global_position.x + v.data.length * 0.5 > bx - 0.5:
+			vmin = minf(vmin, v.speed)
+		still = still + 1 if absf(v.speed) < 0.05 and i > 30 else 0
+		if v.global_position.x + v.data.length * 0.5 >= target or still > 20:
+			break
+	Input.action_release("veh_accelerate")
+	v.set_physics_process(false)   # hold it there for the shot
+	print("pickup_bank: front x %.2f (bank %.1f-%.1f, %.2f m), speed %.1f m/s (top %.1f, lowest in the bank %.1f), status '%s'" % [
+		v.global_position.x + v.data.length * 0.5, bx - 0.5, bx + 2.5, h, v.speed, vmax, vmin, v.status_text])
+	if not args.has("cam"):
+		var fx := v.global_position.x + v.data.length * 0.5
+		args["cam"] = "%f,2.4,%f" % [fx + 5.5, lane - 5.2]
+		args["look"] = "%f,0.6,%f" % [fx - 1.2, lane + 0.3]
 
 
 ## --pose=hold|scoop|push|toss [--load=0.5] [--toss=0.5]: freeze the hands / tool in a pose.

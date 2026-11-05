@@ -179,3 +179,28 @@ extends Resource
 ## vehicle tool key) are capped at this many per second per action; presses beyond it are ignored,
 ## not queued. Holding a button, UI clicks and F1 aren't limited. 0 = no cap.
 @export var input_max_presses_per_s: float = 6.0
+
+@export_group("Pickup truck")
+## Polish 5 §12: the pickup in snow (the plain pickup only; every other vehicle keeps its own
+## VehicleData clearance and bank checks). Snow under the wheels slows it on this depth scale
+## (speed limit × 1 / (1 + 2.5 (depth / scale)²)): 15 cm → 40 km/h, 30 cm → 22 km/h.
+@export var pickup_drag_depth: float = 0.4
+## Average snow under the wheels at which it is stuck (dig around the wheels). The opening's
+## driveway snow (~0.8 m) is above it.
+@export var pickup_stuck_depth: float = 0.6
+## Snow ahead of the bumper up to this depth passes under the truck (storm snow); above it the
+## front shoves the snow ahead and out to the sides (the blade op at the truck's width, down to
+## this depth: no clean lane, no pavement).
+@export var pickup_shove_floor: float = 0.3
+## Snow ahead deeper than this pushes back harder than the engine pulls: only the truck's speed
+## carries it on, so a run-up shoves through a short bank and a long stretch bogs it down. Below
+## it the truck keeps going, slower the deeper the snow.
+@export var pickup_bog_depth: float = 0.7
+## The snow also pushes back with the square of the speed (per m/s², per unit of the depth
+## above): hitting a bank fast slows the truck a lot, so a faster run-up only carries it a
+## little further.
+@export var pickup_shove_drag: float = 0.16
+## Below this speed, in snow deeper than the bog depth, the truck stops ("Snowbank ahead").
+@export var pickup_shove_min_speed: float = 1.0
+## Snow ahead deeper than this is a wall to the pickup (above the grille): it stops at any speed.
+@export var pickup_bank_max: float = 0.95
