@@ -7,6 +7,10 @@ extends Node3D
 ## Plow installation: drive your pickup into the lot while a plow order is ready (polish 5 §13: the
 ## pickup's own upgrade, ItemUpgrades.PLOW_ID).
 
+# Polish 6 §2: classes added in polish 5, by path rather than global name, so this script still
+# loads when the editor's class cache predates a pull.
+const _ItemUpgrades := preload("res://scripts/data/item_upgrades.gd")
+
 var world: Node
 
 
@@ -84,7 +88,7 @@ func spawn_ready() -> void:
 				world.spawn_vehicle_node(e3)
 				Game.add_equipment_stat(Catalog.item_name(StringName(item)))
 			"upgrade", "utility", "equipment":
-				if item == String(ItemUpgrades.PLOW_ID):
+				if item == String(_ItemUpgrades.PLOW_ID):
 					o["status"] = "spawned"
 					continue
 				var slot3 := _free_slot()
@@ -98,13 +102,13 @@ func spawn_ready() -> void:
 func _process(_delta: float) -> void:
 	var lot: Rect2 = (Layout.big_areas[1]["rect"] as Rect2).grow(2.0)
 	for o in Economy.orders:
-		if o["item"] == String(ItemUpgrades.PLOW_ID) and o["status"] == "spawned":
+		if o["item"] == String(_ItemUpgrades.PLOW_ID) and o["status"] == "spawned":
 			for v in world.vehicle_nodes():
 				var veh: Vehicle = v
 				if veh.data.kind == VehicleData.Kind.PICKUP and lot.has_point(Vector2(veh.global_position.x, veh.global_position.z)):
 					world.install_plow(veh)
 					Economy.mark_order(int(o["id"]), "collected")
-					Game.grant_upgrade(ItemUpgrades.PLOW_ID)
+					Game.grant_upgrade(_ItemUpgrades.PLOW_ID)
 					Game.add_equipment_stat("Pickup front plow")
 					Notify.push("The store crew bolted a front plow onto your pickup! %s to drop the blade, %s/%s to angle it." % [Settings.action_label("veh_tool"),
 						Settings.action_label("veh_aim_left"), Settings.action_label("veh_aim_right")], Notify.GOOD)

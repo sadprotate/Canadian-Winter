@@ -2,6 +2,14 @@ extends Node3D
 ## Game scene root: builds the world, spawns persistent objects, owns the UI layer and
 ## drives the tutorial flow, sleeping/autosave, power outages, death and winter completion.
 
+# Polish 6 §2: classes added in polish 5, by path rather than global name, so this script still
+# loads when the editor's class cache predates a pull.
+const _Equipment := preload("res://scripts/data/equipment.gd")
+const _HeatedPad := preload("res://scripts/world/heated_pad.gd")
+const _ItemUpgrades := preload("res://scripts/data/item_upgrades.gd")
+const _SidewalkCrew := preload("res://scripts/vehicles/sidewalk_crew.gd")
+const _SpeedControl := preload("res://scripts/ui/speed_control.gd")
+
 var builder: WorldBuilder
 var refs: Dictionary = {}
 var day_night: DayNight
@@ -11,7 +19,7 @@ var weather_fx: WeatherFX
 var player: Player
 var neighbor: Neighbor
 var grader: GraderNPC
-var crew: SidewalkCrew          # polish 5 §11: the city's sidewalk crew, following the grader
+var crew: _SidewalkCrew          # polish 5 §11: the city's sidewalk crew, following the grader
 var store: Store
 var zone_markers: ZoneMarkers
 var box_outline: BoxOutline
@@ -19,7 +27,7 @@ var quest_outline: BoxOutline
 var ui: CanvasLayer
 var hud: HUD
 var time_layer: CanvasLayer     # polish 5 §9: the fast-forward control, above the modals
-var speed_ctrl: SpeedControl
+var speed_ctrl: _SpeedControl
 var modal: Control = null
 var modal_kind := ""
 var fade: ColorRect
@@ -39,7 +47,7 @@ var _rack_node: Node3D
 var _roof_timer := 0.0
 var _roof_idx := 0
 var _veh_snow_last := 0.0
-var pad_node: HeatedPad = null    # polish 5 §13: the heated pad where it lies (refresh_pad)
+var pad_node: _HeatedPad = null    # polish 5 §13: the heated pad where it lies (refresh_pad)
 
 
 func _ready() -> void:
@@ -83,7 +91,7 @@ func _ready() -> void:
 	zone_markers.work_outline = box_outline
 	grader = GraderNPC.new()
 	add_child(grader)
-	crew = SidewalkCrew.new()
+	crew = _SidewalkCrew.new()
 	crew.grader = grader
 	add_child(crew)
 	Municipal.world_handles_passes = true
@@ -118,12 +126,12 @@ func _ready() -> void:
 	AudioMgr.set_ambience_enabled(true)
 	_fade_in()
 	# Polish 5 §13: an old save's global upgrades were carried over to every item: one notification.
-	if ItemUpgrades.pending_note != "":
-		Notify.push(ItemUpgrades.pending_note, Notify.GOOD)
-		ItemUpgrades.pending_note = ""
-	if Equipment.pending_note != "":
-		Notify.push(Equipment.pending_note, Notify.GOOD)   # polish 5 §13: jacket and parka → the coat
-		Equipment.pending_note = ""
+	if _ItemUpgrades.pending_note != "":
+		Notify.push(_ItemUpgrades.pending_note, Notify.GOOD)
+		_ItemUpgrades.pending_note = ""
+	if _Equipment.pending_note != "":
+		Notify.push(_Equipment.pending_note, Notify.GOOD)   # polish 5 §13: jacket and parka → the coat
+		_Equipment.pending_note = ""
 	if Game.stage() == Game.Stage.START and Clock.day_index() == 0 and Clock.minutes < Clock.at(0, 8.0):
 		_morning_line_due = true     # polish 5 §4: the door line waits for it
 		get_tree().create_timer(1.5).timeout.connect(func():
@@ -313,13 +321,13 @@ func refresh_pad() -> void:
 	if pad_node != null and is_instance_valid(pad_node):
 		pad_node.queue_free()
 	pad_node = null
-	if not Equipment.pad_placed():
+	if not _Equipment.pad_placed():
 		return
-	pad_node = HeatedPad.new()
+	pad_node = _HeatedPad.new()
 	pad_node.name = "HeatedPad"
-	var p := Equipment.pad_pos()
+	var p := _Equipment.pad_pos()
 	pad_node.position = Vector3(p.x, Snow.ground_at(p.x, p.z), p.z)
-	pad_node.rotation.y = Equipment.pad_yaw()
+	pad_node.rotation.y = _Equipment.pad_yaw()
 	objects.add_child(pad_node)
 
 
@@ -435,7 +443,7 @@ func _build_ui() -> void:
 	time_layer = CanvasLayer.new()
 	time_layer.layer = ui.layer + 1
 	add_child(time_layer)
-	speed_ctrl = SpeedControl.new()
+	speed_ctrl = _SpeedControl.new()
 	speed_ctrl.world = self
 	speed_ctrl.hud = hud
 	time_layer.add_child(speed_ctrl)
@@ -533,8 +541,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("interact"):
 		if Settings.accept_press("interact"):   # polish 5 §2: capped per second
 			# Polish 5 §13: with the Tab overview up, Interact takes the snowshoes off or puts them on.
-			if inventory_panel != null and Equipment.has(Equipment.SHOES) and player.state == "foot":
-				Equipment.toggle_snowshoes()
+			if inventory_panel != null and _Equipment.has(_Equipment.SHOES) and player.state == "foot":
+				_Equipment.toggle_snowshoes()
 				AudioMgr.play("paper", -10.0)
 				inventory_panel.queue_free()
 				inventory_panel = Panels.inventory(hud)

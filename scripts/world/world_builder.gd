@@ -2,6 +2,10 @@ class_name WorldBuilder
 extends RefCounted
 ## Builds the static neighborhood procedurally from Layout. Returns references to key objects.
 
+# Polish 6 §2: classes added in polish 5, by path rather than global name, so this script still
+# loads when the editor's class cache predates a pull.
+const _AddressSigns := preload("res://scripts/world/address_signs.gd")
+
 var root: Node3D
 var refs: Dictionary = {}
 var rng := RandomNumberGenerator.new()
@@ -164,7 +168,7 @@ func _houses(_minimal: bool) -> void:
 		mb.transform = Transform3D(Basis.looking_at(Vector3(mf.x, 0, mf.y), Vector3.UP), Vector3(mp.x, 0, mp.y))
 		houses_node.add_child(mb)
 		refs["mailboxes"][lot["index"]] = mb
-		AddressSigns.mailbox_number(lot, mb)   # polish 5 §5: the number on its door
+		_AddressSigns.mailbox_number(lot, mb)   # polish 5 §5: the number on its door
 		MeshKit.collider_box(houses_node, Vector3(mp.x, 0.7, mp.y), Vector3(0.3, 1.4, 0.3))
 		# Shrubs either side of the porch.
 		for u in [-3.6, 0.6]:
@@ -416,7 +420,7 @@ func _commercial() -> void:
 		# Roof snow (flat roofs carry a pillow).
 		kit.pillow(Mats.snow_soft(), Transform3D(Basis(), Vector3(c.x, h + 0.3, c.z)), r.size.x + 0.2, r.size.y + 0.2, 0.55, 0.15, 12, 4.0)
 		# Polish 5 §5: its number by the main entrance.
-		refs["building_numbers"][b["id"]] = AddressSigns.building_number(b, root)
+		refs["building_numbers"][b["id"]] = _AddressSigns.building_number(b, root)
 	# Snow dump sign and barriers.
 	var dr := Layout.dump_rect
 	_label(Vector3(dr.position.x - 2.0, 2.4, dr.position.y + 3), "MUNICIPAL\nSNOW DUMP", 64, Color(1, 0.85, 0.2))

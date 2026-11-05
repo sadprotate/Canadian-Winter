@@ -8,6 +8,10 @@ extends Area3D
 ## the snow surface at its cell is below it, give or take 2 cm). The player picks it up when close
 ## to and facing it even if the crosshair is on the snow pile (Player._nearby_pickup).
 
+# Polish 6 §2: classes added in polish 5, by path rather than global name, so this script still
+# loads when the editor's class cache predates a pull.
+const _Equipment := preload("res://scripts/data/equipment.gd")
+
 const PICKUP_EXPOSURE := 0.75
 const EXPOSE_TOLERANCE := 0.02
 
@@ -155,14 +159,14 @@ func _open_crate() -> void:
 	# Polish 5 §13: equipment is put on as it's collected (the pad goes into your arms — not while
 	# they're full); an old jacket or parka crate is the insulated coat now.
 	if Catalog.RETIRED_UPGRADE_IDS.has(sid):
-		sid = Equipment.COAT
+		sid = _Equipment.COAT
 		id = String(sid)
 	if Catalog.EQUIPMENT.has(sid):
-		if not Equipment.collect(sid):
+		if not _Equipment.collect(sid):
 			Notify.push(Settings.with_keys("Your arms are full. Put down what you're carrying first ({drop})."), Notify.WARN)
 			return
 		Game.add_equipment_stat(Catalog.item_name(sid))
-		Notify.push(Equipment.collected_text(sid), Notify.GOOD)
+		Notify.push(_Equipment.collected_text(sid), Notify.GOOD)
 	elif Catalog.UTILITY.has(sid):
 		Game.heat_pouches += int(Catalog.UTILITY[sid]["count"])
 		Notify.push("Collected %s." % Catalog.UTILITY[sid]["name"], Notify.GOOD)

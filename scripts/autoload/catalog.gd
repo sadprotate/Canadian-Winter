@@ -1,6 +1,10 @@
 extends Node
 ## Equipment catalog: loads all data resources once. Balancing lives in res://data/.
 
+# Polish 6 §2: classes added in polish 5, by path rather than global name, so this script still
+# loads when the editor's class cache predates a pull.
+const _ItemUpgrades := preload("res://scripts/data/item_upgrades.gd")
+
 const TOOL_IDS: Array[StringName] = [&"hands", &"small_shovel", &"standard_shovel", &"wide_pusher",
 	&"snow_scraper", &"large_scraper", &"snow_sleigh", &"electric_shovel", &"small_blower", &"large_blower"]
 const VEHICLE_IDS: Array[StringName] = [&"pickup", &"pickup_plow", &"atv_blade", &"tractor_blade",
@@ -66,7 +70,7 @@ func _ready() -> void:
 	var b = load("res://data/balance.tres")
 	balance = b if b is BalanceData else BalanceData.new()
 	# Polish 5 §13: every item's own upgrade levels, built from the table and the data above.
-	ItemUpgrades.build(self)
+	_ItemUpgrades.build(self)
 
 
 func tool(id: StringName) -> ToolData:
@@ -84,9 +88,9 @@ func upgrade(id: StringName) -> UpgradeData:
 ## Polish 5 §13: every upgrade for sale — each item's levels (ladder order), then UPGRADE_IDS.
 func upgrade_ids() -> Array:
 	var out := []
-	for item in ItemUpgrades.items():
-		for t in ItemUpgrades.tracks(item):
-			for id in ItemUpgrades.ids(item, t):
+	for item in _ItemUpgrades.items():
+		for t in _ItemUpgrades.tracks(item):
+			for id in _ItemUpgrades.ids(item, t):
 				out.append(StringName(id))
 	out.append_array(UPGRADE_IDS)
 	return out

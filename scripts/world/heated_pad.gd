@@ -5,6 +5,11 @@ extends Node3D
 ## glows orange while it melts (Heating) and goes dark in a power cut. The snow on it is the snow
 ## in its cells (it lies on the ground; snow on it hides it). Interact picks it up into your arms.
 
+# Polish 6 §2: classes added in polish 5, by path rather than global name, so this script still
+# loads when the editor's class cache predates a pull.
+const _Equipment := preload("res://scripts/data/equipment.gd")
+const _Heating := preload("res://scripts/world/heating.gd")
+
 var mesh: MeshInstance3D
 var lamp: MeshInstance3D
 var _t := 0.0
@@ -15,7 +20,7 @@ static var _carry_mesh: ArrayMesh
 
 
 func _ready() -> void:
-	var size := Equipment.PAD_SIZE
+	var size := _Equipment.PAD_SIZE
 	mesh = MeshInstance3D.new()
 	mesh.name = "Pad"
 	mesh.mesh = pad_mesh()
@@ -39,7 +44,7 @@ func _process(delta: float) -> void:
 	if _t > 0.0:
 		return
 	_t = 0.5
-	var lit := Heating.running("pad")
+	var lit := _Heating.running("pad")
 	if lit != _lit:
 		_set_lamp(lit)
 
@@ -50,7 +55,7 @@ func _set_lamp(on: bool) -> void:
 
 
 func _pick_up() -> void:
-	var why := Equipment.pick_up_pad()
+	var why := _Equipment.pick_up_pad()
 	if why != "":
 		Notify.push(why, Notify.WARN)
 		return
@@ -64,7 +69,7 @@ func _pick_up() -> void:
 static func pad_mesh() -> ArrayMesh:
 	if _mat_cache.has("pad"):
 		return _mat_cache["pad"]
-	var size := Equipment.PAD_SIZE
+	var size := _Equipment.PAD_SIZE
 	var kit := MeshKit.new()
 	var rubber := Mats.std(Color(0.07, 0.07, 0.08), 0.85)
 	var cable := Mats.std(Color(0.55, 0.16, 0.08), 0.6)
@@ -93,7 +98,7 @@ static func pad_mesh() -> ArrayMesh:
 static func carry_mesh() -> ArrayMesh:
 	if _carry_mesh != null:
 		return _carry_mesh
-	var size := Equipment.PAD_SIZE
+	var size := _Equipment.PAD_SIZE
 	var kit := MeshKit.new()
 	var rubber := Mats.std(Color(0.08, 0.08, 0.09), 0.85)
 	var cable := Mats.std(Color(0.55, 0.16, 0.08), 0.6)

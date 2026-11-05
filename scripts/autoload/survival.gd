@@ -6,6 +6,11 @@ signal died
 signal power_changed(on: bool)
 
 enum St { COMFORTABLE, COOLING, COLD, DANGER, CRITICAL, DEAD }
+
+# Polish 6 §2: classes added in polish 5, by path rather than global name, so this script still
+# loads when the editor's class cache predates a pull.
+const _Equipment := preload("res://scripts/data/equipment.gd")
+
 const STATE_NAMES := ["Comfortable", "Cooling", "Cold", "Dangerously cold", "Critical freezing", "Frozen"]
 
 var warmth := 100.0
@@ -111,7 +116,7 @@ func outdoor_loss_per_hour() -> float:
 		Weather.C.BLIZZARD: mult = b.blizzard_cold_mult
 	var loss := exposure(wc) * mult
 	# Polish 5 §13: the insulated coat (it replaces the old jacket and parka upgrades).
-	loss *= Equipment.cold_mult()
+	loss *= _Equipment.cold_mult()
 	if Clock.minutes < pouch_until:
 		loss *= 0.6
 	return loss
@@ -124,7 +129,7 @@ func compute_rate() -> float:
 	if in_neighbor_house:
 		rate = gain
 	elif in_player_house:
-		var sheltered := exposure(Weather.temperature()) * 0.65 * Equipment.cold_mult()
+		var sheltered := exposure(Weather.temperature()) * 0.65 * _Equipment.cold_mult()
 		var g := gain * Game.stat_value(&"house_warm", 1.0)
 		if near_fire and power_on:
 			g *= 1.4

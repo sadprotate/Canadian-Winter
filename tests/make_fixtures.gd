@@ -49,6 +49,10 @@ extends Node
 ## `-- --set=polish5_v3 --verify` prints their summaries.
 ## Options: --only=<point part>  --mode=fun|survival
 
+# Polish 6 §2: classes added in polish 5, by path rather than global name, so this script still
+# loads when the editor's class cache predates a pull.
+const _ItemUpgrades := preload("res://scripts/data/item_upgrades.gd")
+
 var OUT := "res://tests/fixtures/polish3/"
 var p5 := false
 var made: Array = []
@@ -342,7 +346,7 @@ func _p5_setup(point: String) -> void:
 							done[id] = true
 				await _collect_orders()
 				# The front plow is fitted when the pickup is driven into the store lot.
-				if Economy.has_open_order(String(ItemUpgrades.PLOW_ID)) and _vehicle_node("pickup"):
+				if Economy.has_open_order(String(_ItemUpgrades.PLOW_ID)) and _vehicle_node("pickup"):
 					var pk := _vehicle_node("pickup")
 					var home := Vector2(pk.global_position.x, pk.global_position.z)
 					var yaw := pk.rotation.y
@@ -449,7 +453,7 @@ func _p5_setup(point: String) -> void:
 			# The front plow, bought from the computer's store with its price added by F1 first (the
 			# money is left as it was): an open order, never fitted (the pickup doesn't drive into the
 			# store lot).
-			var plow := String(ItemUpgrades.PLOW_ID)
+			var plow := String(_ItemUpgrades.PLOW_ID)
 			await _f1_money(Economy.price_of(plow))
 			var res := Economy.buy(plow)
 			print("keys/pickup/plow order: keys %s, buy %s: %s" % [str(Game.flags.get("truck_keys", false)), str(res["ok"]), res["msg"]])
@@ -520,7 +524,7 @@ static func p5_summary() -> String:
 	var sellable := 0
 	for id in all_ids:
 		var u: UpgradeData = Catalog.upgrade(id)
-		if u.item != &"" and (not ItemUpgrades.owns(u.item) or u.level > ItemUpgrades.max_level(u.item, u.track) or not ItemUpgrades.track_shown(u.item, u.track)):
+		if u.item != &"" and (not _ItemUpgrades.owns(u.item) or u.level > _ItemUpgrades.max_level(u.item, u.track) or not _ItemUpgrades.track_shown(u.item, u.track)):
 			continue
 		sellable += 1
 		if not Game.has_upgrade(id):

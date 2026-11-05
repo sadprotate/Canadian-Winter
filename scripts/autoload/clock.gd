@@ -22,6 +22,10 @@ signal skip_finished
 ## its own: "alert", "contract", "bid", "cold", "work", "vehicle", "unavailable", …; "" when chosen).
 signal speed_changed(speed: int, reason: String)
 
+# Polish 6 §2: classes added in polish 5, by path rather than global name, so this script still
+# loads when the editor's class cache predates a pull.
+const _Heating := preload("res://scripts/world/heating.gd")
+
 const REAL_MIN_PER_DAY := 30.0
 const GAME_MIN_PER_REAL_SEC := 1440.0 / (REAL_MIN_PER_DAY * 60.0)
 ## Polish 5 §9: the fast-forward speeds, in the order the key cycles them.
@@ -217,7 +221,7 @@ func advance(game_min: float) -> void:
 func _systems_advance(start: float, step: float) -> void:
 	Weather.on_advance(start, step)
 	Snow.advance_settle(step)
-	Heating.advance(step)      # polish 5 §13: the heated pad, driveway and path melt on the clock
+	_Heating.advance(step)      # polish 5 §13: the heated pad, driveway and path melt on the clock
 	Survival.on_advance(step)
 	Contracts.on_advance(step)
 

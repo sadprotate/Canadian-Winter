@@ -12,6 +12,13 @@ extends Node
 ## Scrapers angle their blade with the tool_angle action (R). The electric shovel keeps its hold-to-
 ## throw intake (LMB) and also pushes (RMB). Walk-behind blowers are separate machines.
 
+# Polish 6 §2: classes added in polish 5, by path rather than global name, so this script still
+# loads when the editor's class cache predates a pull.
+const _Buildings := preload("res://scripts/world/buildings.gd")
+const _Equipment := preload("res://scripts/data/equipment.gd")
+const _HeatedPad := preload("res://scripts/world/heated_pad.gd")
+const _ItemUpgrades := preload("res://scripts/data/item_upgrades.gd")
+
 const RECUT_S := 0.3              # a cell can be cut again by the same stroke after this long
 const SWEEP_MAX := 4.0            # m/s: fastest the scoop can travel through the snow
 const GRIP_IN_HAND := Vector3(0.0, -0.05, -0.06)   # where a closed mitten's fist holds a bar
@@ -174,11 +181,11 @@ func _carrying() -> bool:
 
 func refresh_visuals() -> void:
 	var id := Game.carried if _carrying() else Game.current_tool_id()
-	var equip := Equipment.is_equipment(id)
+	var equip := _Equipment.is_equipment(id)
 	# Polish 5 §13: the heated pad is carried rolled up (it isn't a tool).
-	var mesh: Mesh = (HeatedPad.carry_mesh() if equip else ToolModels.mesh_for(id)) if id != "" else null
+	var mesh: Mesh = (_HeatedPad.carry_mesh() if equip else ToolModels.mesh_for(id)) if id != "" else null
 	held_tp.mesh = mesh
-	held_fp.mesh = (HeatedPad.carry_mesh() if equip else ToolModels.handle_mesh(id)) if mesh != null else null
+	held_fp.mesh = (_HeatedPad.carry_mesh() if equip else ToolModels.handle_mesh(id)) if mesh != null else null
 	blade_fp.mesh = ToolModels.blade_mesh(id) if mesh != null and not equip else null
 	held_tp.visible = mesh != null and player.third_person
 	held_fp.visible = mesh != null and not player.third_person
@@ -229,27 +236,27 @@ func _capacity() -> float:
 		return 0.01
 	var c := data.capacity
 	if data.is_shovel_type():
-		c *= ItemUpgrades.mult(data.id, &"shovel_capacity")
+		c *= _ItemUpgrades.mult(data.id, &"shovel_capacity")
 	return c
 
 
 func _fill_rate() -> float:
-	return data.fill_rate * ItemUpgrades.mult(data.id, &"shovel_capacity")
+	return data.fill_rate * _ItemUpgrades.mult(data.id, &"shovel_capacity")
 
 
 func _throw_dist() -> float:
 	var d := data.throw_distance
 	if data.is_shovel_type() or data.kind == ToolData.Kind.ELECTRIC_SHOVEL:
-		d *= ItemUpgrades.mult(data.id, &"throw_distance")
+		d *= _ItemUpgrades.mult(data.id, &"throw_distance")
 	return d
 
 
 func _push_half_width() -> float:
-	return data.push_width * ItemUpgrades.mult(data.id, &"blade_width") * 0.5
+	return data.push_width * _ItemUpgrades.mult(data.id, &"blade_width") * 0.5
 
 
 func _push_strength() -> float:
-	return data.push_strength * ItemUpgrades.mult(data.id, &"push_speed")
+	return data.push_strength * _ItemUpgrades.mult(data.id, &"push_speed")
 
 
 func _sync_tool() -> void:
@@ -373,8 +380,8 @@ func _physics_process(delta: float) -> void:
 	var ui_block := not Game.input_captured()
 	var fwd := player.forward2()
 	# Polish 5 §3: indoors (in any building) the tools don't touch the snow.
-	_near_bld = Buildings.near(pos2, 4.0)
-	work_ok = not Buildings.indoors(player.global_position)
+	_near_bld = _Buildings.near(pos2, 4.0)
+	work_ok = not _Buildings.indoors(player.global_position)
 	if pose_override != "":
 		filling = pose_override == "scoop" or pose_override == "hold"
 		pushing = pose_override == "push"
@@ -745,7 +752,7 @@ func _fill(delta: float, _pos2: Vector2, fwd: Vector2) -> void:
 func _behind_building(c: Vector2) -> bool:
 	if _near_bld.is_empty():
 		return false
-	return Buildings.blocks(player.head.global_position, Vector3(c.x, Snow.surface_height(c.x, c.y), c.y), _near_bld)
+	return _Buildings.blocks(player.head.global_position, Vector3(c.x, Snow.surface_height(c.x, c.y), c.y), _near_bld)
 
 
 ## Polish 5 §3: may a blade or an intake whose near edge is at `p` (world XZ) work the snow — the
@@ -756,7 +763,7 @@ func can_work_at(p: Vector2) -> bool:
 		return false
 	if _near_bld.is_empty():
 		return true
-	return not Buildings.blocks(player.head.global_position, Vector3(p.x, Snow.surface_height(p.x, p.y), p.y), _near_bld, REACH_SKIN)
+	return not _Buildings.blocks(player.head.global_position, Vector3(p.x, Snow.surface_height(p.x, p.y), p.y), _near_bld, REACH_SKIN)
 
 
 ## Look down for a short drop at your feet, level or up for the full throw.
@@ -817,7 +824,7 @@ func _push(delta: float, pos2: Vector2, fwd: Vector2, travel: Vector2) -> void:
 	var push_dist := 0.3 if data.kind == ToolData.Kind.HANDS else 0.38
 	if not can_work_at(center - fwd * (adv + 0.07)):
 		# Polish 5 §3: indoors, or the blade is on the far side of a building: nothing moves.
-		player.speed_mult_tool = data.engaged_speed_mult * ItemUpgrades.mult(data.id, &"push_speed")
+		player.speed_mult_tool = data.engaged_speed_mult * _ItemUpgrades.mult(data.id, &"push_speed")
 		_fade_loop(delta, -80.0)
 		return
 	# Polish 5 §3 (Decision 12): no road rule — the berm carries over the curb onto the street.
@@ -828,7 +835,7 @@ func _push(delta: float, pos2: Vector2, fwd: Vector2, travel: Vector2) -> void:
 	if moved > 0.0005:
 		Boxes.note_work(center)
 	var ratio: float = r["berm"] / maxf(_push_strength(), 0.005)
-	player.speed_mult_tool = data.engaged_speed_mult * ItemUpgrades.mult(data.id, &"push_speed") / (1.0 + ratio * ratio)
+	player.speed_mult_tool = data.engaged_speed_mult * _ItemUpgrades.mult(data.id, &"push_speed") / (1.0 + ratio * ratio)
 	if r["kept"] > 0.002:
 		_hint("The snow can't go any further this way.")
 	elif ratio > 2.0 and player.current_speed < 0.3:
@@ -941,8 +948,8 @@ func drop_tool() -> void:
 	if load > 0.0:
 		dump_at_feet(true)
 	# Polish 5 §13: the heated pad is put down (on your own lot only), not dropped like a tool.
-	if Equipment.pad_carried():
-		var why := Equipment.put_down_pad(player, player.forward2(), player.yaw)
+	if _Equipment.pad_carried():
+		var why := _Equipment.put_down_pad(player, player.forward2(), player.yaw)
 		if why != "":
 			_hint(why)
 			return
@@ -1108,7 +1115,7 @@ func _animate_viewmodel(delta: float) -> void:
 		held_fp.visible = true
 		blade_fp.visible = true
 		held_fp.transform = Transform3D(Basis.from_euler(Vector3(deg_to_rad(10), 0, 0)), Vector3(0.0, -0.3, -0.42))
-		if Equipment.is_equipment(Game.carried):
+		if _Equipment.is_equipment(Game.carried):
 			held_fp.transform = Transform3D(Basis(), Vector3(0.0, -0.3, -0.5))   # polish 5 §13: the rolled pad
 		blade_fp.transform = held_fp.transform * Transform3D(Basis(), ToolModels.tip(Game.carried))
 		return

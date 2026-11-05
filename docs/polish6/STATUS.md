@@ -20,8 +20,8 @@ resume from here.
 | § | Title | Status | Commit | Report |
 |---|---|---|---|---|
 | §0 | Agent setup, the round-6 brief, baseline | done | `aabe73c` | `report/s0.md` |
-| §1 | What round 5 never pushed | done | this commit (`polish6 §1: What round 5 never pushed`) | `report/s1.md` |
-| §2 | The Godot errors after pulling | not started | | |
+| §1 | What round 5 never pushed | done | `7abcd57` | `report/s1.md` |
+| §2 | The Godot errors after pulling | done | this commit (`polish6 §2: The Godot errors after pulling`) | `report/s2.md` |
 | §3 | Round 5's open items | not started | | |
 | §8.1 | Hold to fill, not spam-click | not started | | |
 | §8.2 | Loads twice as big | not started | | |
@@ -53,8 +53,15 @@ resume from here.
   `settings.cfg`) and overwrite or delete them, as they always have. The owner should know before
   playing between test runs (report/s0.md). Not changed.
 - `icon.svg.import` (and, in a fresh checkout, all 74 `*.import` files) is rewritten with LF by
-  every import: line endings only (`core.autocrlf=true`, no `.gitattributes`). §2 decides; until
-  then don't commit it.
+  every import: line endings only (`core.autocrlf=true`, no `.gitattributes`). **§2 decided: no
+  `.gitattributes`, nothing to commit.** Staging them records no change, and they aren't the
+  cause of the errors (report/s2.md). If the owner wants GitHub Desktop's list quiet, one line
+  `*.import text eol=lf` in a `.gitattributes` would do it: the owner's call.
+- **The CI upgrade-import step (§2) has never run on GitHub.** Its shell ran here in six scenarios
+  (report/s2.md). The first PR run is the real check (about 1–2 min). If it fails on GitHub only,
+  look first at the fetch of the base by SHA and at `$RUNNER_TEMP`.
+- **PR description:** §2's user note (delete `.godot` after errors, close Godot before pulling) is
+  in report/s2.md, ready to paste.
 
 ## Binding notes
 
@@ -101,3 +108,30 @@ actions, function names, gotchas.
 - `tests/test_polish6.gd` exists (suite `polish6` in `tests/test_runner.gd`), `extends RefCounted`
   with `var runner`, no world of its own; each section adds its tests under a
   `# ====` `§N` header, helpers prefixed `_sN_`.
+
+**From §2 (the Godot errors after pulling):**
+- **The cause:** after a pull, the editor's class list (`.godot/global_script_class_cache.cfg`) is
+  the old one until its first scan. Before that scan the editor compiles `icons.gd` (it looks up a
+  type named `Icons`), and any class name the old list lacks is a parse error there. CI's clean
+  import never sees it; the new CI step (*Upgrade import*, after the suite) does.
+- **Rule for every later section** (stricter than `CLAUDE.md`'s line, which is necessary but not
+  enough): a **new `class_name`** added in this round is referred to through
+  `const _<Class> := preload("res://…")` by every script that existed before it, and also by every
+  script such a preload loads. That includes the new class's own file if it names itself (write
+  `_<Class>.new()`, as `tool_icons.gd` does, not `<Class>.new()`). A preload compiles what it loads,
+  so a global name anywhere along the chain fails the same way (report/s2.md: 3 errors became 16
+  when only the old scripts were changed). Simplest: don't add a `class_name` unless needed. If you
+  do, never use its global name outside its own file, and not inside it either.
+- **Round 5's nine classes** (`AddressSigns`, `Buildings`, `Equipment`, `HeatedPad`, `Heating`,
+  `ItemUpgrades`, `SidewalkCrew`, `SpeedControl`, `ToolIcons`) are reached by preload in the 25
+  scripts listed in `S2_HARDENED` (`tests/test_polish6.gd`). `test_s2_round5_classes_by_preload`
+  fails if one of those scripts names one of the nine by its global name in code. When you edit
+  those scripts, use the `_Equipment`, `_ItemUpgrades`, … constant already at the top (add one if
+  the script lacks it). Other scripts (new in round 5 or 6) may use the global names: every cache
+  since `1b38f4a` has them.
+- **Checking an upgrade locally:** in a scratch clone, import the base, `git checkout -f <head>`
+  keeping `.godot/`, import again. The step's `run:` block is plain bash (`bash -eo pipefail`),
+  with `BASE_SHA` and `RUNNER_TEMP` set. Set `APPDATA` to a scratch folder for `run_log`, so the
+  owner's saves are left alone.
+- The `.import` files' LF rewrite is not a change (staging records nothing): never commit it as
+  one, and don't add a `.gitattributes` without the owner.

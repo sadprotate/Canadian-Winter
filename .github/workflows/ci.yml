@@ -2,8 +2,9 @@ name: CI
 
 # Runs on every pull request and every push to main: imports the project with
 # Godot 4.7.2 (headless), runs the parse check, then the full automated test
-# suite (tests/test_runner.tscn). A red check means something that used to work
-# is broken; the logs are attached to the run.
+# suite (tests/test_runner.tscn), then the upgrade import (the base commit's
+# .godot/ opened with this commit, as after a pull). A red check means something
+# that used to work is broken; the logs are attached to the run.
 
 on:
   pull_request:
@@ -61,6 +62,69 @@ jobs:
 
       - name: Test suite
         run: godot --headless --fixed-fps 60 --path . res://tests/test_runner.tscn 2>&1 | tee logs/tests.log; exit ${PIPESTATUS[0]}
+
+      # Polish 6 §2: what the owner does. Import the base commit, check this commit out over it
+      # keeping .godot/ (its class cache, imports and uid cache), open it again and run the main
+      # scene. A script that names a class the old class cache doesn't know fails to parse here,
+      # though the clean import above passes. Runs in its own folder, after the suite, so the
+      # suite's checkout and user:// are untouched.
+      - name: Upgrade import (base commit's .godot/, then this commit)
+        if: ${{ !cancelled() }}
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          mkdir -p logs
+          head_sha=$(git rev-parse HEAD)
+          base="${BASE_SHA:-}"
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
+            git fetch --no-tags --quiet --depth=2 origin "$head_sha" || true
+            base=$(git rev-parse --verify --quiet "HEAD^" || true)
+          fi
+          if [ -z "$base" ]; then
+            echo "::notice::No base commit to upgrade from: upgrade import skipped."
+            exit 0
+          fi
+          if ! git cat-file -e "$base^{commit}" 2>/dev/null && ! git fetch --no-tags --quiet --depth=1 origin "$base"; then
+            echo "::warning::The base commit $base can't be fetched: upgrade import skipped."
+            exit 0
+          fi
+          dir="$RUNNER_TEMP/upgrade"
+          rm -rf "$dir"
+          git worktree prune
+          git worktree add --quiet --detach "$dir" "$base"
+          echo "Upgrade import: $(git log -1 --format='%h %s' "$base") -> $(git log -1 --format='%h %s' "$head_sha")"
+          # 1. The base commit, imported: the .godot/ the owner has before pulling. Its own errors
+          #    are the base's, not this commit's: a warning only.
+          godot --headless --path "$dir" --editor --quit > logs/upgrade_base_import.log 2>&1 || true
+          if grep -qE "ERROR|SCRIPT ERROR|Failed loading resource|Cannot open file" logs/upgrade_base_import.log; then
+            echo "::warning::The base commit's own import printed errors (logs/upgrade_base_import.log)."
+          fi
+          # 2. This commit over it. .godot/ is ignored, so it stays; --force overwrites what the
+          #    base's import generated (e.g. a .uid this commit adds) as a pull would after a discard.
+          git -C "$dir" checkout --quiet --force --detach "$head_sha"
+          # 3. The upgrade import: no error lines, as for the clean import.
+          godot --headless --path "$dir" --editor --quit 2>&1 | tee logs/upgrade_import.log
+          if grep -E "ERROR|SCRIPT ERROR|Failed loading resource|Cannot open file" logs/upgrade_import.log; then
+            echo "::error::The upgrade import printed errors (see above). If a script names a class added since the base commit, refer to it through a preload constant (CLAUDE.md)."
+            exit 1
+          fi
+          # 4. The main scene for a few seconds (tests/run_log.tscn: menu, New Game, 5 s of play,
+          #    sleep, menu, Exit). It quits the game's own way (AudioMgr.quit), so the engine's exit
+          #    noise ("N resources still in use at exit", HANDOFF §13 item 13) shouldn't appear; if it
+          #    does, it is shown as a warning, not counted as an upgrade error.
+          code=0
+          godot --headless --fixed-fps 60 --path "$dir" res://tests/run_log.tscn -- --play=5 2>&1 | tee logs/upgrade_run.log || code=$?
+          if grep "resources still in use at exit" logs/upgrade_run.log; then
+            echo "::warning::The main-scene run printed the engine's exit noise (see above)."
+          fi
+          if grep -E "ERROR|SCRIPT ERROR|Failed loading resource|Cannot open file" logs/upgrade_run.log | grep -v "resources still in use at exit"; then
+            echo "::error::The main-scene run after the upgrade import printed errors (see above)."
+            exit 1
+          fi
+          if [ "$code" -ne 0 ]; then
+            echo "::error::The main-scene run after the upgrade import exited with code $code."
+            exit 1
+          fi
 
       - name: Upload logs
         if: always()
