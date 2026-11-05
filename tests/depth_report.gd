@@ -2,6 +2,8 @@ extends Node
 ## Winter depth curves (polish §8 report). Simulates whole winters with time skips (snowfall and
 ## the city grader's passes, no player) and prints, per half month: the undisturbed yard depth,
 ## the cleared-then-left driveway, the street bank height, plus the events in each storm tier.
+## Polish 5 §11: also the mean snow depth on Birch Avenue's sidewalks and on its boulevards (the
+## strips between the sidewalks and the street), where the city's sidewalk crew moves its snow.
 ##   godot --headless --path . res://tests/depth_report.tscn [-- --years=1,5 --seed=2024]
 
 var args := {}
@@ -39,7 +41,7 @@ func _winter(year: int, sd: int) -> void:
 		if Weather.tier_of(ev) != "light":
 			print("   %-6s %s  %5.1f cm in %4.1f h%s" % [Weather.tier_of(ev), Clock.format_time(float(ev["start"]) * 60.0), float(ev["total"]),
 				float(ev["end"]) - float(ev["start"]), "  (unforecast)" if ev["surprise"] else ""])
-	print("   date      yard   street bank (max, along Birch Ave)")
+	print("   date      yard   street bank (max, along Birch Ave)   sidewalk (mean)   boulevard (mean)")
 	var marks := [0, 14, 31, 45, 62, 76, 90, 104, 120]
 	var day := 0
 	for m in marks:
@@ -48,7 +50,8 @@ func _winter(year: int, sd: int) -> void:
 			Snow.relax_until_stable()
 			day = m
 		Snow.sync_all()
-		print("   %-8s  %4.2f m   %4.2f m" % [Clock.date_string(m, true), Snow.depth_at(yard.x, yard.y), _bank_height()])
+		print("   %-8s  %4.2f m   %4.2f m   %4.2f m   %4.2f m" % [Clock.date_string(m, true), Snow.depth_at(yard.x, yard.y), _bank_height(),
+			_mean_depth([Rect2(4, 146.0, 84, 1.5), Rect2(4, 158.5, 84, 1.5)]), _mean_depth([Rect2(4, 147.5, 84, 1.5), Rect2(4, 157.0, 84, 1.5)])])
 
 
 ## Highest snow surface on the boulevard/sidewalk strips along Birch Avenue (x 4..88).
@@ -63,3 +66,13 @@ func _bank_height() -> float:
 				x += 0.5
 			z += 0.25
 	return top
+
+
+## Polish 5 §11: the mean snow depth over some strips (m).
+func _mean_depth(rects: Array) -> float:
+	var v := 0.0
+	var a := 0.0
+	for r: Rect2 in rects:
+		v += Snow.volume_in_rect(r)
+		a += r.get_area()
+	return v / maxf(a, 0.01)

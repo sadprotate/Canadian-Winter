@@ -35,6 +35,13 @@ var _built := false
 var work_box := ""
 var work_serial := 0
 var _outline_cache: Dictionary = {}   # polish 5 §10b: box id -> [its rects, outline_segments]
+## Polish 5 §11: set while the city's sidewalk crew completes a box — the player didn't, so there is
+## no completion flash or chime (ZoneMarkers); everything else about the completion is the same.
+var quiet := false
+## Polish 5 §11: boxes the city's sidewalk plow is clearing right now. They are measured as usual
+## but never completed by a measurement — the crew completes each at the end of its run, with
+## nothing left inside — so the 90 % snap never removes snow the plow was about to move.
+var busy: Dictionary = {}
 
 
 func _ready() -> void:
@@ -44,6 +51,7 @@ func _ready() -> void:
 func build() -> void:
 	boxes.clear()
 	by_id.clear()
+	busy.clear()
 	Layout.ensure()
 	for lot in Layout.lots:
 		var idx: int = lot["index"]
@@ -103,6 +111,7 @@ func for_owner(owner_id: String) -> Array:
 
 ## Fresh state for a new winter: every box starts open with the snow it holds now.
 func start_winter() -> void:
+	busy.clear()
 	for b in boxes.duplicate():
 		if b["dynamic"]:
 			boxes.erase(b)
@@ -169,7 +178,7 @@ func measure(b: Dictionary, exact := true) -> float:
 	b["peak"] = maxf(float(b["peak"]), v)
 	var peak: float = b["peak"]
 	b["progress"] = 1.0 if peak <= TINY else clampf(1.0 - v / peak, 0.0, 1.0)
-	if (b["progress"] >= bal.box_completion or v < TINY) and (exact or not b["big"]):
+	if (b["progress"] >= bal.box_completion or v < TINY) and (exact or not b["big"]) and not busy.has(b["id"]):
 		complete(b)
 	return b["progress"]
 

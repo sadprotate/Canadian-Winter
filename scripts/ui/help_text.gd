@@ -17,7 +17,7 @@ static func explanation(survival: bool) -> Array:
 	out.append({"speaker": "Gerry", "text": "The contract board lists people who need snow cleared. You put in a bid; other outfits bid too, so price it right. Jobs near your other clients are easier to win. Some are one-time, some want you all winter, every time it snows."})
 	if survival:
 		out.append({"speaker": "Gerry", "text": "And pay your hydro bill on the computer before the 15th — that letter in your mailbox. Miss it and they cut the power at midnight, and your house goes cold in a day."})
-	out.append({"speaker": "Gerry", "text": "Check the forecast on your TV, the radio or the computer. The city grader comes by every three or four days — the computer shows when. It'll leave a wall of snow across your driveway, mind you."})
+	out.append({"speaker": "Gerry", "text": "Check the forecast on your TV, the radio or the computer. The city grader comes by every Monday and Friday, with a crew for the sidewalks — the computer shows when. It'll leave a wall of snow across your driveway, mind you."})
 	out.append({"speaker": "Gerry", "text": "That's about it. Thanks again, neighbour. Now get home before you freeze — and good luck with the business!"})
 	return out
 

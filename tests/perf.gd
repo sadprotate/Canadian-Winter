@@ -23,6 +23,9 @@ extends Node
 ## the player — the stakes and orange lines before §10b, the green outlines after: standing among
 ## them, working one of their boxes, walking along the street past them, and in a light snowfall.
 ##   -- --only=jobs    runs just the world and the jobs scenario
+## Polish 5 §11 (last): the city's pass by the player's house at 1× — the grader and the sidewalk
+## plow behind it (the grader alone before §11) passing the player in the front yard.
+##   -- --only=pass    runs just the world and the pass
 
 ## Polish 4 §1: the highest hourly snowfall of any major event (seed 2024 and 20 other seeds,
 ## winters 1–5) once storms open with a lead-in (pass 3: 52.2 cm/h). Measured at the game's own
@@ -100,6 +103,10 @@ func _ready() -> void:
 		return
 	if only == "jobs":
 		await _jobs_live(pl, p)
+		AudioMgr.quit()
+		return
+	if only == "pass":
+		await _city_pass_near(pl)
 		AudioMgr.quit()
 		return
 	# Polish 4: indoors, the desk with the computer screen and the photo by the door in view.
@@ -198,6 +205,7 @@ func _ready() -> void:
 	await _fast_forward(pl, p)
 	await _board_live(pl, p)
 	await _jobs_live(pl, p)
+	await _city_pass_near(pl)
 	# AudioMgr.quit: stop every sound before quitting, so nothing is reported leaked at exit
 	# (HANDOFF §13 item 13).
 	AudioMgr.quit()
@@ -385,6 +393,29 @@ func _fast_forward(pl: Player, p: Vector2) -> void:
 	pl.teleport(Vector3(p.x, 0.05, p.y), PI)
 	Weather.override_cond = -1
 	await get_tree().process_frame
+
+
+## Polish 5 §11: the city's pass by the house at 1×, the player in the front yard by the sidewalk:
+## the grader on the street and the sidewalk plow behind it go by in the first seconds (both on the
+## same per-step tick), then on along Maple Street.
+func _city_pass_near(pl: Player) -> void:
+	var lot := Layout.player_lot
+	var q := Layout.lot_to_world(lot, Layout.gu(lot, -6.0), 3.0)
+	pl.teleport(Vector3(q.x, Snow.surface_height(q.x, q.y) + 0.05, q.y), PI)
+	Weather.force(Weather.C.CLEAR, 12.0)
+	Clock.set_speed(1)
+	for k in range(30):
+		await get_tree().process_frame
+	Municipal.next_pass = Clock.minutes
+	Municipal.on_hour(Clock.day_index(), Clock.hour())
+	var crew = world.get("crew")
+	var seen := [0]
+	await _measure("city pass by the house (1×)", 900, func(_i):
+		if crew != null and crew.active and Vector2(crew.global_position.x, crew.global_position.z).distance_to(q) < 20.0:
+			seen[0] += 1)
+	print("  city pass: grader %s, sidewalk plow %s (within 20 m of the player for %d of 900 frames)" % ["driving" if world.grader.active else "done", "none" if crew == null else ("driving" if crew.active else "done"), seen[0]])
+	world.finish_grader_now()
+	Weather.override_cond = -1
 
 
 ## --ff_sweep=<speed>:<cm/h>,…: one speed, uncapped, at each rate — the normal map, then the 4 m map.

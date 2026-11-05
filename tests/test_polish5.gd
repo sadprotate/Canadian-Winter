@@ -3593,7 +3593,7 @@ func test_s8_radio_start_to_end() -> void:
 	world.radio_forecast()
 	await _frames(2)
 	var heard: String = world.hud.subtitle_l.text
-	runner.check(heard.begins_with("Radio: Right now: ") and heard.contains("Snowstorm ending around ") and heard.contains("another ") and heard.contains("City grader expected"), "§8 the radio in the house: \"%s\"" % heard)
+	runner.check(heard.begins_with("Radio: Right now: ") and heard.contains("Snowstorm ending around ") and heard.contains("another ") and heard.ends_with(Municipal.crew_line()), "§8 the radio in the house: \"%s\"" % heard)
 	await _unload()
 
 
@@ -3920,7 +3920,7 @@ func test_s9_felt_rates() -> void:
 
 ## A stretch of evening play from the 8:30 p.m. fixture (Survival, on foot in the front yard): a
 ## storm, a bid that resolves, a contract, the grader's pass from 8:30 p.m. (near the house it is
-## watched at 1×) and 9 p.m. — run at 1×, 2× and 10×, each to 11:00 p.m. Polish 5 §10: with the
+## watched at 1×; polish 5 §11: the sidewalk crew behind it) and 9 p.m. — run at 1×, 2× and 10×, each to 11:00 p.m. Polish 5 §10: with the
 ## rivals' bids, the 9 p.m. close and the 9:01 p.m. award, and due times (a miss, a payment, a
 ## visit falling due, a storm day). They end identical: the snow (every cell's depth and loose depth), the boxes, money,
 ## contracts and bids, the grader, weather readings, the TV's and the radio's text, warmth,
@@ -3935,6 +3935,7 @@ func test_s9_fast_forward_equals_1x() -> void:
 	var base: Dictionary = runs[0]
 	runner.info("1×: %d frames, %d substeps; storm %.1f cm, grader passes %s, bid %s, drops %s" % [base["frames"], base["substeps"], base["fell_cm"], base["passes"], base["bid"], base["drops"]])
 	runner.check(base["fell_cm"] > 4.0 and base["grader_done"] and base["crossed_9pm"] and base["bid"] != "" and base["bid_was"] == 1, "§9 the stretch has a storm (%.1f cm), a whole grader pass, 9 p.m. and a bid resolved (%s)" % [base["fell_cm"], base["bid"]])
+	runner.check(int(base["crew_cleared"]) + int(base["crew_skipped"]) == Municipal.crew_route().size() and int(base["crew_cleared"]) > 0 and base["crew_bare"], "§11 …and the sidewalk crew behind the grader: %d sidewalks cleared, each bare when it was done, %d left to the player's jobs" % [base["crew_cleared"], base["crew_skipped"]])
 	var s10: Dictionary = base["s10"]
 	runner.check(s10.values().all(func(x): return x), "§10 …and on the clock: the rivals' bids, the award at 9:01 p.m., a job missed at its due time and back on the board, a job paid, a visit due once the snow stopped (a day later for the storm), a due time the storm moved %s" % str(s10))
 	for k in range(1, runs.size()):
@@ -3945,7 +3946,7 @@ func test_s9_fast_forward_equals_1x() -> void:
 				diff.append(key)
 		runner.info("%s: %d frames (%d substeps), %.0f %% of the frames at more than 1×, held %d frames, drops %s" % [r["label"], r["frames"], r["substeps"], 100.0 * r["fast_frames"] / maxf(r["frames"], 1.0), r["held"], r["drops"]])
 		runner.check(r["substeps"] == base["substeps"] and r["frames"] < base["frames"], "§9 %s took the same %d clock substeps in %d frames (1×: %d)" % [r["label"], r["substeps"], r["frames"], base["frames"]])
-		runner.check(diff.is_empty(), "§9 %s ends identical to 1× (snow, boxes, money, contracts and bids, the grader, weather, TV, radio, warmth, notifications)%s" % [r["label"], "" if diff.is_empty() else " — differs: %s" % str(diff)])
+		runner.check(diff.is_empty(), "§9 %s ends identical to 1× (snow, boxes, money, contracts and bids, the grader and the sidewalk crew, weather, TV, radio, warmth, notifications)%s" % [r["label"], "" if diff.is_empty() else " — differs: %s" % str(diff)])
 	runner.check(int(runs[2]["fast_frames"]) > 0 and int(runs[2]["held"]) > 0, "§9 10× ran fast away from the grader and was held at 1× while it passed the house (%d / %d frames)" % [runs[2]["fast_frames"], runs[2]["held"]])
 
 
@@ -4010,6 +4011,11 @@ func _s9_stretch(sp: int, caps: bool) -> Dictionary:
 	var passes0 := Municipal.passes
 	var started: bool = Municipal.in_progress and world.grader.active
 	var fall0 := Snow.fall_total
+	var crew_done := {}
+	var on_done := func(id: String):
+		if Boxes.quiet:
+			crew_done[id] = Snow.volume_in_rect(Boxes.get_box(id)["rects"][0])
+	Boxes.box_completed.connect(on_done)
 	var drops := []
 	var cb := func(s: int, why: String):
 		if s == 1 and why != "":
@@ -4034,6 +4040,7 @@ func _s9_stretch(sp: int, caps: bool) -> Dictionary:
 			held += 1
 		crossed = crossed or Clock.minutes >= Clock.at(day, 21.0)
 	Clock.speed_changed.disconnect(cb)
+	Boxes.box_completed.disconnect(on_done)
 	Clock.set_speed(1)
 	Clock.caps_on = true
 	# What a player could see or that is saved.
@@ -4054,6 +4061,8 @@ func _s9_stretch(sp: int, caps: bool) -> Dictionary:
 		"contracts": var_to_str(Contracts.serialize()),
 		"economy": var_to_str(Economy.serialize()),
 		"grader": var_to_str([Municipal.serialize(), Municipal.in_progress, g.active, g.lane_i, g.s, g.applied_s]),
+		# Polish 5 §11: the sidewalk crew behind the grader, on the same per-step tick.
+		"crew": var_to_str([world.crew.active, world.crew.run_i, world.crew.s, world.crew.applied_s, Municipal.crew_pending, Municipal.crew_log]),
 		"weather": var_to_str([Weather.condition(), Weather.snow_rate(), Weather.temperature(), Weather.wind_chill(), Weather.serialize()]),
 		"tv": tv_text,
 		"radio": world.radio_text(),
@@ -4062,7 +4071,10 @@ func _s9_stretch(sp: int, caps: bool) -> Dictionary:
 	}
 	var out := {"label": "%d×%s" % [sp, " (caps on)" if caps else ""], "state": state, "frames": frames, "substeps": substeps,
 		"fast_frames": fast, "held": held, "drops": drops, "fell_cm": (Snow.fall_total - fall0) * 100.0,
-		"passes": "%d → %d" % [passes0, Municipal.passes], "grader_done": started and not Municipal.in_progress and not g.active,
+		"passes": "%d → %d" % [passes0, Municipal.passes], "grader_done": started and not Municipal.in_progress and not g.active and not world.crew.active,
+		"crew_cleared": Municipal.crew_log.values().count("cleared"), "crew_skipped": Municipal.crew_log.values().count("skipped"),
+		# Each sidewalk the crew cleared was bare when it completed it (the storm reopens them later).
+		"crew_bare": crew_done.size() == Municipal.crew_log.values().count("cleared") and crew_done.values().all(func(v): return v < 1e-9),
 		"crossed_9pm": crossed, "bid_was": bids0, "bid": "" if not Contracts.bids.is_empty() else ("won" if Contracts.active.any(func(c): return c["target"] == l["target"]) else "lost"),
 		"s10": {"missed": jm["status"] == "lost" and Contracts.listings.any(func(x): return x["target"] == jm["target"] and x.get("relisted", false)),
 			"paid": jp["status"] == "completed" and Game.money >= money_s10 + int(jp["pay"]),
@@ -5361,3 +5373,496 @@ func test_s10b_board_updates_in_place() -> void:
 	runner.check(_s10_card(comp, int(nl["lid"])) != null, "§10b a new listing: the board is rebuilt with it")
 	world.close_modal()
 	await _unload()
+
+
+# =============================================================================
+# §11 City crews on Mondays and Fridays
+# =============================================================================
+
+## The street after a batch grader pass over the same snow — a new game (seed 2024), 20 cm more
+## snow everywhere, the whole route at once at 7:30 a.m. on Dec 1 — measured on the polish-5
+## baseline build (15be65a) and on the build before §11 (659b671), identical on both: SHA-256 of
+## every road cell's depth and loose depth (float32, in cell order) before and after the pass, and
+## of the whole map (all depths, then all loose depths) after it.
+const S11_ROAD_BEFORE := "fce7278c2556d44c885181386ac51cdc167c9539593a9210435205067f12e627"
+const S11_ROAD_AFTER := "88523f3352ab1a5db822fc0c40a1f74873ef2c271e52b3bdca54c0173f49b90c"
+const S11_MAP_AFTER := "ca34adc4b4242fa2ef5563a3e18ef84a8ba33a99c0f86e13981cafd9312a3c55"
+
+
+## A new game without the world (the city's passes run as batches), seed `sd`, winter `year`.
+func _s11_fresh(sd := 2024, year := 1) -> void:
+	await _unload()
+	Game.world = null
+	Game.player = null
+	Clock.running = false
+	Clock.speed = 1
+	Municipal.world_handles_passes = false
+	Game.new_game("fun", sd)
+	if year > 1:
+		Game.start_winter(year)
+	Survival.in_player_house = true
+
+
+func _s11_road() -> String:
+	var d := PackedFloat32Array()
+	for i in range(Snow.W * Snow.H):
+		if Snow.surf[i] == Snow.S_ROAD:
+			d.append(Snow.depth[i])
+			d.append(Snow.loose[i])
+	return _s9_sha(d.to_byte_array())
+
+
+func _s11_map() -> String:
+	return _s9_sha(Snow.depth.to_byte_array() + Snow.loose.to_byte_array())
+
+
+## Every snow cell summed (m³), after bringing the snowfall up to date.
+func _s11_volume() -> float:
+	Snow.sync_all()
+	var v := 0.0
+	for i in range(Snow.W * Snow.H):
+		v += Snow.depth[i]
+	return v * Snow.CELL_AREA
+
+
+## Zeller's congruence (Gregorian calendar), independent of Clock: 0 = Monday … 6 = Sunday.
+static func _s11_zeller(y: int, m: int, d: int) -> int:
+	if m < 3:
+		m += 12
+		y -= 1
+	var k := y % 100
+	@warning_ignore("integer_division")
+	var j := y / 100
+	@warning_ignore("integer_division")
+	var h := (d + (13 * (m + 1)) / 5 + k + k / 4 + j / 4 + 5 * j) % 7
+	return (h + 5) % 7
+
+
+## The strip in front of a sidewalk box (the cells between it and the street, column by column)
+## and the street's first 6 m beyond the curb: {strip: [rows of cell indices, from the sidewalk out],
+## road: [rows from the curb out]}.
+func _s11_front(id: String) -> Dictionary:
+	var r: Rect2 = Boxes.get_box(id)["rects"][0]
+	var o: Vector2i = Municipal.crew_out(id)
+	var c := Snow._rect_cells(r)
+	var strip := []
+	var road := []
+	var z := c.end.y if o.y > 0 else c.position.y - 1
+	while Snow.surf[z * Snow.W + c.position.x + 3] != Snow.S_ROAD:
+		strip.append(range(c.position.x, c.end.x).map(func(x): return z * Snow.W + x))
+		z += o.y
+	for k in range(24):
+		road.append(range(c.position.x, c.end.x).map(func(x): return z * Snow.W + x))
+		z += o.y
+	return {"strip": strip, "road": road}
+
+
+static func _s11_sum(cells: Array, d: PackedFloat32Array) -> float:
+	var v := 0.0
+	for i in cells:
+		v += d[i]
+	return v * Snow.CELL_AREA
+
+
+## Weekdays (the game had a placeholder and no years): winter 1 starts on Tuesday, December 1,
+## 2026, and later winters follow the real calendar; the game's winter has no February 29, so in a
+## leap winter the day after Feb 28 is a real March 1 (two weekdays on). Every display reads them
+## through Clock.weekday (checked on the displays in test_s11_displays).
+func test_s11_weekdays() -> void:
+	runner.check(Clock.real_date(0, 1) == Vector3i(2026, 12, 1) and Clock.weekday(0, 1) == "Tue", "§11 winter 1 starts on Tuesday, December 1, 2026 (%s %s)" % [Clock.weekday(0, 1), str(Clock.real_date(0, 1))])
+	runner.check(Clock.real_date(31, 1) == Vector3i(2027, 1, 1) and Clock.real_date(120, 1) == Vector3i(2027, 3, 31) and Clock.real_date(0, 2) == Vector3i(2027, 12, 1) and Clock.real_date(90, 5) == Vector3i(2031, 3, 1),
+		"§11 winter N runs from December of 2025 + N to March of 2026 + N")
+	var bad := []
+	for y in range(1, 9):
+		for d in range(Clock.DAYS_IN_WINTER):
+			var rd := Clock.real_date(d, y)
+			var want: String = Clock.WEEKDAYS[_s11_zeller(rd.x, rd.y, rd.z)]
+			if Clock.weekday(d, y) != want or Clock.weekday_index(d, y) != _s11_zeller(rd.x, rd.y, rd.z):
+				bad.append("winter %d day %d (%s): %s, real %s" % [y, d, str(rd), Clock.weekday(d, y), want])
+	runner.check(bad.is_empty(), "§11 every day of winters 1–8 has its real weekday (Zeller's congruence)%s" % ("" if bad.is_empty() else ": %s" % str(bad.slice(0, 4))))
+	var dec1 := range(1, 8).map(func(y): return Clock.weekday(0, y))
+	runner.check(dec1 == ["Tue", "Wed", "Fri", "Sat", "Sun", "Mon", "Wed"], "§11 Dec 1 of winters 1–7: %s" % ", ".join(dec1))
+	runner.check(Clock.real_date(89, 2) == Vector3i(2028, 2, 28) and Clock.weekday(89, 2) == "Mon" and Clock.real_date(90, 2) == Vector3i(2028, 3, 1) and Clock.weekday(90, 2) == "Wed",
+		"§11 the leap winter (2): Feb 28, 2028 is a Monday and the game's next day, March 1, a Wednesday (the 29th isn't played)")
+	var steps := []
+	for y in range(1, 9):
+		for d in range(1, Clock.DAYS_IN_WINTER):
+			var g := posmod(Clock.weekday_index(d, y) - Clock.weekday_index(d - 1, y), 7)
+			if g != 1:
+				steps.append("winter %d, %s → %s: +%d" % [y, Clock.date_string(d - 1, true), Clock.date_string(d, true), g])
+	runner.check(steps == ["winter 2, Feb 28 → Mar 1: +2", "winter 6, Feb 28 → Mar 1: +2"], "§11 one weekday a day, except over the leap days of 2028 and 2032: %s" % str(steps))
+
+
+## Passes on Mondays and Fridays only, over a whole winter (3 seeds; and the first week of a winter
+## that starts on a Friday), at the grader's time of day: each winter's 4–8 a.m. draw as before, the pass at the top
+## of the hour after it, as the hourly tick always started it. Every pass leaves every sidewalk box
+## bare and complete.
+func test_s11_crew_days_whole_winter() -> void:
+	for run in [[2024, 1, Clock.DAYS_IN_WINTER], [7, 1, Clock.DAYS_IN_WINTER], [99, 1, Clock.DAYS_IN_WINTER], [2024, 3, 8]]:
+		var sd: int = run[0]
+		var y: int = run[1]
+		var span: int = run[2]
+		await _s11_fresh(sd, y)
+		var t0 := Clock.minutes
+		var times := []
+		var not_bare := [0]
+		var cb := func():
+			times.append(Clock.minutes)
+			for bx in Boxes.boxes:
+				if bx["kind"] == "sidewalk" and not (bx["complete"] and Snow.volume_in_rect(bx["rects"][0]) < 1e-9):
+					not_bare[0] += 1
+		Municipal.pass_finished.connect(cb)
+		Clock.skip(span * 1440.0)
+		Municipal.pass_finished.disconnect(cb)
+		var r := RandomNumberGenerator.new()
+		r.seed = sd * 3 + y
+		r.randi_range(2, 3)
+		var drawn := r.randf_range(4.0, 8.0)
+		var hour := int(ceil(drawn - 0.01 / 60.0))
+		var want := []
+		for d in range(Clock.DAYS_IN_WINTER):
+			var t := Clock.at(d, hour)
+			if Clock.weekday(d, y) in ["Mon", "Fri"] and t > t0 and t <= t0 + span * 1440.0:
+				want.append(t)
+		var days := {}
+		for t in times:
+			var k := Clock.weekday(int(t / 1440.0), y)
+			days[k] = int(days.get(k, 0)) + 1
+		runner.info("seed %d, winter %d: drawn %.2f h, passes at %d:00 — %s, first %s %s" % [sd, y, drawn, hour, str(days), Clock.weekday(int(times[0] / 1440.0), y), Clock.format_time(times[0])])
+		runner.check(times == want and Municipal.pass_minute() == hour * 60.0, "§11 seed %d, winter %d, %d days: %d passes, on every Monday and Friday at %d a.m. (the grader's hour: drawn %.2f, started at the next hour as before) and on no other day" % [sd, y, span, times.size(), hour, drawn])
+		runner.check(not_bare[0] == 0, "§11 …each leaving every sidewalk box bare and complete (%d not)" % not_bare[0])
+		if y == 1:
+			runner.check(Clock.date_string(int(times[0] / 1440.0), true) == "Dec 4", "§11 …the first on Friday, Dec 4 (%s)" % Clock.format_time(times[0]))
+
+
+## The pass (batch, as in a skip): every sidewalk box to 100 % (bare) except a section under the
+## player's city sidewalk contract; the snow onto the strip between the sidewalk and the street as a
+## mound on its sidewalk side, beside the grader's windrow on its street side, volume conserved; the
+## street untouched by the crew; where the strip is full, the snow goes onto the street's edge.
+func test_s11_sidewalk_pass() -> void:
+	await _s11_fresh(2024)
+	Snow.add_snowfall(0.2)
+	Snow.sync_all()
+	# The player's city sidewalk contract on 11–19 Maple Street (the crew leaves it to them).
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 11
+	var job := Contracts.force_award(int(Contracts._add_walk_listing("A_w", Clock.day_index(), rng)["lid"]))
+	var job_boxes: Array = Contracts.contract_boxes(job)
+	runner.check(job_boxes.size() == 3 and job_boxes.all(func(id): return Municipal.crew_skips(id)), "§11 a city sidewalk contract held: %s" % str(job_boxes))
+	var d0 := Snow.depth.duplicate()
+	var l0 := Snow.loose.duplicate()
+	var h0 := Snow.hold.duplicate()
+	var v0 := _s11_volume()
+	# The grader alone, then (from the same snow) the grader and the crew.
+	Municipal.crew_pending = []
+	Municipal.run_batch(Municipal.route_lanes())
+	var dg := Snow.depth.duplicate()
+	var road_g := _s11_road()
+	var vg := _s11_volume()
+	Snow.depth = d0.duplicate()
+	Snow.loose = l0.duplicate()
+	Snow.hold = h0.duplicate()
+	var sw := {}
+	for id in Municipal.crew_route():
+		sw[id] = Snow.volume_in_rect(Boxes.get_box(id)["rects"][0])
+	Municipal.crew_pending = Municipal.crew_route()
+	Municipal.run_batch(Municipal.route_lanes())
+	var df := Snow.depth.duplicate()
+	var vf := _s11_volume()
+	var cleared := []
+	var bad := []
+	for id in Municipal.crew_route():
+		var b := Boxes.get_box(id)
+		var c := Snow._rect_cells(b["rects"][0])
+		var top := 0.0
+		for z in range(c.position.y, c.end.y):
+			for x in range(c.position.x, c.end.x):
+				top = maxf(top, Snow.depth[z * Snow.W + x])
+		if id in job_boxes:
+			if b["complete"] or absf(Snow.volume_in_rect(b["rects"][0]) - float(sw[id])) > 1e-6 or Municipal.crew_log.get(id, "") != "skipped":
+				bad.append("%s (a job) touched" % id)
+		elif not (b["complete"] and float(b["progress"]) == 1.0 and top == 0.0 and Municipal.crew_log.get(id, "") == "cleared"):
+			bad.append("%s %.1f %% max %.4f m" % [id, 100.0 * float(b["progress"]), top])
+		else:
+			cleared.append(id)
+	runner.check(bad.is_empty() and cleared.size() == 21, "§11 after the pass: %d sidewalk boxes at 100 %% (every cell bare, complete), the 3 under the player's contract skipped%s" % [cleared.size(), "" if bad.is_empty() else " — %s" % str(bad)])
+	runner.check(_s11_road() == road_g, "§11 the street is the grader's alone (identical with and without the crew behind it)")
+	runner.check(absf(vg - v0) < 1e-3 and absf(vf - v0) < 1e-3, "§11 volume conserved: %.4f m³ before, %.4f after the grader alone, %.4f with the crew (float32 rounding)" % [v0, vg, vf])
+	# Where the crew's snow went: the strip in front of each cleared box gained what its sidewalk held;
+	# the crew's mound on the sidewalk side of the strip, the grader's windrow on its street side.
+	var moved := 0.0
+	var gained := 0.0
+	var crew_rows := []
+	var row_rows := []
+	for k in range(6):
+		crew_rows.append(0.0)
+		row_rows.append(0.0)
+	for id in cleared:
+		moved += float(sw[id])
+		var fr := _s11_front(id)
+		for k in range((fr["strip"] as Array).size()):
+			var cells: Array = fr["strip"][k]
+			gained += _s11_sum(cells, df) - _s11_sum(cells, dg)
+			if k < 6:
+				crew_rows[k] += _s11_sum(cells, df) - _s11_sum(cells, dg)
+				row_rows[k] += _s11_sum(cells, dg) - _s11_sum(cells, d0)
+	var centroid := func(rows: Array) -> float:
+		var m := 0.0
+		var t := 0.0
+		for k in range(rows.size()):
+			m += float(rows[k]) * (k + 0.5) * Snow.CELL
+			t += float(rows[k])
+		return m / maxf(t, 1e-9)
+	var cc: float = centroid.call(crew_rows)
+	var cw: float = centroid.call(row_rows)
+	runner.info("§11 across the strip, from the sidewalk out (m³ over the 21 boxes): crew %s, grader's windrow %s" % [str(crew_rows.map(func(x): return snappedf(x, 0.1))), str(row_rows.map(func(x): return snappedf(x, 0.1)))])
+	runner.check(absf(gained - moved) < 1e-3 and moved > 100.0, "§11 the strip gained exactly what the sidewalks held: %.3f m³ moved, %.3f m³ on the strip" % [moved, gained])
+	runner.check(cc < 0.6 and cw > 0.85 and crew_rows.find(crew_rows.max()) <= 1 and row_rows.find(row_rows.max()) >= 3,
+		"§11 a mound beside the windrow, not on it: the crew's snow centred %.2f m out from the sidewalk (peak in row %d), the grader's %.2f m (row %d) on the strip's street side" % [cc, crew_rows.find(crew_rows.max()), cw, row_rows.find(row_rows.max())])
+	# No room on the strip: the snow goes onto the street's edge.
+	await _s11_fresh(2024)
+	Snow.add_snowfall(0.2)
+	Snow.sync_all()
+	var full_id := "lot7_sidewalk"
+	var fr2 := _s11_front(full_id)
+	for row in fr2["strip"]:
+		for i in row:
+			Snow.depth[i] = Snow.ceiling - Snow.ground[i]
+	var d1 := Snow.depth.duplicate()
+	var l1 := Snow.loose.duplicate()
+	var hd1 := Snow.hold.duplicate()
+	Municipal.crew_pending = []
+	Municipal.run_batch(Municipal.route_lanes())
+	var dg2 := Snow.depth.duplicate()
+	Snow.depth = d1
+	Snow.loose = l1
+	Snow.hold = hd1
+	var sw2 := Snow.volume_in_rect(Boxes.get_box(full_id)["rects"][0])
+	Municipal.crew_pending = Municipal.crew_route()
+	Municipal.run_batch(Municipal.route_lanes())
+	var strip_diff := 0.0
+	for row in fr2["strip"]:
+		strip_diff += absf(_s11_sum(row, Snow.depth) - _s11_sum(row, dg2))
+	var edge_gain := 0.0
+	var near := 0.0
+	for k in range((fr2["road"] as Array).size()):
+		var g := _s11_sum(fr2["road"][k], Snow.depth) - _s11_sum(fr2["road"][k], dg2)
+		edge_gain += g
+		if k < 4:
+			near += g
+	runner.check(strip_diff < 1e-6 and absf(edge_gain - sw2) < 1e-3 and near > 0.5 * sw2 and Boxes.is_complete(full_id) and Snow.volume_in_rect(Boxes.get_box(full_id)["rects"][0]) == 0.0,
+		"§11 where the strip is full (at the ceiling), the sidewalk's %.2f m³ go onto the street's edge: %.2f m³, %.0f %% of it within a metre of the curb" % [sw2, edge_gain, 100.0 * near / maxf(sw2, 1e-9)])
+
+
+## The grader's pass is unchanged: over the same snow it leaves exactly the street a baseline pass
+## leaves (snow checksums recorded on the baseline build and the build before §11), and the crew
+## behind it changes nothing on the street.
+func test_s11_grader_pass_unchanged() -> void:
+	await _s11_fresh(2024)
+	Snow.add_snowfall(0.2)
+	Snow.sync_all()
+	var before := _s11_road()
+	Municipal.crew_pending = []
+	Municipal.run_batch(Municipal.route_lanes())
+	var road := _s11_road()
+	var map := _s11_map()
+	runner.check(before == S11_ROAD_BEFORE, "§11 the same snow as the baseline's (road checksum %s…)" % before.substr(0, 12))
+	runner.check(road == S11_ROAD_AFTER and map == S11_MAP_AFTER, "§11 the grader's pass leaves the baseline's street (road %s…, whole map %s…)" % [road.substr(0, 12), map.substr(0, 12)])
+	await _s11_fresh(2024)
+	Snow.add_snowfall(0.2)
+	Snow.sync_all()
+	Municipal.crew_pending = Municipal.crew_route()
+	Municipal.run_batch(Municipal.route_lanes())
+	var road2 := _s11_road()
+	runner.check(road2 == S11_ROAD_AFTER and Municipal.crew_log.values().count("cleared") == Municipal.crew_route().size(),
+		"§11 …and with the sidewalk crew behind it the street is still the baseline's (%s…), every sidewalk cleared" % road2.substr(0, 12))
+
+
+## Skip == real time with passes. Without the world: a crew day stepped minute by minute and the
+## same stretch skipped (as a sleep) give the same passes and the same snow. With the world: the
+## city's pass watched in real time (the grader driving, the sidewalk plow following it) and the
+## same pass skipped (an F1 jump: a batch) leave every sidewalk bare, the player's job alone and the
+## snow conserved; on the way the plow stays behind the grader, holds 1× near the player and, out
+## on its own (every street under the player's contract), caps 10× at 2×.
+func test_s11_skip_equals_real_time() -> void:
+	var runs := []
+	for real in [true, false]:
+		await _s11_fresh(2024)
+		Clock.skip(Clock.at(2, 20.0) - Clock.minutes)    # Thursday, Dec 3, 8 p.m.
+		Weather.force(Weather.C.LIGHT, 11.0, 0.8)          # light snow through the night, until 7 a.m.
+		var times := []
+		var cb := func(): times.append(Clock.minutes)
+		Municipal.pass_finished.connect(cb)
+		var t_end := Clock.at(3, 12.0)
+		if real:
+			while Clock.minutes < t_end - 1e-6:
+				Clock.advance(minf(0.5, t_end - Clock.minutes))
+		else:
+			Clock.skip(t_end - Clock.minutes)
+		Municipal.pass_finished.disconnect(cb)
+		Snow.sync_all()
+		var bare := Boxes.boxes.filter(func(bx): return bx["kind"] == "sidewalk" and bx["complete"] and Snow.volume_in_rect(bx["rects"][0]) < 1e-3).size()
+		runs.append({"times": times, "log": Municipal.crew_log.duplicate(), "depth": Snow.depth.duplicate(), "vol": _s11_volume(), "bare": bare})
+	var maxd := 0.0
+	for i in range(Snow.W * Snow.H):
+		maxd = maxf(maxd, absf(runs[0]["depth"][i] - runs[1]["depth"][i]))
+	runner.check(runs[0]["times"] == runs[1]["times"] and runs[0]["times"].size() == 1 and str(runs[0]["log"]) == str(runs[1]["log"]) and runs[0]["bare"] == 24 and runs[1]["bare"] == 24,
+		"§11 a crew day stepped by half minutes and skipped: the same pass (%s), the same 24 sidewalks cleared" % str(runs[0]["times"].map(func(t): return Clock.format_time(t))))
+	runner.check(maxd < 1e-4 and absf(float(runs[0]["vol"]) - float(runs[1]["vol"])) < 1e-2, "§11 …and the same snow (largest cell difference %.7f m, the snowfall's float sums; %.3f vs %.3f m³)" % [maxd, runs[0]["vol"], runs[1]["vol"]])
+	# With the world: the pass in real time and skipped.
+	var res := []
+	for real in [true, false]:
+		await _unload()
+		Game.force_input = true
+		Game.new_game("fun", 2024)
+		Game.flags["mail_read"] = true
+		Game.flags["computer_unlocked"] = true
+		Game.flags["truck_keys"] = true
+		Game.set_stage(Game.Stage.COMPLETE)
+		Clock.reset(Clock.at(3, 7.9))          # Friday, Dec 4, 7:54 a.m.: the crews at 8
+		var rng := RandomNumberGenerator.new()
+		rng.seed = 11
+		var job := Contracts.force_award(int(Contracts._add_walk_listing("C_e", Clock.day_index(), rng)["lid"]))
+		await _spawn_world()
+		world.snow_renderer.relax_usec = 0
+		Weather.force(Weather.C.CLEAR, 48.0)
+		var pl: Player = world.player
+		var spot := Vector2(112.0, 143.0)          # a front yard on Birch Avenue, by the last sidewalk the crew does
+		pl.teleport(Vector3(spot.x, Snow.surface_height(spot.x, spot.y) + 0.05, spot.y), 0.0)
+		await _frames(10)
+		Snow.relax_until_stable()
+		var v0 := _s11_volume()
+		var job_vol := 0.0
+		for id in Contracts.contract_boxes(job):
+			job_vol += Snow.volume_in_rect(Boxes.get_box(id)["rects"][0])
+		var crew: SidewalkCrew = world.crew
+		var g: GraderNPC = world.grader
+		var info := {"ahead": 0, "frames": 0, "held_crew": 0, "on_walk": 0, "moving": 0}
+		if real:
+			var t_go := Clock.at(3, 8.0)
+			while Clock.minutes < t_go:
+				await _frames(1)
+			runner.check(Municipal.in_progress and g.active and crew.active and crew.visible, "§11 Friday 8 a.m.: the grader and the sidewalk plow are out")
+			var last := crew.global_position
+			var prev := [-1, 0.0]
+			while Municipal.in_progress and info["frames"] < 30000:
+				await _frames(1)
+				info["frames"] += 1
+				if crew.active:
+					var e: Dictionary = crew.runs[crew.run_i]
+					var lim := crew._limit(e)
+					# Moving on behind the grader on the same lane: never within LAG of it (it waits at a
+					# box's start until the grader is far enough ahead).
+					if crew.run_i == prev[0] and crew.s > float(prev[1]) + 1e-6 and crew.s > lim + 1e-3:
+						info["ahead"] += 1
+					prev = [crew.run_i, crew.s]
+					var cp := Vector2(crew.global_position.x, crew.global_position.z)
+					if crew.s > SidewalkCrew.BLADE_AHEAD and Boxes.box_has_point(str(e["box"]), cp):
+						info["on_walk"] += 1
+					if crew.global_position.distance_to(last) > 0.01:
+						info["moving"] += 1
+					last = crew.global_position
+					if world.ff_hold() == "crew":
+						info["held_crew"] += 1
+			runner.info("§11 real time: %d frames; the plow on a sidewalk box %d, moving %d, held 1× for it %d" % [info["frames"], info["on_walk"], info["moving"], info["held_crew"]])
+			runner.check(info["ahead"] == 0 and info["on_walk"] > 3000 and info["moving"] > 3000, "§11 the plow drove the sidewalks (%d frames on them), never closer than %d m behind the grader on its lane" % [info["on_walk"], int(SidewalkCrew.LAG)])
+			runner.check(info["held_crew"] > 30, "§11 the plow passing the player holds fast-forward at 1× (%d frames, \"crew\")" % info["held_crew"])
+		else:
+			Clock.skip(Clock.at(3, 11.0) - Clock.minutes)   # as an F1 jump
+		runner.check(not crew.active and not crew.visible and not g.active, "§11 %s: the pass is over, the plow gone" % ("real time" if real else "skipped"))
+		var v1 := _s11_volume()
+		var job_after := 0.0
+		for id in Contracts.contract_boxes(job):
+			job_after += Snow.volume_in_rect(Boxes.get_box(id)["rects"][0])
+		var bare := Boxes.boxes.filter(func(bx): return bx["kind"] == "sidewalk" and bx["complete"] and Snow.volume_in_rect(bx["rects"][0]) < 1e-9).map(func(bx): return bx["id"])
+		res.append({"log": Municipal.crew_log.duplicate(), "bare": bare, "passes": Municipal.passes, "last": Municipal.last_pass})
+		runner.check(absf(v1 - v0) < 0.01, "§11 %s: volume conserved (%.4f → %.4f m³)" % ["real time" if real else "skipped", v0, v1])
+		runner.check(bare.size() == 21 and Contracts.contract_boxes(job).all(func(id): return Municipal.crew_log.get(id, "") == "skipped" and not (id in bare)) and job_after >= job_vol - 1e-6,
+			"§11 %s: 21 sidewalks bare and complete, the 3 under the player's contract left to them (%.2f → %.2f m³)" % ["real time" if real else "skipped", job_vol, job_after])
+		Saves.delete_save("fun")
+	runner.check(str(res[0]["log"]) == str(res[1]["log"]) and res[0]["bare"] == res[1]["bare"] and res[0]["last"] == res[1]["last"],
+		"§11 real time == skipped: the same pass (%s), the same sidewalks cleared and skipped" % Clock.format_time(float(res[0]["last"])))
+	# Out on its own: every street under the player's contract, so the grader stays in.
+	for seg in Layout.road_segments:
+		var rr := RandomNumberGenerator.new()
+		Contracts.force_award(int(Contracts._add_municipal_listing(seg, Clock.day_index(), rr)["lid"]))
+	Municipal.next_pass = Clock.minutes
+	Municipal.on_hour(Clock.day_index(), Clock.hour())
+	await _frames(2)
+	runner.check(not world.grader.active and world.crew.active and world.ff_cap().get("why", "") == "sidewalk crew out", "§11 the plow out alone caps 10× at 2× (\"%s\")" % str(world.ff_cap().get("why", "")))
+	world.finish_grader_now()
+	runner.check(not Municipal.in_progress and not world.crew.active and Municipal.crew_log.values().count("cleared") >= 21, "§11 …and a sleep finishes its sidewalks as a batch")
+	await _unload()
+
+
+## Displays: the TV, the radio and the computer show the next crew day ("City crews: Fri 8 a.m."),
+## computed from the schedule and the clock — also when the clock is set directly, as the
+## screenshots do (it used to show a stored date in the past); the weekday on the HUD clock, the TV
+## and computer cards and due times; Gerry's line; F1's "Next Monday"; an old save on the schedule.
+func test_s11_displays() -> void:
+	await _s9_world("fun", 10.0)                 # Wednesday, Dec 2, 10 a.m.
+	var wd := func(m: float) -> String: return Clock.weekday(int(floor(m / 1440.0)), Game.year)
+	var at := Municipal.next_crew_time(Clock.minutes)
+	var line := Municipal.crew_line()
+	runner.check(line == "City crews: %s %s" % [wd.call(at), Contracts.clock_text(at)] and line == "City crews: Fri %s" % Contracts.clock_text(Clock.at(0, 0.0) + Municipal.pass_minute()) and Municipal.is_crew_start(at),
+		"§11 the next crew day from the schedule: \"%s\"" % line)
+	var tv := Panels.tv(world.hud, func(): pass, false)
+	var tvt := _s2_texts(tv)
+	tv.queue_free()
+	var cards_ok := true
+	for e in Weather.forecast(3):
+		var ct := Weather.card_text(e)
+		cards_ok = cards_ok and str(ct["date"]) == "%s %s" % [Clock.weekday(int(e["day"]), Game.year), Clock.date_string(int(e["day"]), true)] and tvt.contains(str(ct["date"]))
+	runner.check(tvt.contains(line) and not tvt.contains("City grader next expected") and cards_ok, "§11 the TV: \"%s\", its cards dated with the weekday (%s …)" % [line, Weather.card_text(Weather.forecast(1)[0])["date"]])
+	runner.check(world.radio_text().ends_with(" " + line), "§11 the radio ends with the crews' line")
+	world.open_computer()
+	await _frames(2)
+	var comp: ComputerUI = world.modal
+	comp._open_app(ComputerUI.app_index("weather"))
+	await _frames(1)
+	var ctext := _s2_texts(comp.content)
+	runner.check(ctext.contains(line) and ctext.contains(str(Weather.card_text(Weather.forecast(1)[0])["date"])), "§11 the computer's Weather app: the crews' line and the cards' weekdays")
+	world.close_modal()
+	await _frames(2)
+	var hud: HUD = world.hud
+	await _frames(15)
+	runner.check(hud.date_l.text.contains(Clock.weekday(Clock.day_index(), Game.year) + " ") and Contracts.when_text(Clock.at(4, 21.0)) == "9 p.m. " + Clock.weekday(4, Game.year) and Clock.weekday(4, Game.year) == "Sat",
+		"§11 the weekday on the HUD clock (\"%s\") and in due times (\"%s\")" % [hud.date_l.text, Contracts.when_text(Clock.at(4, 21.0))])
+	# The clock set directly (the shots do this): never a crew day in the past, and no catch-up pass.
+	var passes0 := Municipal.passes
+	Clock.reset(Clock.at(48, 9.0))                # Monday, Jan 18, 9 a.m. (after that morning's crews)
+	var at2 := Municipal.next_crew_time(Clock.minutes)
+	var tv2 := Panels.tv(world.hud, func(): pass, false)
+	var tvt2 := _s2_texts(tv2)
+	tv2.queue_free()
+	runner.check(at2 > Clock.minutes and at2 - Clock.minutes <= 4.0 * 1440.0 and tvt2.contains(Municipal.crew_line()) and Municipal.crew_line() == "City crews: Fri %s" % Contracts.clock_text(at2) and world.radio_text().ends_with(Municipal.crew_line()),
+		"§11 the clock set to Mon Jan 18, 9 a.m.: \"%s\" (%s; the stored pass was %s)" % [Municipal.crew_line(), Clock.format_time(at2), Clock.format_time(Municipal.next_pass)])
+	Clock.advance(60.0)
+	runner.check(Municipal.passes == passes0 and is_equal_approx(Municipal.next_pass, at2) and not Municipal.in_progress, "§11 …the next hour: no pass at 10 a.m., the city back on its schedule (%s)" % Clock.format_time(Municipal.next_pass))
+	Clock.reset(Clock.at(51, 7.5))                # Thursday, Jan 21
+	runner.check(Municipal.crew_line() == "City crews: Fri %s" % Contracts.clock_text(Clock.at(0, 0.0) + Municipal.pass_minute()), "§11 Thursday: \"%s\"" % Municipal.crew_line())
+	# Gerry's line.
+	var lines := HelpText.explanation(false).map(func(x): return str(x["text"]))
+	runner.check(lines.any(func(t): return t.contains("every Monday and Friday")) and not lines.any(func(t): return t.contains("three or four days")), "§11 Gerry: the grader comes every Monday and Friday")
+	# F1: the next Monday, half an hour before the crews.
+	var dm := DebugMenu.new()
+	runner.add_child(dm)
+	await _frames(1)
+	var pressed := false
+	for bt in dm.find_children("*", "Button", true, false):
+		if (bt as Button).text == "Next Monday":
+			(bt as Button).pressed.emit()
+			pressed = true
+	runner.check(pressed and Clock.weekday(Clock.day_index(), Game.year) == "Mon" and is_equal_approx(fmod(Clock.minutes, 1440.0), Municipal.pass_minute() - 30.0) and Clock.day_index() == 55,
+		"§11 F1 \"Next Monday\": %s %s, half an hour before the crews" % [Clock.weekday(Clock.day_index(), Game.year), Clock.format_time(Clock.minutes)])
+	dm.queue_free()
+	await _frames(1)
+	Clock.advance(31.0)
+	runner.check(Municipal.in_progress and world.grader.active and world.crew.active, "§11 …and at the crews' hour they come")
+	world.finish_grader_now()
+	await _unload()
+	# An old save (pass 4, a pass every 3–4 days) goes on the schedule; a new one keeps its pass.
+	var ok: bool = await _load_save_file("res://tests/fixtures/polish4/fun_5_midwinter.json")
+	runner.check(ok and Municipal.is_crew_start(Municipal.next_pass) and is_equal_approx(Municipal.next_pass, Municipal.next_crew_time(Clock.minutes)),
+		"§11 a pass-4 save: the next pass on the schedule (%s %s)" % [Clock.weekday(int(Municipal.next_pass / 1440.0), Game.year), Clock.format_time(Municipal.next_pass)])
+	Saves.delete_save("fun")

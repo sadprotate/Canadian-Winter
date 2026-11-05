@@ -11,6 +11,7 @@ var weather_fx: WeatherFX
 var player: Player
 var neighbor: Neighbor
 var grader: GraderNPC
+var crew: SidewalkCrew          # polish 5 §11: the city's sidewalk crew, following the grader
 var store: Store
 var zone_markers: ZoneMarkers
 var box_outline: BoxOutline
@@ -81,6 +82,9 @@ func _ready() -> void:
 	zone_markers.work_outline = box_outline
 	grader = GraderNPC.new()
 	add_child(grader)
+	crew = SidewalkCrew.new()
+	crew.grader = grader
+	add_child(crew)
 	Municipal.world_handles_passes = true
 	_spawn_player()
 	_spawn_objects()
@@ -586,7 +590,8 @@ var _sleeping := false
 
 ## The world's share of one frame on the clock, run once more for every extra fast-forward
 ## substep (Clock._process), in the order a frame at 1× runs it: the vehicle snow, the snow's
-## syncing and relaxation, then the grader (whose own step at 1× comes first in the next frame).
+## syncing and relaxation, then the grader and (polish 5 §11) the sidewalk crew behind it (whose
+## own steps at 1× come first in the next frame, in the same order).
 func sim_tick(delta: float) -> void:
 	if get_tree().paused:
 		return
@@ -595,6 +600,8 @@ func sim_tick(delta: float) -> void:
 		snow_renderer.sim_step()
 	if grader:
 		grader.sim_step(delta)
+	if crew:
+		crew.sim_step(delta)
 
 
 ## No modal, or one fast-forward keeps running under.
@@ -634,23 +641,28 @@ const FF_RELAX_US := 500
 ## frame's relaxation (up to 2.5 ms), so 10× could spend 25 ms a frame on it (measured in
 ## tests/perf.tscn: the grader's pass away from the player 28 ms a frame at 10×, 8 ms at 2×; a
 ## 75 m³ pile settling 30 ms at 10×, 10 ms at 2×). It takes effect within the frame (the clock
-## re-reads it after every substep). §11's sidewalk crew joins here.
+## re-reads it after every substep). Polish 5 §11: the sidewalk crew too (its mounds relax like the
+## grader's windrows; it is out a little longer than the grader only when the grader skips streets).
 func ff_cap() -> Dictionary:
 	if grader and grader.active:
 		return {"max": 2, "why": "grader on the streets"}
+	if crew and crew.active:
+		return {"max": 2, "why": "sidewalk crew out"}
 	if snow_renderer and snow_renderer.relax_us_last > FF_RELAX_US:
 		return {"max": 2, "why": "snow settling"}
 	return {}
 
 
-## Why fast-forward is held at 1× now ("" when it isn't): the grader or Gerry moving near the player.
-## §11's sidewalk crew joins here.
+## Why fast-forward is held at 1× now ("" when it isn't): the grader, the sidewalk crew (polish 5
+## §11) or Gerry moving near the player.
 func ff_hold() -> String:
 	if player == null or not is_instance_valid(player):
 		return ""
 	var pp := Vector2(player.global_position.x, player.global_position.z)
 	if grader and grader.active and Vector2(grader.global_position.x, grader.global_position.z).distance_to(pp) < FF_HOLD_DIST:
 		return "grader"
+	if crew and crew.active and Vector2(crew.global_position.x, crew.global_position.z).distance_to(pp) < FF_HOLD_DIST:
+		return "crew"
 	if neighbor and is_instance_valid(neighbor) and neighbor.is_walking() \
 			and Vector2(neighbor.global_position.x, neighbor.global_position.z).distance_to(pp) < FF_HOLD_DIST:
 		return "gerry"
@@ -742,12 +754,14 @@ func open_photo() -> void:
 
 func radio_forecast() -> void:
 	AudioMgr.play("radio_jingle", -6.0)
-	# Polish 4 §1: the next three game hours, from the forecast model (the grader line as before).
+	# Polish 4 §1: the next three game hours, from the forecast model, and the city crews' line.
 	subtitle(radio_text(), 10.0)
 
 
+## Polish 5 §11: the crews' line is the next crew day ("City crews: Mon 7 a.m."; was "City grader
+## expected Dec 18 07:33.").
 func radio_text() -> String:
-	return "Radio: %s City grader expected %s." % [Weather.radio_bulletin(), Municipal.next_pass_text()]
+	return "Radio: %s %s" % [Weather.radio_bulletin(), Municipal.crew_line()]
 
 
 ## Polish 5 §8: the forecast is issued every game hour, and the displays follow it — a TV left on
@@ -1019,11 +1033,15 @@ func plant_money() -> void:
 	Notify.push("+%s" % UIKit.money(InteriorBuilder.PLANT_MONEY), Notify.GOOD)
 
 
+## Sleep, a skip, the end of the winter: the rest of the city's pass as a batch — the grader's
+## lanes, then (polish 5 §11) the sidewalks the crew hadn't done yet.
 func finish_grader_now() -> void:
 	if grader and grader.active:
 		grader.finish()
 	elif Municipal.in_progress:
 		Municipal.finish_now()
+	if crew:
+		crew.stop()
 
 
 ## Sleeping always ends at the next 7:00 a.m. (polish §12).

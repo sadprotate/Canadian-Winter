@@ -152,7 +152,7 @@ static func sleep(parent: Control, on_pick: Callable, on_cancel: Callable) -> Co
 
 ## Polish 3 §3: the TV weather fills a 16:9 screen (bezel around it) with an even margin, centred
 ## both ways, in large type: current conditions biggest, then the 3-day forecast (the same
-## forecast-with-error entries as before), the latest alert and the grader line.
+## forecast-with-error entries as before), the latest alert and the city crews' line.
 const TV_SCREEN := Vector2(1280, 720)
 
 
@@ -240,7 +240,8 @@ static func tv(parent: Control, on_close: Callable, jingle := true) -> Control:
 		al.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		al.custom_minimum_size.x = 1100
 		v.add_child(al)
-	var grader := UIKit.label("City grader next expected: " + Municipal.next_pass_text(), 26, Color(0.85, 0.9, 1.0), HORIZONTAL_ALIGNMENT_CENTER)
+	# Polish 5 §11: the next crew day from the schedule ("City crews: Mon 7 a.m.").
+	var grader := UIKit.label(Municipal.crew_line(), 26, Color(0.85, 0.9, 1.0), HORIZONTAL_ALIGNMENT_CENTER)
 	v.add_child(grader)
 	# Polish 4 §1: the forecast is revised every game hour. One small line under the last one, in
 	# the screen's bottom margin, so the TV's layout and size stay as they were.

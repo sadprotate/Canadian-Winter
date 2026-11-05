@@ -842,8 +842,9 @@ func _weather() -> void:
 		h.add_child(Icons.weather(e["cond"], 56))
 		var l := _p(Weather.forecast_text(e, detail), Color.WHITE, FS_BODY, h)
 		l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	_section("City grader")
-	_p("Next pass: %s   ·   Passes this winter: %d" % [Municipal.next_pass_text(), Municipal.passes], Color.WHITE)
+	# Polish 5 §11: Mondays and Fridays — the next crew day from the schedule.
+	_section("City crews")
+	_p("%s — the grader, then the sidewalk crew   ·   Passes this winter: %d" % [Municipal.crew_line(), Municipal.passes], Color.WHITE)
 	if not Contracts.contracted_segments().is_empty():
 		_p("Streets under your city contract are skipped by the city grader: " + ", ".join(Contracts.contracted_segments()), UIKit.GOOD)
 	if not Weather.alerts.is_empty():

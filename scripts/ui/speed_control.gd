@@ -11,7 +11,7 @@ const NOTE_S := 4.0
 ## Why fast-forward went back to 1× on its own (Clock.drop_to_1x reasons), as shown.
 const DROP_TEXT := {"alert": "weather alert", "contract": "contract warning", "bid": "bid result",
 	"cold": "you're getting cold", "work": "working the snow", "vehicle": "vehicle", "machine": "machine"}
-const HOLD_TEXT := {"grader": "grader passing", "gerry": "Gerry walking"}
+const HOLD_TEXT := {"grader": "grader passing", "crew": "sidewalk crew passing", "gerry": "Gerry walking"}
 
 var world: Node
 var hud: HUD

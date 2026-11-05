@@ -1470,6 +1470,119 @@ func grader_lane(a: Vector2, b: Vector2, push: Vector2, blade_w: float, residual
 	return total * CELL_AREA
 
 
+## Polish 5 §11: the city's sidewalk crew on a sidewalk rect `r` (whole cells). Every cell is
+## cleared to bare pavement and held (no slump inflow, as in a completed box), and its snow goes —
+## volume conserved — straight out from the sidewalk in `out` (a cell step toward the street), column
+## by column, onto the strip between the sidewalk and the street (the cells beyond it up to the
+## curb: the boulevard, or a driveway's apron) as a mound on the strip's sidewalk side (CREW_MOUND),
+## beside the grader's windrow, which lies on its street side. Whatever a column's strip has no room
+## for under the ceiling goes onto the street's edge, outward from the curb (Decision 12). Returns
+## the volume moved (m³).
+const CREW_MOUND := [0.3, 0.3, 0.2, 0.12, 0.06, 0.02]
+const CREW_STRIP_MAX := 12   # cells looked at beyond the sidewalk for the strip (the boulevard is 6)
+const CREW_EDGE_MAX := 24    # cells of the street the overflow may go to, from the curb
+## What is left of a column after the strip is float32 rounding below this (depth units, 1 µm):
+## not overflow.
+const CREW_RESIDUE := 1e-6
+
+
+func sidewalk_clear(r: Rect2, out: Vector2i) -> float:
+	var c := _rect_cells(r)
+	if c.size.x <= 0 or c.size.y <= 0 or out == Vector2i.ZERO:
+		return 0.0
+	var cols_x := out.y != 0          # out along z: one column per x cell
+	var n_cols := c.size.x if cols_x else c.size.y
+	var n_deep := c.size.y if cols_x else c.size.x
+	# The first strip cell of column 0, just beyond the rect on the street side.
+	var edge := Vector2i(c.position.x, c.end.y if out.y > 0 else c.position.y - 1) if cols_x \
+		else Vector2i(c.end.x if out.x > 0 else c.position.x - 1, c.position.y)
+	var step := Vector2i(1, 0) if cols_x else Vector2i(0, 1)
+	var reach := CREW_STRIP_MAX + CREW_EDGE_MAX
+	var lo := Vector2i(mini(c.position.x, c.position.x + out.x * reach), mini(c.position.y, c.position.y + out.y * reach))
+	var hi := Vector2i(maxi(c.end.x - 1, c.end.x - 1 + out.x * reach), maxi(c.end.y - 1, c.end.y - 1 + out.y * reach))
+	lo = lo.clamp(Vector2i.ZERO, Vector2i(W - 1, H - 1))
+	hi = hi.clamp(Vector2i.ZERO, Vector2i(W - 1, H - 1))
+	_sync_cells(lo.x, lo.y, hi.x, hi.y)
+	var moved := 0.0
+	for k in range(n_cols):
+		var total := 0.0
+		for j in range(n_deep):
+			var cell := Vector2i(c.position.x + k, c.position.y + j) if cols_x else Vector2i(c.position.x + j, c.position.y + k)
+			var i := cell.y * W + cell.x
+			if surf[i] == S_BLOCKED:
+				continue
+			total += depth[i]
+			depth[i] = 0.0
+			loose[i] = 0.0
+			hold[i] = 1
+		if total <= 0.0:
+			continue
+		# The strip: the cells beyond the sidewalk up to the curb (the first street cell); then the
+		# street's edge, outward from the curb.
+		var strip := PackedInt32Array()
+		var road := PackedInt32Array()
+		var p := edge + step * k
+		for n in range(reach):
+			if p.x < 0 or p.y < 0 or p.x >= W or p.y >= H:
+				break
+			var i2 := p.y * W + p.x
+			var s2 := surf[i2]
+			if s2 == S_ROAD:
+				if road.size() >= CREW_EDGE_MAX:
+					break
+				road.append(i2)
+			elif not road.is_empty() or strip.size() >= CREW_STRIP_MAX:
+				break
+			elif s2 != S_BLOCKED:
+				strip.append(i2)
+			p += out
+		var left := _crew_fill(strip, total, CREW_MOUND)
+		if left > CREW_RESIDUE:
+			left = _crew_fill(strip, left, [])     # whatever room is left on the strip
+		if left > CREW_RESIDUE:
+			left = _crew_fill(road, left, [])      # the street's edge
+		if left > CREW_RESIDUE:
+			# Nowhere along the column (not on this map): the nearest room, as every operation does.
+			var pc: int = strip[0] if not strip.is_empty() else (road[0] if not road.is_empty() else (edge + step * k).y * W + (edge + step * k).x)
+			@warning_ignore("integer_division")
+			left = _spill(Vector2((pc % W + 0.5) * CELL, (pc / W + 0.5) * CELL), left, true)
+		moved += total - maxf(left, 0.0)
+	mark_dirty(lo.x, lo.y, hi.x, hi.y)
+	_queue_relax(lo.x, lo.y, hi.x, hi.y)
+	return moved * CELL_AREA
+
+
+## Put `amount` (depth units) into `cells` under the ceiling: by `weights` (the first cells, each
+## at most its room; the last weighted cell takes what is left), or with no weights each cell up
+## to its room in turn. What a cell receives is read back from the float32 map, so what is placed
+## is counted exactly. Returns what didn't fit.
+func _crew_fill(cells: PackedInt32Array, amount: float, weights: Array) -> float:
+	var left := amount
+	if cells.is_empty() or amount <= 0.0:
+		return left
+	var n := cells.size() if weights.is_empty() else mini(cells.size(), weights.size())
+	var wsum := 0.0
+	for k in range(n):
+		wsum += 1.0 if weights.is_empty() else float(weights[k])
+	if wsum <= 0.0:
+		return left
+	for k in range(n):
+		var i := cells[k]
+		var room := maxf(ceiling - ground[i] - depth[i], 0.0)
+		var share := left if weights.is_empty() or k == n - 1 else amount * float(weights[k]) / wsum
+		var add := minf(minf(share, left), room)
+		if add <= 0.0:
+			continue
+		var before := depth[i]
+		depth[i] = before + add
+		var got := depth[i] - before
+		loose[i] += got
+		left -= got
+		if weights.is_empty() and left <= CREW_RESIDUE:
+			break
+	return left
+
+
 # -----------------------------------------------------------------------------
 # Persistence (compact: zstd-compressed float32 depth + scalars)
 # -----------------------------------------------------------------------------

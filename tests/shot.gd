@@ -103,6 +103,14 @@ extends Node
 ##                            road:<segment id>, walk:<section> (A_w … D_e; this build only); works on
 ##                            older builds too (there: stakes, flags and the orange line)
 ##   --rep=N                  (§10b) set the reputation (the tier follows) before the jobs / the board
+##   --city_snow=m            (§11) m metres more snow everywhere right after spawning (as if it fell)
+##   --city_pass=1            (§11) the city's pass as a sleep runs it — a batch of the grader's whole
+##                            route, then (this build) the sidewalk crew — and the snow settled; works
+##                            on older builds too (the grader alone), from the same snow
+##   --crew_watch=steps       (§11) the city's pass in the world: the grader driving and the sidewalk
+##                            plow following it, stepped `steps` frames of 1/60 s; without --cam the
+##                            camera looks along the sidewalk at the plow from behind it, lawn side
+##                            (--crew_back=m, --crew_side=m, --crew_h=m move it)
 
 var args := {}
 var game: Node = null
@@ -484,6 +492,13 @@ func _setup_after_spawn() -> void:
 		var c4 := mb - inw * 7.5 + sd * 4.0
 		args["cam"] = "%f,3.0,%f" % [c4.x, c4.y]
 		args["look"] = "%f,0.7,%f" % [mb.x + inw.x * 2.0, mb.y + inw.y * 2.0]
+	if args.has("city_snow"):
+		Snow.add_snowfall(float(args["city_snow"]))
+		Snow.sync_all()
+	if args.has("city_pass"):
+		_city_pass()
+	if args.has("crew_watch"):
+		_crew_watch(w)
 	if args.has("cam") or args.has("lotcam") or args.has("hcam"):
 		_cam = Camera3D.new()
 		_cam.fov = float(args.get("fov", "62"))
@@ -509,6 +524,35 @@ func _setup_after_spawn() -> void:
 		_cam.look_at(look)
 		_cam.current = true
 		w.snow_renderer.build_all(cpos)
+
+
+## Polish 5 §11: --city_pass — the whole pass at once (a sleep's batch), then the snow settles.
+func _city_pass() -> void:
+	if "crew_pending" in Municipal:
+		Municipal.set("crew_pending", Municipal.call("crew_route"))
+	Municipal.run_batch(Municipal.route_lanes())
+	Snow.relax_until_stable()
+
+
+## Polish 5 §11: --crew_watch=steps — the pass in the world, `steps` frames on; the camera on the plow.
+func _crew_watch(w) -> void:
+	Municipal.next_pass = Clock.minutes
+	Municipal.on_hour(Clock.day_index(), Clock.hour())
+	for i in range(int(args["crew_watch"])):
+		w.grader.sim_step(1.0 / 60.0)
+		w.crew.sim_step(1.0 / 60.0)
+		if i % 4 == 0:
+			Snow.process_relax(96)
+	Snow.relax_until_stable()   # the windrows and the mounds settled, as they are a little behind the movers
+	if not args.has("cam") and w.crew.active:
+		var e: Dictionary = w.crew.runs[w.crew.run_i]
+		var dir := (Vector2(e["b"]) - Vector2(e["a"])).normalized()
+		var lawn := -Vector2(e["out"])
+		var cp := Vector2(w.crew.global_position.x, w.crew.global_position.z)
+		var c := cp - dir * float(args.get("crew_back", "7.5")) + lawn * float(args.get("crew_side", "4.0"))
+		args["cam"] = "%f,%s,%f" % [c.x, args.get("crew_h", "3.2"), c.y]
+		args["look"] = "%f,0.5,%f" % [cp.x + dir.x * 3.0 - lawn.x * 1.0, cp.y + dir.y * 3.0 - lawn.y * 1.0]
+	print("crew_watch: grader at %s (lane %d), plow at %s on %s" % [str(w.grader.global_position), w.grader.lane_i, str(w.crew.global_position), str(w.crew.runs[w.crew.run_i]["box"]) if w.crew.active else "-"])
 
 
 ## --pose=hold|scoop|push|toss [--load=0.5] [--toss=0.5]: freeze the hands / tool in a pose.

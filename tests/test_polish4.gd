@@ -957,7 +957,7 @@ func test_weather_text_fits() -> void:
 				continue
 			for h in range(int(ev["start"]) - 3, mini(int(ceil(float(ev["end"]))) + 1, Weather.HOURS)):
 				Clock.minutes = h * 60.0 + 20.0
-				var t := "Radio: %s City grader expected %s." % [Weather.radio_bulletin(), Municipal.next_pass_text()]
+				var t: String = world.radio_text()   # polish 5 §11: its crews' line read from the game
 				if t.length() > longest.length():
 					longest = t
 	# The fullest TV: the moment of winter 1 with the most snow lines on its cards and an alert up.

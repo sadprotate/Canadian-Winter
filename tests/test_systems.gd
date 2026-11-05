@@ -130,10 +130,15 @@ func test_municipal_schedule_every_3_to_4_days() -> void:
 	if times.is_empty():
 		return
 	var first_day := int(times[0] / 1440.0)
-	runner.check(first_day == 2 or first_day == 3, "First pass on Dec 3 or 4 (day index %d)" % first_day)
+	# Polish 5 §11: the passes are on Mondays and Fridays (Municipal's schedule, read through it): the
+	# first on the winter's first crew day (winter 1: Friday, Dec 4), Monday → Friday 4 days, Friday →
+	# Monday 3.
+	var want_first := int(Municipal.next_crew_time(Clock.at(0, 7.5)) / 1440.0)
+	runner.check(first_day == want_first and (first_day == 2 or first_day == 3), "First pass on Dec 3 or 4, the first crew day (day index %d, %s)" % [first_day, Clock.weekday(first_day, Game.year)])
 	for i in range(1, times.size()):
 		var gap: float = (times[i] - times[i - 1]) / 1440.0
 		runner.check(gap > 2.9 and gap < 4.1, "Pass interval is 3–4 days (%.2f)" % gap)
+	runner.check(times.all(func(t): return Municipal.is_crew_start(t)), "Every pass on a crew day at the crews' hour: %s" % str(times.map(func(t): return "%s %s" % [Clock.weekday(int(t / 1440.0), Game.year), Clock.format_time(t)])))
 	runner.info("grader passes at days: %s" % str(times.map(func(t): return snappedf(t / 1440.0, 0.01))))
 	runner.check(Snow.volume_in_rect(road) < road_before, "Road snow reduced by the grader")
 

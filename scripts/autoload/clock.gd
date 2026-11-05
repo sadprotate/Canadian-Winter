@@ -299,9 +299,46 @@ static func date_string(day: int, short := false) -> String:
 	return "%s %d" % [(MONTH_SHORT if short else MONTHS)[m], day_of_month(day)]
 
 
+## Polish 5 §11: the real calendar behind the game's (it had a placeholder weekday and no years).
+## Winter 1 starts on Tuesday, December 1, 2026, and winter N runs from December of 2025 + N to
+## March of 2026 + N. The game's winter has no February 29 (Feb has 28 days, MONTH_START): a date
+## keeps its real weekday, so in a leap winter (winter 2: Feb 28, 2028 is a Monday) the game's next
+## day, March 1, is a Wednesday — the leap day is simply not played.
+const FIRST_WINTER_YEAR := 2026
+const WEEKDAYS := ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+
+## The real date of a winter day: Vector3i(year, month 1–12, day of month).
+static func real_date(day: int, year: int) -> Vector3i:
+	var m := month_of(day)
+	var y := FIRST_WINTER_YEAR + maxi(year, 1) - 1 + (0 if m == 0 else 1)
+	return Vector3i(y, 12 if m == 0 else m, day_of_month(day))
+
+
+## Days from 1970-01-01 to a date of the (proleptic) Gregorian calendar.
+static func _days_from_civil(y: int, m: int, d: int) -> int:
+	if m <= 2:
+		y -= 1
+	@warning_ignore("integer_division")
+	var era := (y if y >= 0 else y - 399) / 400
+	var yoe := y - era * 400
+	@warning_ignore("integer_division")
+	var doy := (153 * (m + (-3 if m > 2 else 9)) + 2) / 5 + d - 1
+	@warning_ignore("integer_division")
+	var doe := yoe * 365 + yoe / 4 - yoe / 100 + doy
+	return era * 146097 + doe - 719468
+
+
+## The weekday of a winter day, 0 = Monday … 6 = Sunday (1970-01-01 was a Thursday).
+static func weekday_index(day: int, year: int) -> int:
+	var rd := real_date(day, year)
+	return posmod(_days_from_civil(rd.x, rd.y, rd.z) + 3, 7)
+
+
+## "Tue" — the one weekday every display uses (the HUD clock, the TV and computer cards, due
+## times, the map's tags, the city crews' day).
 static func weekday(day: int, year: int) -> String:
-	var names := ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-	return names[(day + year * 2) % 7]
+	return WEEKDAYS[weekday_index(day, year)]
 
 
 func time_string() -> String:

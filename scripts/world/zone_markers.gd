@@ -87,7 +87,7 @@ static func _box_dist(b: Dictionary, p: Vector2) -> float:
 
 func _on_box_completed(id: String) -> void:
 	var b := Boxes.get_box(id)
-	if b.is_empty() or not is_inside_tree():
+	if b.is_empty() or not is_inside_tree() or Boxes.quiet:   # polish 5 §11: not for the city's crew
 		return
 	var pp := Vector2(Game.player_pos.x, Game.player_pos.z)
 	var near := false

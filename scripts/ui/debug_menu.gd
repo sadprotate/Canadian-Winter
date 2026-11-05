@@ -71,6 +71,13 @@ func _ready() -> void:
 			t += 1440.0
 		Clock.skip(t - Clock.minutes)
 		_say("Time: " + Clock.time_string())))
+	# Polish 5 §11: half an hour before the city crews' next Monday (simulated, like every jump).
+	r.add_child(_b("Next Monday", func():
+		var d := Clock.day_index() + 1
+		while Clock.weekday_index(d, Game.year) != 0:
+			d += 1
+		_jump_to(d, (Municipal.pass_minute() - 30.0) / 60.0)
+		_say("Now: %s %s · %s" % [Clock.weekday(Clock.day_index(), Game.year), Clock.format_time(Clock.minutes), Municipal.crew_line()])))
 	r = _row(v, "Jump to date")
 	date_m = OptionButton.new()
 	for m in ["December", "January", "February", "March", "April"]:

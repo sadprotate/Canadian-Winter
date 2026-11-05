@@ -719,7 +719,9 @@ static func card_text(entry: Dictionary) -> Dictionary:
 	var amount := snow_range_text(entry)
 	if tier != "" and amount == "":
 		amount = "Under 1 cm"
-	return {"date": str(entry["date"]), "title": title, "amount": amount if tier != "" else "",
+	# Polish 5 §11: the card's date with its weekday ("Fri Dec 4"), from Clock.weekday like every display.
+	var date := "%s %s" % [Clock.weekday(int(entry["day"]), Game.year), str(entry["date"])]
+	return {"date": date, "title": title, "amount": amount if tier != "" else "",
 		"when": when_text(entry, float(entry.get("from_h", -1.0)), float(entry.get("to_h", -1.0))) if tier != "" else "",
 		"temps": "High %d°  ·  Low %d°" % [int(entry["hi"]), int(entry["lo"])]}
 
