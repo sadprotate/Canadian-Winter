@@ -72,7 +72,9 @@ func spawn_ready() -> void:
 		match kind:
 			"tool":
 				var slot := _free_slot()
-				var e := {"uid": Game.uid(), "tool": item, "pos": _pad_slot(slot), "yaw": 0.0, "order_id": o["id"], "pad_slot": slot}
+				var at := _pad_slot(slot)
+				at.y = Snow.surface_height(at.x, at.z)   # polish 6 §3: on the snow on the pad
+				var e := {"uid": Game.uid(), "tool": item, "pos": at, "yaw": 0.0, "order_id": o["id"], "pad_slot": slot}
 				Game.items.append(e)
 				world.spawn_item_node(e)
 			"machine":

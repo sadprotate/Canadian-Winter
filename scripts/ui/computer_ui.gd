@@ -701,7 +701,7 @@ func _store() -> void:
 				stats += "  ·  load %.2f m³" % td.capacity
 			ToolData.Kind.ELECTRIC_SHOVEL, ToolData.Kind.WALK_BLOWER:
 				stats += "  ·  %.2f m³/s  ·  throw %.0f m" % [td.rate, td.throw_distance]
-		_store_card(String(td.id), td.display_name, td.price, Settings.with_keys(td.description), stats)
+		_store_card(String(td.id), td.display_name, td.price, td.store_description(), stats)
 	# Polish 5 §13: equipment — not tools (never in a slot); the coat in Survival only.
 	_section("Equipment")
 	for k in Catalog.EQUIPMENT.keys():

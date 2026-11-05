@@ -14,6 +14,16 @@ const _Equipment := preload("res://scripts/data/equipment.gd")
 
 const PICKUP_EXPOSURE := 0.75
 const EXPOSE_TOLERANCE := 0.02
+## The lying pose: the model tilted this far (grip end raised, blade down) with its grip this far
+## behind the item's origin. Polish 6 §3: its height is each model's own (rest_height), so the
+## lowest point rests on the item's origin — the snow surface, or the ground under a buried tool
+## (it was 0.95 m for every tool: their lowest points hung 0.28–0.52 m in the air).
+const LIE_TILT_DEG := 28.0
+const LIE_BACK := 0.3
+## The old fixed height of the grip, kept for the glint's place relative to the tool.
+const OLD_GRIP_Y := 0.95
+
+static var _rest_cache: Dictionary = {}
 
 var entry: Dictionary = {}
 var tool_id := ""
@@ -54,8 +64,8 @@ func _ready() -> void:
 	else:
 		mesh.mesh = ToolModels.mesh_for(tool_id)
 		# Lying in the snow: grip end raised, blade on the ground (handle pokes up when buried).
-		mesh.rotation_degrees = Vector3(28, 0, 0)
-		mesh.position = Vector3(0, 0.95, 0.3)
+		mesh.rotation_degrees = Vector3(LIE_TILT_DEG, 0, 0)
+		mesh.position = Vector3(0, rest_height(tool_id), LIE_BACK)
 	add_child(mesh)
 	if entry.get("buried", false):
 		_glint = MeshInstance3D.new()
@@ -63,7 +73,7 @@ func _ready() -> void:
 		(_glint.mesh as SphereMesh).radius = 0.06
 		(_glint.mesh as SphereMesh).height = 0.12
 		_glint.material_override = Mats.emissive(Color(1, 1, 0.9), 4.0)
-		_glint.position = Vector3(0, 1.0, 0.9)
+		_glint.position = Vector3(0, 1.0 - (OLD_GRIP_Y - mesh.position.y), 0.9)
 		add_child(_glint)
 	_settle()
 
@@ -75,6 +85,24 @@ func _settle() -> void:
 	var s := Snow.surface_height(global_position.x, global_position.z)
 	if is_crate() or s < global_position.y:
 		global_position.y = s
+
+
+## Polish 6 §3: the height of a tool's grip above the item's origin in the lying pose that puts the
+## model's lowest point on that origin (from the model's own vertices, tilted LIE_TILT_DEG).
+static func rest_height(id: String) -> float:
+	if _rest_cache.has(id):
+		return _rest_cache[id]
+	var b := Basis(Vector3.RIGHT, deg_to_rad(LIE_TILT_DEG))
+	var lo := INF
+	var m := ToolModels.mesh_for(id)
+	for s in range(m.get_surface_count()):
+		var arrs := m.surface_get_arrays(s)
+		if arrs.size() > Mesh.ARRAY_VERTEX and arrs[Mesh.ARRAY_VERTEX] is PackedVector3Array:
+			for v in (arrs[Mesh.ARRAY_VERTEX] as PackedVector3Array):
+				lo = minf(lo, (b * v).y)
+	var h := -lo if lo < INF else OLD_GRIP_Y
+	_rest_cache[id] = h
+	return h
 
 
 func buried_depth() -> float:

@@ -90,6 +90,18 @@ static func fixture_points(dir_path: String) -> Dictionary:
 # (The polish-3 and polish-4 fixtures are covered by test_polish3 / test_polish4.)
 # -----------------------------------------------------------------------------
 
+## Polish 6 §3: where the fixture test stands the player on the street — 4 m out from the middle of
+## the player's lot, as it always did, or the first point further out whose snow is under half the
+## hip height. An older save is settled on load, and in round 5's mid-winter fixture and pass 4's
+## storm fixture a street bank slumps over the lane's edge there (1.4–2 m deep).
+static func _road_spot() -> Vector2:
+	for k in range(25):
+		var p := Layout.lot_to_world(Layout.player_lot, 0.0, -4.0 - k * 0.25)
+		if Snow.depth_at(p.x, p.y) < CharacterModel.HIP_HEIGHT * 0.5:
+			return p
+	return Layout.lot_to_world(Layout.player_lot, 0.0, -4.0)
+
+
 func test_polish5_fixtures_load_and_play() -> void:
 	for dir_path in FIXTURE_DIRS:
 		var points := fixture_points(dir_path)
@@ -109,7 +121,7 @@ func test_polish5_fixtures_load_and_play() -> void:
 				var stage := Game.stage()
 				await _spawn_world()
 				var pl: Player = world.player
-				var road := Layout.lot_to_world(Layout.player_lot, 0.0, -4.0)
+				var road := _road_spot()
 				pl.teleport(Vector3(road.x, 0.05, road.y), PI * 0.5)
 				pl.pitch = 0.0
 				await _frames(2)
@@ -710,7 +722,7 @@ func test_s2_keys_shown_from_input_map() -> void:
 	runner.check(hint.contains("Middle Mouse") and hint.contains("Y: angle"), "§2 the tool reminder shows the bound keys (%s)" % hint)
 	var descs := []
 	for t in Catalog.store_tools():
-		descs.append(Settings.with_keys((t as ToolData).description))
+		descs.append((t as ToolData).store_description())   # polish 6 §3: as the store shows it ({width})
 	for v in Catalog.store_vehicles():
 		descs.append(Settings.with_keys((v as VehicleData).description))
 	for k in Catalog.UTILITY.keys():
@@ -3189,6 +3201,15 @@ func test_s7_v3_save_round_trips() -> void:
 	Snow.melted = 3.125
 	var bills_of := func() -> Array: return Economy.bills.map(func(x): return [int(x["month"]), int(x["amount"]), int(x.get("heat", 0)), int(x["due_day"]), bool(x["paid"])])
 	var want13b := JSON.stringify({"eq": Game.equipment, "used": Economy.heat_used, "acc": Economy.heat_acc, "bills": bills_of.call(), "melted": Snow.melted}, "", true)
+	# Polish 6 §3: the snow's relaxation still pending (hot and cold, in order) and blade_push's
+	# stream — optional keys of version 3.
+	Snow.deposit(pad_at + Vector2(6.0, 0.0), 0.6, 0.8)
+	Snow.hot_mode = false
+	Snow.deposit(pad_at + Vector2(-6.0, 3.0), 0.6, 0.8)
+	Snow.hot_mode = true
+	Snow.push_rng.randf()
+	var want_p6 := JSON.stringify(Snow.serialize_pending())
+	var pend_p6 := Snow.relax_pending()
 	runner.check(Saves.save_game(), "§7 a version-3 save")
 	Game.upgrades = {}
 	Game.company_name = ""
@@ -3200,6 +3221,10 @@ func test_s7_v3_save_round_trips() -> void:
 	Snow.melted = 0.0
 	await _unload()
 	runner.check(Saves.load_game("fun"), "§7 …loads")
+	var got_p6 := JSON.stringify(Snow.serialize_pending())
+	runner.check(got_p6 == want_p6 and Snow.relax_pending() == pend_p6 and pend_p6 > 0 and not Snow.settle_on_load, "§3 (polish 6) …and the snow's pending relaxation (%d tiles, hot and cold in order) and blade_push's stream exactly as saved" % pend_p6)
+	if got_p6 != want_p6:
+		runner.info("want %s\n got %s" % [want_p6.left(600), got_p6.left(600)])
 	var got13b := JSON.stringify({"eq": Game.equipment, "used": Economy.heat_used, "acc": Economy.heat_acc, "bills": bills_of.call(), "melted": Snow.melted}, "", true)
 	runner.check(got13b == want13b and Equipment.pad_placed() and not Equipment.snowshoes_on(), "§13b …and the equipment, the pad where it lies, the heating not yet billed, the bill's heating and the melted-volume ledger exactly as saved")
 	if got13b != want13b:

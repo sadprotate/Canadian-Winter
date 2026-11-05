@@ -341,7 +341,10 @@ func spawn_item_node(e: Dictionary) -> ToolItem:
 	return it
 
 
+## A tool put down in the world (dropped, …): polish 6 §3 — it rests on the snow there (or the
+## ground where it's bare), whatever height `pos` gives.
 func spawn_tool_item(id: String, pos: Vector3, yaw: float) -> void:
+	pos.y = Snow.surface_height(pos.x, pos.z)
 	var e := {"uid": Game.uid(), "tool": id, "pos": pos, "yaw": yaw}
 	Game.items.append(e)
 	spawn_item_node(e)

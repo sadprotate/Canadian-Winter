@@ -17,6 +17,7 @@ var world: Node
 var hud: HUD
 var panel: PanelContainer
 var buttons: Array = []
+var row_box: HBoxContainer        # the buttons and the key (polish 6 §3: the wrapped note's width)
 var key_l: Label
 var note_l: Label
 var _note := ""
@@ -42,6 +43,7 @@ func _ready() -> void:
 	var row := UIKit.hbox(6)
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	v.add_child(row)
+	row_box = row
 	for s in Clock.SPEEDS:
 		var sp: int = s
 		var b := Button.new()
@@ -109,11 +111,6 @@ func _update(delta: float) -> void:
 	visible = shown()
 	if not visible:
 		return
-	# Top-aligned beside the clock, as short as its content: it stays clear of the computer's window
-	# (which starts 90 px down the 1080-px canvas) even with the note line showing.
-	var cp: Control = hud.clock_panel
-	if cp != null:
-		panel.position = Vector2(cp.position.x + cp.size.x + 10.0, cp.position.y)
 	var ok := Clock.unavailable_reason() == ""
 	var eff := Clock.effective_speed() if ok else 1
 	var chosen := Clock.speed
@@ -142,7 +139,62 @@ func _update(delta: float) -> void:
 			line = "Max %d× · %s" % [Clock.speed_cap(), Clock.cap_reason()]
 	if line == "" and _note_t > 0.0:
 		line = _note
-	note_l.text = line
+	if note_l.text != line:
+		note_l.text = line
+		panel.reset_size()      # polish 6 §3: as short and narrow as the new line
 	if note_l.visible != (line != ""):
 		note_l.visible = line != ""
 		panel.reset_size()
+	_place()
+
+
+## Top-aligned beside the clock, as short as its content: it stays clear of the computer's window
+## (which starts 90 px down the 1080-px canvas) even with the note line showing. Polish 6 §3: under
+## the clock instead when something takes that spot — the map's grid letters along its top, the box
+## line at the top centre when it is long enough to reach it — below the tutorial's objective and
+## the FPS line, its note wrapped to the buttons' width (clear of the map's row numbers).
+func _place() -> void:
+	var cp: Control = hud.clock_panel
+	if cp == null:
+		return
+	var beside := Vector2(cp.position.x + cp.size.x + 10.0, cp.position.y)
+	var under := _beside_taken(Rect2(beside, _one_line_size()))
+	var wrap := TextServer.AUTOWRAP_WORD_SMART if under else TextServer.AUTOWRAP_OFF
+	if note_l.autowrap_mode != wrap:
+		note_l.autowrap_mode = wrap
+		note_l.custom_minimum_size.x = row_box.get_combined_minimum_size().x if under else 0.0
+		panel.reset_size()
+	panel.position = Vector2(cp.position.x, _under_y()) if under else beside
+
+
+## The panel's size beside the clock (its note on one line), whatever its layout now.
+func _one_line_size() -> Vector2:
+	var st := panel.get_theme_stylebox("panel")
+	var sz := row_box.get_combined_minimum_size()
+	if note_l.visible and note_l.text != "":
+		var f := note_l.get_theme_font("font")
+		var fs := note_l.get_theme_font_size("font_size")
+		if f != null:
+			sz.x = maxf(sz.x, f.get_string_size(note_l.text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x)
+			sz.y += f.get_height(fs)
+	return sz + (st.get_minimum_size() if st != null else Vector2.ZERO)
+
+
+## Polish 6 §3: the spot beside the clock is taken — the map is open (its column letters run along
+## its top, from the left of the 1080-px canvas's middle), or the box line is long enough to reach it.
+func _beside_taken(r: Rect2) -> bool:
+	if str(world.get("modal_kind")) == "map" and world.get("modal") != null:
+		return true
+	var bl: Control = hud.contract_panel
+	return bl != null and bl.visible and bl.get_global_rect().intersects(r.grow(4.0))
+
+
+## The top of the spot under the clock: below the clock, and below the tutorial's objective line
+## and the FPS line when they show (both sit under the clock).
+func _under_y() -> float:
+	var y := hud.clock_panel.position.y + hud.clock_panel.size.y
+	for c in [hud.objective_box, hud.perf_l]:
+		var n := c as Control
+		if n != null and n.is_visible_in_tree() and not (n is Label and (n as Label).text == ""):
+			y = maxf(y, n.position.y + n.size.y)
+	return y + 10.0

@@ -780,7 +780,9 @@ func test_hidden_shovel_beside_truck() -> void:
 		around += Snow.depth_at(q.x, q.y) / 8.0
 	runner.check(over > around + 0.15, "An odd pile sits over the shovel (%.2f m vs %.2f m around)" % [over, around])
 	runner.check(sp.distance_to(tp) < 3.0, "The shovel lies right beside the truck (%.1f m)" % sp.distance_to(tp))
-	Snow.set_rect(Rect2(sp - Vector2(0.8, 0.8), Vector2(1.6, 1.6)), 0.1)
+	# Polish 6 §3: the shovel rests where it lies, on the ground (its blade hung 0.45 m up), so it is
+	# dug out down to the height it rests at (was: to 10 cm).
+	Snow.set_rect(Rect2(sp - Vector2(0.8, 0.8), Vector2(1.6, 1.6)), sh.global_position.y - Snow.ground_at(sp.x, sp.y))
 	await _frames(100)
 	sh.interact(world.player)
 	runner.check("small_shovel" in Game.slots, "Found the shovel")

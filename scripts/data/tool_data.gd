@@ -59,3 +59,10 @@ enum Kind { HANDS, SHOVEL, PUSHER, SCRAPER, SLEIGH, ELECTRIC_SHOVEL, WALK_BLOWER
 ## Hands and every shovel-type tool use the hold-to-fill / release-to-throw / push scheme.
 func is_shovel_type() -> bool:
 	return kind == Kind.HANDS or kind == Kind.SHOVEL or kind == Kind.PUSHER or kind == Kind.SCRAPER or kind == Kind.SLEIGH
+
+
+## Polish 6 §3: the store's text for this tool — the description with the blade width read from
+## this profile ({width}: "1.0 m") and the bound keys ({tool_angle} …, Settings.with_keys).
+func store_description() -> String:
+	var w := "%.1f m" % width if is_equal_approx(snappedf(width, 0.1), width) else "%.2f m" % width
+	return Settings.with_keys(description.replace("{width}", w))

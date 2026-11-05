@@ -140,6 +140,16 @@ extends Node
 ##                            heading with that text (e.g. Equipment, Property)
 ##   --shoes_walk=frames      (§13b) walk forward that many frames (real input) before the shot —
 ##                            with snowshoes on, a shallow track behind the player
+## Polish 6 additions:
+##   --win=WxH                (§3) show the canvas a W × H screen gives (canvas_items: 16:9 is
+##                            1920 × 1080 at any size, 21:9 2580 × 1080, 4:3 1920 × 1440) in the
+##                            window, letterboxed when its aspect differs from the window's
+##   --load=path              (§3) load this save (a fixture) as Continue does, instead of a new game
+##                            (its own date and time: --day/--hour/--setup are not applied); it is
+##                            copied over the mode's save in user://saves/, as the suites do
+##   --street_scoop=1         (§3) a shovel's scoop on the boulevard just short of the curb in front
+##                            of the player's house (Maple Street), then the snow settled; prints the
+##                            spot (aim --cam/--look at it)
 
 var args := {}
 var game: Node = null
@@ -151,6 +161,17 @@ func _ready() -> void:
 		if a.begins_with("--") and a.contains("="):
 			var kv := a.substr(2).split("=", true, 1)
 			args[kv[0]] = kv[1]
+	if args.has("win"):
+		# The canvas a W × H screen gives (canvas_items, expand: 1080 high, wider for wider screens;
+		# 1920 wide, taller for narrower ones), shown whole in this window (letterboxed when its
+		# aspect differs): the window on this PC can't be resized from here.
+		var wh := str(args["win"]).split("x")
+		var ratio := float(wh[0]) / float(wh[1])
+		var canvas := Vector2i(roundi(1080.0 * ratio), 1080) if ratio >= 16.0 / 9.0 else Vector2i(1920, roundi(1920.0 / ratio))
+		get_window().content_scale_size = canvas
+		get_window().content_scale_aspect = Window.CONTENT_SCALE_ASPECT_KEEP
+		await _wait(3)
+		print("window ", get_window().size, " showing the canvas of ", args["win"], ": ", get_viewport().get_visible_rect().size)
 	var scene: String = args.get("scene", "game")
 	if scene == "menu":
 		var m: Node = load("res://scenes/main_menu.tscn").instantiate()
@@ -170,8 +191,11 @@ func _ready() -> void:
 			await _capture_seq()
 		_capture()
 		return
-	Game.new_game(str(args.get("mode", "fun")), int(args.get("seed", "-1")))
-	_setup_world_state()
+	if args.has("load"):
+		_load_save(str(args["load"]))
+	else:
+		Game.new_game(str(args.get("mode", "fun")), int(args.get("seed", "-1")))
+		_setup_world_state()
 	game = load("res://scenes/game.tscn").instantiate()
 	add_child(game)
 	await _wait(3)
@@ -410,9 +434,43 @@ func _setup_world_state() -> void:
 		Survival.activate()
 
 
+## --load: the save copied over its mode's save and loaded as the menu's Continue does.
+func _load_save(path: String) -> void:
+	var mode := "survival" if path.get_file().begins_with("survival") else "fun"
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(Saves.DIR))
+	for p in [Saves.path_for(mode), Saves.path_for(mode) + ".bak"]:
+		if FileAccess.file_exists(p):
+			DirAccess.remove_absolute(p)
+	DirAccess.copy_absolute(ProjectSettings.globalize_path(path), ProjectSettings.globalize_path(Saves.path_for(mode)))
+	var t0 := Time.get_ticks_msec()
+	print("load ", path, ": ", Saves.load_game(mode), " in %d ms" % (Time.get_ticks_msec() - t0))
+
+
+## --street_scoop: a standard shovel's load scooped on the boulevard just short of Maple Street's
+## curb in front of the player's house (straight out from the lot's middle), then the snow settled.
+func _street_scoop() -> void:
+	var lot := Layout.player_lot
+	var inward: Vector2 = lot["inward"]
+	var p := Layout.lot_to_world(lot, 0.0, 0.0)
+	var at := p
+	for k in range(80):
+		var q := p - inward * (k * 0.125)
+		if Snow.surf[Snow.cell_z(q.y) * Snow.W + Snow.cell_x(q.x)] == Snow.S_ROAD:
+			break
+		at = q
+	var r := Snow.scoop(at + inward * 0.5, -inward, 0.46, 0.45, 0.065)
+	var t0 := Time.get_ticks_msec()
+	var n := 0
+	while Snow.relax_pending() > 0 and n < 400000:
+		n += Snow.process_relax(64)
+	print("street scoop at ", at, ": %.1f L, %d tiles settled in %d ms" % [float(r["volume"]) * 1000.0, n, Time.get_ticks_msec() - t0])
+
+
 func _setup_after_spawn() -> void:
 	var w = game
 	var lot := Layout.player_lot
+	if args.has("street_scoop"):
+		_street_scoop()
 	if args.has("rep"):
 		Game.reputation = clampf(float(args["rep"]), 0.0, 100.0)   # §10b (quietly: no tier notification)
 		if "tier_noted" in Contracts:

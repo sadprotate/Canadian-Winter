@@ -79,6 +79,16 @@ var relax_hot: PackedInt32Array = PackedInt32Array()       # hot queue (player o
 var hot_head := 0                # read index into relax_hot (FIFO without O(n) pops)
 var hot_mode := true   # ops queue into the hot list unless a batch op disables it
 var relax_ops_last_frame := 0
+## Polish 6 §3: the queue is saved (serialize_pending "relax"), so a reload settles what was still
+## pending. A save without it (older saves) is settled once on load: deserialize sets this and
+## Saves.load_game settles the map once the boxes' held cells are back (settle_all, or settle_begin
+## for the main menu's loading screen to step through).
+var settle_on_load := false
+## Polish 6 §3: blade_push's own random stream (how far past the blade each cell's snow lands), so
+## a push no longer depends on draws from the engine's global generator. Seeded per winter
+## (reset_for_winter), its state saved (serialize_pending "push_rng").
+var push_rng := RandomNumberGenerator.new()
+const PUSH_SEED := 7703
 # Blade guard: the strip just cleared behind an engaged blade acts as a wall for slumping, so a
 # tall berm can't spill back over the blade (cell-space AABB, expires after a couple of frames).
 var guard_x0 := 0
@@ -105,6 +115,7 @@ var auto_process := true         # world calls tick(); tests can drive manually
 
 
 func _ready() -> void:
+	push_rng.seed = PUSH_SEED
 	_noise.seed = 1337
 	_noise.frequency = 0.045
 	_noise.fractal_octaves = 3
@@ -301,6 +312,9 @@ func reset_for_winter(year: int) -> void:
 	relax_list.clear()
 	relax_hot.clear()
 	hot_head = 0
+	settle_on_load = false
+	settling = false
+	push_rng.seed = PUSH_SEED + year
 	stat_player_moved = 0.0
 	_mark_all_dirty()
 	initialized = true
@@ -790,6 +804,72 @@ func relax_until_stable(limit := 200000) -> void:
 		n += process_relax(256)
 
 
+## Polish 6 §3: a saved tile back in its queue (deserialize), in the saved order.
+func _restore_tile(t: int, hot: bool) -> void:
+	if t < 0 or t >= TW * TH or relax_queue.has(t):
+		return
+	relax_queue[t] = true
+	if hot:
+		relax_hot.append(t)
+	else:
+		relax_list.append(t)
+
+
+## Polish 6 §3: settle the whole map — every tile queued and relaxed until nothing moves. For a
+## save written before the relaxation queue was saved (settle_on_load): whatever its last operations
+## had left pending (the city's pass during a sleep, above all) was lost with the queue, and would
+## otherwise collapse at the first snow work nearby. The relaxation's own rule, queue and order;
+## only a tile that moved more than SETTLE_MOVED_MIN (summed over its cells, m) queues its
+## neighbours again, so the long tail of sub-millimetre adjustments is left to the game's
+## relaxation (it finds nothing over a millimetre afterwards). settle_begin() queues the map;
+## settle_step(max_usec) works through it (the main menu's loading screen, a frame at a time) and
+## returns true while there is more; settle_all() does it at once and returns the tiles visited.
+const SETTLE_MOVED_MIN := 0.001
+var settling := false
+var settle_visits := 0
+
+
+func settle_begin() -> void:
+	settle_on_load = false
+	settling = true
+	settle_visits = 0
+	for t in range(TW * TH):
+		if not relax_queue.has(t):
+			relax_queue[t] = true
+			relax_list.append(t)
+
+
+func settle_step(max_usec: int) -> bool:
+	if not settling:
+		return false
+	var t0 := Time.get_ticks_usec()
+	while relax_pending() > 0:
+		if max_usec > 0 and Time.get_ticks_usec() - t0 > max_usec:
+			return true
+		var t: int = _pop_tile()
+		relax_queue.erase(t)
+		var tx := t % TW
+		@warning_ignore("integer_division")
+		var tz := t / TW
+		var moved := _relax_tile(tx, tz)
+		settle_visits += 1
+		if moved > SETTLE_MOVED_MIN:
+			for dz in range(-1, 2):
+				for dx in range(-1, 2):
+					var nx := tx + dx
+					var nz := tz + dz
+					if nx >= 0 and nz >= 0 and nx < TW and nz < TH:
+						_push_tile(nz * TW + nx)
+	settling = false
+	return false
+
+
+func settle_all() -> int:
+	settle_begin()
+	settle_step(0)
+	return settle_visits
+
+
 ## Move snow from the higher cell hi_i down to lo_i across a height step `diff`. Loose snow on top
 ## slides at the angle of repose; the undisturbed snow below only gives way past a near-vertical
 ## step (repose_cut). Whatever slides becomes loose snow on the lower cell. Returns the amount.
@@ -1227,7 +1307,7 @@ func blade_push(center: Vector2, face_n: Vector2, half_w: float, band: float, fl
 			if d <= 0.0:
 				continue
 			# Target: pushed out ahead of the face along its normal.
-			var tp := center + tang * along + face_n * (push_dist + randf() * 0.12)
+			var tp := center + tang * along + face_n * (push_dist + push_rng.randf() * 0.12)
 			if not in_map(tp.x, tp.y):
 				continue
 			var tx := cell_x(tp.x)
@@ -1673,6 +1753,17 @@ func serialize() -> Dictionary:
 		"loose": lcomp, "melted": melted}
 
 
+## Polish 6 §3 (version 3, optional keys of the save's snow, beside serialize()): the relaxation
+## still pending, in the order it would run — the hot list from its read index, then the cold
+## stack — and blade_push's stream (its state as text: a 64-bit value, which a JSON number can't
+## hold exactly). deserialize() reads both back.
+func serialize_pending() -> Dictionary:
+	var hot := []
+	for k in range(hot_head, relax_hot.size()):
+		hot.append(relax_hot[k])
+	return {"relax": {"hot": hot, "cold": Array(relax_list)}, "push_rng": str(push_rng.state)}
+
+
 func deserialize(d: Dictionary) -> bool:
 	if int(d.get("w", 0)) != W or int(d.get("h", 0)) != H:
 		return false
@@ -1713,6 +1804,22 @@ func deserialize(d: Dictionary) -> bool:
 	relax_list.clear()
 	relax_hot.clear()
 	hot_head = 0
+	guard_ttl = 0
+	# Polish 6 §3: the pending relaxation as saved; a save without it is settled once on load
+	# (Saves.load_game → settle_all, after the boxes' held cells are restored).
+	var rq = d.get("relax", null)
+	settle_on_load = not (rq is Dictionary)
+	settling = false
+	if rq is Dictionary:
+		for v in (rq as Dictionary).get("hot", []):
+			_restore_tile(int(v), true)
+		for v in (rq as Dictionary).get("cold", []):
+			_restore_tile(int(v), false)
+	var ps := str(d.get("push_rng", ""))
+	if ps.is_valid_int():
+		push_rng.state = ps.to_int()
+	else:
+		push_rng.seed = PUSH_SEED
 	_mark_all_dirty()
 	initialized = true
 	reset_done.emit()

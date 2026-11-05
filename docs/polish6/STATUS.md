@@ -21,8 +21,8 @@ resume from here.
 |---|---|---|---|---|
 | §0 | Agent setup, the round-6 brief, baseline | done | `aabe73c` | `report/s0.md` |
 | §1 | What round 5 never pushed | done | `7abcd57` | `report/s1.md` |
-| §2 | The Godot errors after pulling | done | this commit (`polish6 §2: The Godot errors after pulling`) | `report/s2.md` |
-| §3 | Round 5's open items | not started | | |
+| §2 | The Godot errors after pulling | done | `c17cbe5` | `report/s2.md` |
+| §3 | Round 5's open items | done | this commit (`polish6 §3: Round 5's open items`) | `report/s3.md` |
 | §8.1 | Hold to fill, not spam-click | not started | | |
 | §8.2 | Loads twice as big | not started | | |
 | §9 | Smooth piles | not started | | |
@@ -62,6 +62,23 @@ resume from here.
   look first at the fetch of the base by SHA and at `$RUNNER_TEMP`.
 - **PR description:** §2's user note (delete `.godot` after errors, close Godot before pulling) is
   in report/s2.md, ready to paste.
+- **Older saves settle once on load (§3), and a mid-winter one takes a while.** A save from before
+  §3 has no relaxation queue, so it is settled on load. The polish5_v3 mid-winter fixture takes
+  ~5 s; round 5's `polish5/*_4_midwinter.json` (built with F1 multi-day jumps) ~75 s headless,
+  ~63 s windowed. The menu shows "Settling the snow…" and stays responsive. Settled, that fixture's
+  Maple Street lanes fill in (V-shaped, ~0.9 m of snow in the lanes in front of the house): its 6 m
+  cliffs come down at load instead of at the first nearby snow work. Every suite that loads those
+  two fixtures is ~75 s slower per load (report/s3.md). Tell the owner in the PR description.
+- **F1 multi-day jumps run several city passes with no relaxation between them** (`Clock.skip`
+  never relaxes): that, as well as the lost queue, built the round-5 fixture's 6 m cliffs. Not
+  changed (§3 saves the queue; a skip still relaxes only afterwards). A later section could relax
+  after each batch pass during a skip.
+- **Tools dropped into deep snow in an older save** are lifted onto the snow on load (§3). Before,
+  a dropped tool was placed on the ground under the snow with its grip showing.
+- The FPS overlay line (Settings → graphics) is long enough to run under the map's left edge at
+  16:9 (seen in §3's shots; pre-existing, not changed). On a 4:3 screen (1920 × 1440 canvas) the
+  clock panel, and the fast-forward control under it, overlap the map's frame: pre-existing for
+  the clock. §3 checked the four resolutions round 5 uses (16:9 and 21:9).
 
 ## Binding notes
 
@@ -135,3 +152,78 @@ actions, function names, gotchas.
   owner's saves are left alone.
 - The `.import` files' LF rewrite is not a change (staging records nothing): never commit it as
   one, and don't add a `.gitattributes` without the owner.
+
+**From §3 (round 5's open items):**
+- **Saves (version 3, optional, inside `snow`):** `"relax": {"hot": [tile…], "cold": [tile…]}`,
+  the relaxation still pending in the order it runs (the hot list from its read index, then the
+  cold stack), and `"push_rng"`, blade_push's stream state **as a string** (a 64-bit value: a JSON
+  number would lose bits). Both come from `Snow.serialize_pending()`, merged into the save's snow
+  by `Saves.save_game()`. `Snow.serialize()` itself is unchanged (tests hash it). Both are in the
+  v3 round-trip test (`test_s7_v3_save_round_trips`). New snow state that must survive a reload
+  goes the same way.
+- **A save without `"relax"` is a pre-§3 save.** `Snow.deserialize` sets `Snow.settle_on_load`,
+  and `Saves.load_game` (after the boxes' held cells are back) settles the whole map:
+  `Snow.settle_all()`, or `Snow.settle_begin()` when `Saves.settle_later` is set (the main menu
+  then steps it with `Snow.settle_step(usec)` behind "Settling the snow…"). The settle is the
+  game's own relaxation rule and order; only its requeue threshold differs (`Snow.SETTLE_MOVED_MIN`,
+  1 mm per tile: the sub-millimetre tail is left to the game's relaxation). The same marker lifts
+  old saves' dropped tools onto the snow. A later migration keyed on "older than §3" can use it.
+- **Settling costs** ~18,000–26,000 tile visits/s headless on this PC (measured with
+  `--only=polish6`: `settle_all` in `Saves.load_game`, the load included, 1,122,600 tiles in
+  61.4 s on `polish5/fun_4_midwinter.json` and 101,227 in 3.9 s on
+  `polish5_v3/fun_4_midwinter.json`; the menu's stepped settle 25,500 tiles/s on the latter). A
+  mid-winter save with cliffs to bring down can take a minute. Never settle the whole map in a
+  frame or a test loop without need. A test that loads `polish5/*_4_midwinter.json` pays
+  ~60–75 s per load.
+- **The main menu starts one game at a time:** `_start` returns at once while a start is under way
+  (`_starting`, cleared only if the load fails) and releases the keyboard focus, so Enter or Space
+  can't load and settle a save a second time behind the loading screen
+  (`test_s3_menu_starts_once_while_settling`). A new way to start a game from the menu goes
+  through `_start`.
+- **`Snow.blade_push` draws from `Snow.push_rng`** (seeded `PUSH_SEED + year` in
+  `reset_for_winter`, `PUSH_SEED` at start and for old saves; saved). No snow op reads or advances
+  the global RNG any more. A test that wants a known push seeds `Snow.push_rng`: seeding the global
+  RNG does nothing for pushes now. §9's and §11's blade work (smooth piles, back-drag) draws from
+  `push_rng` or its own seeded stream, never the global one, and keeps blade_push's one draw per
+  moved cell.
+- **Weather cards:** `Weather.held_dry(h)` is true for the hour now when a forced condition
+  (`Weather.force`, F1) holds the sky dry. A today card's system that is due to be snowing now
+  while the sky is held dry moves its start to the next hour (`forecast_day`). In play (no
+  override) it changes no card (0 of 6,581 today cards, 5 seeds × winters 1–3). **§13's radar must
+  agree with the moved start time:** its "now" frame shows what is falling now
+  (`Weather.condition()` / `snow_rate()`, override included), it shows no echo over the town before
+  the today card's start time, and past frames show what fell. §7's visuals likewise read
+  `Weather.condition()` / `snow_rate()`.
+- **Store text:** `ToolData.store_description()` is the store's tool text (`{width}` from the
+  profile, e.g. "1.0 m", then the bound keys). §13's phone store uses it (one implementation with
+  the computer's). A description may name its blade with `{width}`; nothing else replaces it.
+- **Tools lying in the world:** `ToolItem.rest_height(id)` puts each model's lowest point on the
+  item's origin (the pose is unchanged: tilted `LIE_TILT_DEG` 28°, grip end up). A tool put down
+  rests on the snow: `game_root.spawn_tool_item` sets `pos.y = Snow.surface_height()`, and so do
+  the store pad and F1's spawn. **New code that creates a tool item** (§15's garage, §16) sets
+  `pos.y` to the surface, or `"buried": true` with `y` on the ground. The 75 % exposure rule is
+  unchanged; the opening's shovel now lies on the ground, so it is dug out ~0.45 m deeper.
+- **The fast-forward control** sits beside the clock unless that spot is taken (the map is open,
+  or the box line reaches it); then it sits under the clock, below the objective and FPS lines,
+  its note wrapped to the buttons' width (`SpeedControl._beside_taken`, `_place`). **§13:** the
+  phone is a fast-forward modal. If its frame covers the spot beside the clock, add it to
+  `_beside_taken`, and add the phone to `test_s3_ff_control_overlaps_nothing`'s screens.
+- **For §10: the dump truck shares the pickup-with-plow's code path.** In
+  `Vehicle._physics_process` only `Kind.PICKUP` takes round 5's §12 branch
+  (`pickup := data.kind == VehicleData.Kind.PICKUP`: `pickup_stuck_depth` 0.60, `pickup_bank_max`
+  0.95, the bog and the shove). Every other vehicle, `PICKUP_PLOW` and `DUMP_TRUCK` alike, uses the
+  generic path: stuck above `clearance × 1.15`, a wall above `clearance × 1.9`, drag from depth ÷
+  clearance, no shove. The pickup with plow (clearance 0.34, blade up) is stuck from 39 cm and
+  walled from 65 cm; the dump truck (0.42) from 48 / 80 cm. A fix that extends the PICKUP branch to
+  `PICKUP_PLOW` leaves the dump truck out unless it names it too.
+- `shot.gd` options: `--win=WxH` (the canvas a W × H screen gives, letterboxed in the window; the
+  shot window can't be resized on this PC), `--load=path` (a save instead of a new game),
+  `--street_scoop=1` (§3's scoop by Maple Street's curb, then settled).
+- **Tests §3 updated through lookups:**
+  - The polish 4 and polish 5 fixture tests stand the player with `_road_spot()`: 4 m out from
+    the lot as before, unless a settled bank covers it (pass 4's storm and round 5's mid-winter
+    fixtures). Then they use the first point further out under half the hip height.
+  - `test_hidden_shovel_beside_truck` digs to the height the shovel rests at, the ground.
+  - A later change to where the player or the opening's shovel stands updates these the same way.
+- **Suite times after §3:** polish5 ~1,050 s (was ~840 s); polish6 ~160–180 s, of which §3's
+  settling test is ~140–175 s and the menu's one-start test ~5 s.

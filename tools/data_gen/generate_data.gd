@@ -93,7 +93,7 @@ static func _tools(out: Dictionary) -> void:
 		"push_width": 0.75, "push_strength": 0.6, "engaged_speed_mult": 0.9,
 		"angle_adjustable": true, "max_angle_deg": 30.0, "primary_color": Color(0.85, 0.15, 0.12),
 		"particle_amount": 18, "loop_sound": &"push_scrape"})
-	_tool(out, "large_scraper", "Large Snow Scraper", K.SCRAPER, 5, 265, "A 1.2 m steel blade on wheels: halfway between a shovel and a pusher. Throws a decent load, pushes very hard. {tool_angle} angles the blade.",
+	_tool(out, "large_scraper", "Large Snow Scraper", K.SCRAPER, 5, 265, "A {width} steel blade on wheels: halfway between a shovel and a pusher. Throws a decent load, pushes very hard. {tool_angle} angles the blade.",
 		{"width": 1.0, "reach": 0.3, "capacity": 0.08, "fill_rate": 0.16, "bite": 0.2, "sweep_reach": 1.9,
 		"cycle_time": 0.5, "throw_distance": 3.4, "throw_angle_deg": 38.0, "scrape_floor": 0.0,
 		"push_width": 1.2, "push_strength": 0.95, "engaged_speed_mult": 0.88,

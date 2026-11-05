@@ -39,6 +39,7 @@ var _fade_a := 1.0
 var _saved_auto := true
 var _holding := false
 var _paused := false
+var _starting := false         # a start under way (polish 6 §3: one at a time)
 var _snow_fx: SnowFX
 ## Tests: called instead of quitting / changing scene.
 var quit_hook: Callable
@@ -518,6 +519,13 @@ func _continue(mode: String) -> void:
 
 
 func _start(mode: String, fresh: bool) -> void:
+	# Polish 6 §3: one start at a time. An older save settles behind the loading screen for up to a
+	# minute; the screen blocks the mouse, and the button pressed would keep the keyboard focus
+	# (Enter or Space would load the save again).
+	if _starting:
+		return
+	_starting = true
+	get_viewport().gui_release_focus()
 	loading = ColorRect.new()
 	(loading as ColorRect).color = Color(0.03, 0.04, 0.08, 1.0)
 	UIKit.full_rect(loading)
@@ -535,13 +543,23 @@ func _start(mode: String, fresh: bool) -> void:
 	if fresh:
 		Game.new_game(mode, seed_override)
 	else:
-		if not Saves.load_game(mode):
+		Saves.settle_later = true
+		var ok := Saves.load_game(mode)
+		Saves.settle_later = false
+		if not ok:
+			_starting = false
 			loading.queue_free()
 			if _built:
 				_hold_autoloads()
 				_pause_background(false)
 			Panels.confirm(root_ui, "Could not load the save: %s" % Saves.last_error, "OK", func(): pass)
 			return
+		# Polish 6 §3: a save from before the snow's settling was saved settles once, here, a
+		# quarter of a second at a time (a mid-winter save can take a minute).
+		if Snow.settling:
+			l.text = "Settling the snow…"
+			while Snow.settle_step(250000):
+				await get_tree().process_frame
 	if start_hook.is_valid():
 		start_hook.call(mode, fresh)
 		return

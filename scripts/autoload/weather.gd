@@ -320,6 +320,12 @@ func condition() -> int:
 	return cond[_hidx()]
 
 
+## Polish 6 §3: true when hour `h` is the hour now and a forced condition (Weather.force, the debug
+## menu) holds the sky dry: none of the schedule's snow falls this hour.
+func held_dry(h: int) -> bool:
+	return h == _hidx() and override_cond >= 0 and Clock.minutes < override_until and override_rate <= 0.0
+
+
 ## Snowfall rate in cm per game hour right now.
 func snow_rate() -> float:
 	if override_cond >= 0 and Clock.minutes < override_until:
@@ -697,6 +703,12 @@ func forecast_day(day: int, issued: int) -> Dictionary:
 			# (it isn't on the TV before it starts — Decision 7; the next issue has it).
 			t = cond_tier(int((ev["hcond"] as Dictionary).get(issued, C.LIGHT)))
 			sp = [st, float(issued + 1)]
+		# Polish 6 §3: a system due to be snowing now whose start time shown has passed (an hour
+		# before this one) while none of it is falling moves to its new expected start, the next
+		# hour ("from about noon" at 11:14). The schedule always snows through a system's hours, so
+		# only a sky held dry by force (the debug menu's weather) does that.
+		if issued >= d0 and hrs.has(issued) and held_dry(issued) and roundf(float(sp[0])) < float(issued):
+			sp = [float(issued + 1), maxf(float(sp[1]), float(issued + 1))]
 		if TIER_RANK[t] > TIER_RANK[entry["tier"]]:
 			entry["tier"] = t
 		entry["from_h"] = float(sp[0]) if entry["from_h"] < 0.0 else minf(entry["from_h"], float(sp[0]))
