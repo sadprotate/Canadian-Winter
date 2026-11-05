@@ -26,6 +26,11 @@ section. Read, in this order:
   then call `godot …` exactly as in `CLAUDE.md`. The wrapper is the 4.7.2 console build and
   **serializes Godot runs with a lock** (it waits if another run holds it). Never bypass it and
   never run Godot in the background while starting another.
+- **The owner's real saves and settings** live in `%APPDATA%/Godot/app_userdata/Canadian Winter/`
+  and the owner plays on this PC. The wrapper points Godot's `user://` at a scratch folder
+  (`…/scratchpad/appdata/Godot/app_userdata/Canadian Winter/`) by setting `APPDATA`, so tests,
+  fixtures and benches can't overwrite or delete the owner's saves. Always run Godot through the
+  wrapper; never read, write or delete anything in the real folder.
 - **Bash timeout** is 10 minutes max per foreground command. Run the test runner one suite at a
   time (`-- --only=<suite>`, `--test=<part>`); the full runner is longer than 10 minutes. Write
   long output to a file and `grep`/`tail` it rather than printing it all.
