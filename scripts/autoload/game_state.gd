@@ -90,6 +90,7 @@ func new_game(m: String, seed_override := -1) -> void:
 	carried = ""
 	heat_pouches = 0
 	upgrades = {}
+	ItemUpgrades.pending_note = ""
 	vehicles = []
 	items = []
 	machines = []
@@ -250,18 +251,24 @@ func has_upgrade(id: StringName) -> bool:
 
 
 func grant_upgrade(id: StringName) -> void:
-	upgrades[String(id)] = true
+	# Polish 5 §13: an old global upgrade (an old order's crate) goes to every item it improved.
+	if ItemUpgrades.is_legacy(id):
+		ItemUpgrades.grant_legacy(id, upgrades)
+	else:
+		upgrades[String(id)] = true
 	upgrades_changed.emit()
 	dirty_since_save = true
 
 
 ## Combined value of a stat from owned upgrades: multipliers multiply; forecast_days takes the max.
+## Polish 5 §13: the upgrades that aren't an item's (clothing, house, weather); an item's own levels
+## are read with ItemUpgrades.mult(item, stat).
 func stat_value(stat: StringName, default := 1.0) -> float:
 	var v := default
 	var is_max := stat == &"forecast_days"
 	for id in upgrades.keys():
 		var u: UpgradeData = Catalog.upgrade(StringName(id))
-		if u == null or u.stat != stat:
+		if u == null or u.stat != stat or u.item != &"":
 			continue
 		if is_max:
 			v = maxf(v, u.value)
@@ -409,6 +416,10 @@ func deserialize(d: Dictionary) -> void:
 	carried = str(d.get("carried", ""))
 	heat_pouches = int(d.get("heat_pouches", 0))
 	upgrades = d.get("upgrades", {})
+	# Polish 5 §13 (Decision 8): an old save's global upgrades go to every item they improved (one
+	# notification, shown once the game is up). Saves stay version 3: the same key, new ids.
+	ItemUpgrades.pending_note = ""
+	ItemUpgrades.migrate(upgrades)
 	vehicles = _unpack_list(d.get("vehicles", []))
 	items = _unpack_list(d.get("items", []))
 	machines = _unpack_list(d.get("machines", []))

@@ -632,7 +632,8 @@ func test_winter_end_and_next_year() -> void:
 	_fresh("fun", 31)
 	Game.money = 777
 	Game.vehicles.append({"uid": Game.uid(), "id": "atv_blade", "pos": Vector3(120, 0, 30), "yaw": 0.0})
-	Game.grant_upgrade(&"throw_1")
+	var up := StringName(ItemUpgrades.level_id(&"small_shovel", &"throw", 1))   # polish 5 §13: an item's upgrade
+	Game.grant_upgrade(up)
 	var ended := [false]
 	var cb := func(): ended[0] = true
 	Clock.winter_ended.connect(cb)
@@ -646,7 +647,7 @@ func test_winter_end_and_next_year() -> void:
 	runner.check(Game.year == 2, "Year 2 begins")
 	runner.check(Clock.day_index() == 0, "New winter starts December 1")
 	runner.check(Game.money == 777, "Money persists")
-	runner.check(Game.has_upgrade(&"throw_1"), "Upgrades persist")
+	runner.check(Game.has_upgrade(up), "Upgrades persist")
 	var has_atv := false
 	for v in Game.vehicles:
 		if v["id"] == "atv_blade":
@@ -801,7 +802,10 @@ func test_upgrades_and_stats() -> void:
 	var r := Economy.buy("weather_pro")
 	runner.check(r["ok"] and Game.has_upgrade(&"weather_pro"), "Weather app activates immediately")
 	runner.check(Weather.forecast_days() >= 4, "Forecast lookahead grows with the app")
-	var r2 := Economy.buy("throw_2")
+	# Polish 5 §13: upgrades belong to an item (bare hands' throw here, always owned).
+	var throw_2 := ItemUpgrades.level_id(&"hands", &"throw", 2)
+	var throw_1 := ItemUpgrades.level_id(&"hands", &"throw", 1)
+	var r2 := Economy.buy(throw_2)
 	runner.check(not r2["ok"], "Tiered upgrade requires the previous one")
-	Economy.buy("throw_1")
-	runner.check(Economy.has_open_order("throw_1"), "Tool upgrade becomes a store pickup")
+	Economy.buy(throw_1)
+	runner.check(Economy.has_open_order(throw_1), "Tool upgrade becomes a store pickup")

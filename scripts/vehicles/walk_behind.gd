@@ -162,7 +162,7 @@ func _physics_process(delta: float) -> void:
 	_land_timer -= delta
 	if _land_timer <= 0.0:
 		_land_timer = 0.12
-		_landing = Throw.compute(get_world_3d(), cp, cd, data.throw_distance * Game.stat_value(&"blower_throw", 1.0), data.throw_angle_deg, [player.get_rid(), get_rid()])
+		_landing = Throw.compute(get_world_3d(), cp, cd, data.throw_distance * ItemUpgrades.mult(data.id, &"blower_throw"), data.throw_angle_deg, [player.get_rid(), get_rid()])
 	if player.tools:
 		player.tools._show_indicator(_landing)
 	if not _landing.get("valid", false):
@@ -178,7 +178,7 @@ func _physics_process(delta: float) -> void:
 	var depth := Snow.depth_at(front.x + fwd.x * 0.3, front.y + fwd.y * 0.3)
 	# Deep snow above the intake slows you down; the blower still chews through it.
 	_resist = 1.0 / (1.0 + maxf(0.0, depth - 0.45) * 3.0)
-	var r := Snow.intake(front, fwd, data.width, data.reach, data.rate * Game.stat_value(&"blower_rate", 1.0) * delta, data.scrape_floor)
+	var r := Snow.intake(front, fwd, data.width, data.reach, data.rate * ItemUpgrades.mult(data.id, &"blower_rate") * delta, data.scrape_floor)
 	var v: float = r["volume"]
 	if v > 0.0:
 		Boxes.note_work(front + fwd * 0.3)

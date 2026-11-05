@@ -87,14 +87,23 @@ func can_buy(item_id: String) -> String:
 	var kind := item_kind(item_id)
 	if kind == "":
 		return "Unknown item."
+	# Polish 5 §13: only the store's own vehicles are sold (the pickup's plow was bought as the
+	# "pickup_plow" vehicle: a second truck, again and again).
+	if kind == "vehicle" and not Catalog.store_vehicles().has(Catalog.vehicle(StringName(item_id))):
+		return "Not sold in the store."
 	if kind == "upgrade":
 		var u: UpgradeData = Catalog.upgrade(StringName(item_id))
+		if ItemUpgrades.is_legacy(u.id):
+			return "No longer sold."
 		if Game.has_upgrade(u.id) or has_open_order(item_id):
 			return "Already owned."
-		if u.requires != &"" and not Game.has_upgrade(u.requires):
+		if u.item != &"":
+			# An item's own level: you own the item, the ladder allows it, the level before it is in.
+			var why := ItemUpgrades.why_not(u)
+			if why != "":
+				return why
+		elif u.requires != &"" and not Game.has_upgrade(u.requires):
 			return "Requires %s." % Catalog.item_name(u.requires)
-		if u.id == &"pickup_plow" and not _owns_vehicle("pickup"):
-			return "You need your pickup truck."
 	if price_of(item_id) > Game.money:
 		return "Not enough money."
 	return ""
@@ -260,6 +269,11 @@ func deserialize(d: Dictionary) -> void:
 	orders = d.get("orders", [])
 	for o in orders:
 		o["id"] = int(o["id"])
+		# Polish 5 §13: the pickup's plow was ordered under the plowed pickup's vehicle id (sold as a
+		# vehicle). Now the pickup's upgrade: an open order delivers the plow, never another truck.
+		if str(o.get("item", "")) == "pickup_plow":
+			o["item"] = String(ItemUpgrades.PLOW_ID)
+			o["kind"] = "upgrade"
 	bills = d.get("bills", [])
 	for bl in bills:
 		bl["month"] = int(bl["month"])

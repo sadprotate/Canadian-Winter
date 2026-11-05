@@ -219,7 +219,7 @@ func _update_load_visual() -> void:
 
 
 # -----------------------------------------------------------------------------
-# Profiles (tool data scaled by upgrades)
+# Profiles (tool data scaled by upgrades — polish 5 §13: the tool's own, ItemUpgrades)
 # -----------------------------------------------------------------------------
 
 func _capacity() -> float:
@@ -227,27 +227,27 @@ func _capacity() -> float:
 		return 0.01
 	var c := data.capacity
 	if data.is_shovel_type():
-		c *= Game.stat_value(&"shovel_capacity", 1.0)
+		c *= ItemUpgrades.mult(data.id, &"shovel_capacity")
 	return c
 
 
 func _fill_rate() -> float:
-	return data.fill_rate * Game.stat_value(&"shovel_capacity", 1.0)
+	return data.fill_rate * ItemUpgrades.mult(data.id, &"shovel_capacity")
 
 
 func _throw_dist() -> float:
 	var d := data.throw_distance
 	if data.is_shovel_type() or data.kind == ToolData.Kind.ELECTRIC_SHOVEL:
-		d *= Game.stat_value(&"throw_distance", 1.0)
+		d *= ItemUpgrades.mult(data.id, &"throw_distance")
 	return d
 
 
 func _push_half_width() -> float:
-	return data.push_width * Game.stat_value(&"blade_width", 1.0) * 0.5
+	return data.push_width * ItemUpgrades.mult(data.id, &"blade_width") * 0.5
 
 
 func _push_strength() -> float:
-	return data.push_strength * Game.stat_value(&"push_speed", 1.0)
+	return data.push_strength * ItemUpgrades.mult(data.id, &"push_speed")
 
 
 func _sync_tool() -> void:
@@ -815,7 +815,7 @@ func _push(delta: float, pos2: Vector2, fwd: Vector2, travel: Vector2) -> void:
 	var push_dist := 0.3 if data.kind == ToolData.Kind.HANDS else 0.38
 	if not can_work_at(center - fwd * (adv + 0.07)):
 		# Polish 5 §3: indoors, or the blade is on the far side of a building: nothing moves.
-		player.speed_mult_tool = data.engaged_speed_mult * Game.stat_value(&"push_speed", 1.0)
+		player.speed_mult_tool = data.engaged_speed_mult * ItemUpgrades.mult(data.id, &"push_speed")
 		_fade_loop(delta, -80.0)
 		return
 	# Polish 5 §3 (Decision 12): no road rule — the berm carries over the curb onto the street.
@@ -826,7 +826,7 @@ func _push(delta: float, pos2: Vector2, fwd: Vector2, travel: Vector2) -> void:
 	if moved > 0.0005:
 		Boxes.note_work(center)
 	var ratio: float = r["berm"] / maxf(_push_strength(), 0.005)
-	player.speed_mult_tool = data.engaged_speed_mult * Game.stat_value(&"push_speed", 1.0) / (1.0 + ratio * ratio)
+	player.speed_mult_tool = data.engaged_speed_mult * ItemUpgrades.mult(data.id, &"push_speed") / (1.0 + ratio * ratio)
 	if r["kept"] > 0.002:
 		_hint("The snow can't go any further this way.")
 	elif ratio > 2.0 and player.current_speed < 0.3:

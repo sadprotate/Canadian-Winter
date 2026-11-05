@@ -111,6 +111,13 @@ extends Node
 ##                            plow following it, stepped `steps` frames of 1/60 s; without --cam the
 ##                            camera looks along the sidewalk at the plow from behind it, lawn side
 ##                            (--crew_back=m, --crew_side=m, --crew_h=m move it)
+##   --upgrades_state=1       (§13) for the Upgrades app: $3,000; the standard shovel and the wide
+##                            pusher in the slots, a small blower by the house (the small shovel stays
+##                            buried, the pickup in the driveway); bought: this build — the standard
+##                            shovel's capacity 1 and throw 1, the small blower's intake 1, and the
+##                            small shovel's capacity 1 on order; older builds — the global capacity
+##                            1, throw 1 and blower intake, and the global capacity 2 on order. Open
+##                            the app with --tab=<its index> (4 here, 3 on the baseline)
 ##   --pickup_bank=h          (§12) a bank h m high across Maple Street at x = --bank_x (default 52,
 ##                            in front of 16 Maple Street; a 2 m flat top with 0.5 m shoulders at
 ##                            half height), the street bare around it; a pickup in the south lane
@@ -377,6 +384,8 @@ func _setup_world_state() -> void:
 		Game.set_stage(Game.Stage.COMPLETE)
 	if args.has("comp_state"):
 		_comp_state()
+	if args.has("upgrades_state"):
+		_upgrades_state()
 	if args.has("storm"):
 		_storm_clock()
 	if args.has("tv_tier"):
@@ -797,6 +806,26 @@ func _comp_state() -> void:
 	Economy.buy("standard_shovel")
 	for bl in Economy.bills.duplicate():
 		Economy.pay_bill(int(bl["month"]))
+
+
+## --upgrades_state=1 (polish 5 §13): a player with a few tools and upgrades, made with the game's
+## own calls (the per-item levels on this build, the global upgrades on older builds).
+func _upgrades_state() -> void:
+	Game.money = 3000
+	Game.slots = ["standard_shovel", "wide_pusher", "", ""]
+	var lot := Layout.player_lot
+	var p := Layout.lot_to_world(lot, Layout.gu(lot, 2.0), lot["setback"] - 2.0)
+	Game.machines.append({"uid": Game.uid(), "tool": "small_blower", "pos": Vector3(p.x, 0, p.y), "yaw": 0.0})
+	if Catalog.has_method("upgrade_ids"):
+		for id in ["standard_shovel:capacity:1", "standard_shovel:throw:1", "small_blower:intake:1"]:
+			Game.grant_upgrade(StringName(id))
+		Economy.buy("small_shovel:capacity:1")
+	else:
+		for id in ["shovel_capacity_1", "throw_1", "blower_intake_1"]:
+			Game.grant_upgrade(StringName(id))
+		Economy.buy("shovel_capacity_2")
+	Game.inventory_changed.emit()
+	Notify.clear()
 
 
 ## --board_state=1 (polish 5 §10): live bidding on the board, made with the game's own calls — every

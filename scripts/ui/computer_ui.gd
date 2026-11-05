@@ -652,7 +652,7 @@ func _store_card(id: String, title: String, price: int, desc: String, stats: Str
 	if Catalog.tools.has(StringName(id)):
 		h.add_child(Icons.tool(id, 72))
 	elif icon != "":
-		h.add_child(Icons.tool(icon, 72))
+		h.add_child(Icons.tool(_icon_id(icon), 72))
 	var v := UIKit.vbox(4)
 	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	h.add_child(v)
@@ -715,9 +715,30 @@ func _store() -> void:
 
 
 func _upgrades() -> void:
-	_p("Crates wait on the store's pickup pad. Apps and home services start right away.")
-	var cats := {UpgradeData.Category.TOOL: "Hand tools", UpgradeData.Category.MACHINE: "Snowblowers", UpgradeData.Category.VEHICLE: "Vehicles",
-		UpgradeData.Category.CLOTHING: "Cold protection", UpgradeData.Category.WEATHER: "Weather technology", UpgradeData.Category.PROPERTY: "Property"}
+	# Polish 5 §13 (Decision 8): every item has its own upgrades. The items you own come first, each
+	# on a card with its icon and a row per track (level, the next level, its price, Buy); then the
+	# other items; then the upgrades that aren't an item's (clothing, weather technology, property).
+	_p("Each item has its own upgrades. Crates wait on the store's pickup pad; apps and home services start right away.")
+	var owned := []
+	var others := []
+	for g in upgrade_groups():
+		(owned if _group_owned(g) else others).append(g)
+	_section("Your items")
+	for g in owned:
+		_upgrade_item_card(g)
+	if not others.is_empty():
+		_section("Other items")
+		var t := _table(3)
+		for g in others:
+			var names := []
+			for item in g:
+				for tr in ItemUpgrades.tracks(item):
+					if ItemUpgrades.track_shown(item, tr):
+						names.append(ItemUpgrades.TRACKS[tr]["name"])
+			_cell(t, Catalog.item_name(g[0]), Color.WHITE)
+			_cell(t, ", ".join(names), UIKit.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true)
+			_cell(t, _not_owned_hint(g[0]), UIKit.MUTED)
+	var cats := {UpgradeData.Category.CLOTHING: "Cold protection", UpgradeData.Category.WEATHER: "Weather technology", UpgradeData.Category.PROPERTY: "Property"}
 	for cat in cats.keys():
 		_section(cats[cat])
 		for id in Catalog.UPGRADE_IDS:
@@ -730,14 +751,116 @@ func _upgrades() -> void:
 			_store_card(String(u.id), u.display_name, u.price, desc, "", _upgrade_icon(u))
 
 
-## Polish 5 §6: an upgrade's card shows the icon of the kind of item it is for (from the one tool
-## icon set): the hand tools' upgrades the small shovel, the snowblowers' the small blower.
+## Polish 5 §13: the items with upgrades, in the ladder's order (HANDOFF §7), each as a group of the
+## item types shown on one card (the pickup and the plowed pickup are one truck). Tracks not sold
+## in this mode (the heated cab in Fun Mode) are left out.
+static func upgrade_groups() -> Array:
+	var out := []
+	var at := {}
+	for item in ItemUpgrades.items():
+		if not ItemUpgrades.tracks(item).any(func(t): return ItemUpgrades.track_shown(item, t)):
+			continue
+		var lead: StringName = ItemUpgrades.GROUP.get(item, item)
+		if at.has(lead):
+			(out[at[lead]] as Array).append(item)
+		else:
+			at[lead] = out.size()
+			out.append([item])
+	return out
+
+
+static func _group_owned(g: Array) -> bool:
+	return g.any(func(i): return ItemUpgrades.owns(i))
+
+
+static func _not_owned_hint(item: StringName) -> String:
+	if ItemUpgrades.GROUP.has(item):
+		return "Fit the pickup's front plow first"
+	var p := Economy.price_of(String(item))
+	return "Equipment store · %s" % UIKit.money(p) if p > 0 else "—"
+
+
+## One owned item: its icon and name, then a row per track.
+func _upgrade_item_card(g: Array) -> void:
+	var c := UIKit.card()
+	c.set_meta("upgrade_item", String(g[0]))
+	content.add_child(c)
+	var h := UIKit.hbox(16)
+	c.add_child(h)
+	var icon := _item_icon(g[0])
+	if icon != "-":
+		var ic := Icons.tool(_icon_id(icon), 72)
+		ic.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+		h.add_child(ic)
+	else:
+		var gap := Control.new()   # no icon (vehicles): the rows line up with the tools' cards
+		gap.custom_minimum_size = Vector2(72, 0)
+		h.add_child(gap)
+	var v := UIKit.vbox(6)
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	h.add_child(v)
+	v.add_child(UIKit.label(Catalog.item_name(g[0]), FS_CARD, Color.WHITE))
+	var grid := _table(5, v)
+	for item in g:
+		for t in ItemUpgrades.tracks(item):
+			if ItemUpgrades.track_shown(item, t):
+				_upgrade_row(grid, item, t)
+
+
+## A track: its name, the level owned, the next level's effect, its price and Buy (or why not).
+func _upgrade_row(g: GridContainer, item: StringName, t: StringName) -> void:
+	var n := ItemUpgrades.level(item, t)
+	var top := maxi(ItemUpgrades.max_level(item, t), n)
+	var name_l := _cell(g, ItemUpgrades.TRACKS[t]["name"], Color.WHITE)
+	name_l.custom_minimum_size = Vector2(150, 46)    # every row as tall as one with its Buy button
+	name_l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	var lv := _cell(g, "Level %d / %d" % [n, top], UIKit.GOOD if n >= top else UIKit.MUTED)
+	lv.custom_minimum_size.x = 120
+	var nid := ItemUpgrades.level_id(item, t, n + 1)
+	if n >= top or nid == "":
+		_cell(g, "Fitted" if t == &"front_plow" else "Fully upgraded", UIKit.GOOD, HORIZONTAL_ALIGNMENT_LEFT, true)
+		_cell(g, "")
+		_cell(g, "")
+		return
+	var u: UpgradeData = Catalog.upgrade(StringName(nid))
+	_cell(g, u.description, UIKit.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true, FS_SMALL + 1)
+	var pl := _cell(g, UIKit.money(u.price), Color(0.7, 1.0, 0.7), HORIZONTAL_ALIGNMENT_RIGHT)
+	pl.custom_minimum_size.x = 90
+	var right := UIKit.vbox(2)
+	right.custom_minimum_size.x = 190
+	g.add_child(right)
+	var why := Economy.can_buy(nid)
+	if Economy.has_open_order(nid):
+		why = "On order: drive the pickup to the store." if t == &"front_plow" else "On order."
+	var b := UIKit.button("Buy", func():
+		var r := Economy.buy(nid)
+		_msg(r["msg"], r["ok"])
+		_rebuild(false), FS_BODY, 190)
+	b.disabled = why != ""
+	right.add_child(b)
+	if why != "":
+		var wl := _p(why, UIKit.WARN, FS_SMALL, right)
+		wl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+
+
+## The icon on an item's card: the tool's own from the one icon set ("hands": the mitten), "-" for
+## none (vehicles have no icon in the set).
+static func _item_icon(item: StringName) -> String:
+	if Catalog.tools.has(item):
+		return String(item)
+	return "-"
+
+
+## The icon set's id for a tool: bare hands are "" (the mitten).
+static func _icon_id(tool_id: String) -> String:
+	return "" if tool_id == "hands" else tool_id
+
+
+## Polish 5 §6 / §13: an upgrade's icon is its item's own (the tool's, the mitten for bare hands),
+## "" for none (vehicles, clothing, weather and property upgrades).
 static func _upgrade_icon(u: UpgradeData) -> String:
-	match u.category:
-		UpgradeData.Category.TOOL:
-			return "small_shovel"
-		UpgradeData.Category.MACHINE:
-			return "small_blower"
+	if u != null and Catalog.tools.has(u.item):
+		return String(u.item)
 	return ""
 
 
@@ -813,11 +936,31 @@ func _property() -> void:
 		var p3: Vector3 = v["pos"]
 		_cell(g3, Catalog.item_name(StringName(v["id"])), Color.WHITE)
 		_cell(g3, "near %s" % Layout.describe_point(Vector2(p3.x, p3.z)), UIKit.TEXT, HORIZONTAL_ALIGNMENT_LEFT, true)
+	# Polish 5 §13: each item's levels, then the upgrades that aren't an item's.
 	_section("Upgrades owned")
-	if Game.upgrades.is_empty():
+	var rows := []
+	for grp in upgrade_groups():
+		var parts := []
+		for item in grp:
+			var sm := ItemUpgrades.summary(item)
+			if sm != "":
+				parts.append(sm)
+		if not parts.is_empty():
+			rows.append([Catalog.item_name(grp[0]), ", ".join(parts)])
+	var other := []
+	for id in Game.upgrades.keys():
+		var u: UpgradeData = Catalog.upgrade(StringName(id))
+		if u != null and u.item == &"":
+			other.append(u.display_name)
+	if not other.is_empty():
+		rows.append(["Other", ", ".join(other)])
+	if rows.is_empty():
 		_p("None yet.")
 	else:
-		_p(", ".join(Game.upgrades.keys().map(func(id): return Catalog.item_name(StringName(id)))), Color.WHITE)
+		var g4 := _table(2)
+		for r in rows:
+			_cell(g4, r[0], UIKit.MUTED)
+			_cell(g4, r[1], Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT, true)
 	_p("Heating pouches: %d   ·   Truck keys: %s" % [Game.heat_pouches, "found" if Game.flags.get("truck_keys", false) else "missing"], Color.WHITE)
 
 
@@ -869,7 +1012,7 @@ func _orders() -> void:
 		_cell(g, col, UIKit.MUTED, HORIZONTAL_ALIGNMENT_LEFT, false, FS_SMALL)
 	for o in list:
 		var status := Economy.order_status_text(o)
-		if o["item"] == "pickup_plow" and o["status"] == "spawned":
+		if o["item"] == String(ItemUpgrades.PLOW_ID) and o["status"] == "spawned":
 			status = "Drive your pickup into the store lot to have it installed"
 		var col := UIKit.GOOD if o["status"] == "spawned" or o["status"] == "ready" else (UIKit.WARN if o["status"] == "pending" else UIKit.MUTED)
 		_cell(g, "%d" % o["id"], col)

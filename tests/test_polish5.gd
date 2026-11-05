@@ -2729,12 +2729,13 @@ func test_s6_one_icon_set() -> void:
 	comp._open_app(ComputerUI.app_index("upgrades"))
 	await _tree().process_frame
 	var up_ids := _s6_icons(comp.content).map(func(n): return (n as Icons).tool_id)
-	var n_tool := 0
-	for uid in Catalog.UPGRADE_IDS:
-		var u: UpgradeData = Catalog.upgrade(uid)
-		if u and u.category in [UpgradeData.Category.TOOL, UpgradeData.Category.MACHINE]:
-			n_tool += 1
-	runner.check(up_ids.size() == n_tool and up_ids.all(func(x): return x in ["small_shovel", "small_blower"]), "§6 the upgrades: each hand-tool and blower upgrade shows the set's icon for its kind of item (%d)" % up_ids.size())
+	# §13: upgrades belong to an item — each owned tool's card shows that tool's own icon (the mitten
+	# for bare hands), in the ladder's order; vehicles have no icon.
+	var want_up := []
+	for g in ComputerUI.upgrade_groups():
+		if ComputerUI._group_owned(g) and ComputerUI._item_icon(g[0]) != "-":
+			want_up.append(ComputerUI._icon_id(String(g[0])))
+	runner.check(up_ids == want_up and want_up.size() >= 3, "§6 the upgrades: each owned tool's card shows its own icon from the set %s" % str(up_ids))
 	world.close_modal()
 	await _tree().process_frame
 	# The inventory panel.
@@ -3170,7 +3171,15 @@ func test_s7_v3_save_round_trips() -> void:
 	Contracts._rival_bid(bl, 0, int(bl["budget"]) - 1, Clock.minutes)
 	cc["ext"] = true
 	var want10 := _s10_norm({"listings": Contracts.listings, "active": Contracts.active, "tier_noted": Contracts.tier_noted, "next_id": Contracts._next_id})
+	# §13: the items' own upgrade levels (game.upgrades, new ids), one carried over past its item's
+	# ladder, the pickup's front plow, a heated cab, and an upgrade that isn't an item's.
+	for id in [ItemUpgrades.level_id(&"small_shovel", &"capacity", 1), ItemUpgrades.level_id(&"small_shovel", &"capacity", 2),
+			ItemUpgrades.level_id(&"hands", &"throw", 1), String(ItemUpgrades.PLOW_ID), ItemUpgrades.level_id(&"atv_blade", &"cab", 1),
+			ItemUpgrades.level_id(&"rotary_blower", &"blower", 1), "weather_pro"]:
+		Game.grant_upgrade(StringName(id))
+	var want13 := JSON.stringify(Game.upgrades, "", true)
 	runner.check(Saves.save_game(), "§7 a version-3 save")
+	Game.upgrades = {}
 	Game.company_name = ""
 	Contracts.job_history = []
 	Weather.alerts.clear()
@@ -3182,6 +3191,7 @@ func test_s7_v3_save_round_trips() -> void:
 		runner.info("want %s\n got %s" % [want, got])
 	var got10 := _s10_norm({"listings": Contracts.listings, "active": Contracts.active, "tier_noted": Contracts.tier_noted, "next_id": Contracts._next_id})
 	runner.check(got10 == want10 and Contracts.bids.size() == 1, "§10 …and the board (your bid, the rivals' plan and bids), the due times and the tier noted exactly as saved")
+	runner.check(JSON.stringify(Game.upgrades, "", true) == want13 and Game.upgrades.size() == 7 and ItemUpgrades.pending_note == "", "§13 …and the items' upgrade levels exactly as saved (%d), no carry-over note" % Game.upgrades.size())
 	if got10 != want10:
 		runner.info("want %s\n got %s" % [want10.left(2000), got10.left(2000)])
 	Saves.delete_save("fun")
@@ -3208,7 +3218,7 @@ func test_s7_every_app_fits() -> void:
 	runner.info("fit: %d contracts, %d listings, %d bids, %d history entries" % [Contracts.active.size(), Contracts.listings.size(), Contracts.bids.size(), Contracts.job_history.size()])
 	Weather.alerts.append({"time": Clock.minutes, "text": "WEATHER ALERT: an unforecast storm is dumping snow at 41 cm an hour — stay indoors until the worst of it has passed!"})
 	Economy.buy("standard_shovel")
-	Economy.orders.append({"id": 99, "item": "pickup_plow", "status": "spawned", "placed": Clock.minutes})
+	Economy.orders.append({"id": 99, "item": String(ItemUpgrades.PLOW_ID), "status": "spawned", "placed": Clock.minutes})   # §13: the plow's id
 	var states := []
 	for i in range(ComputerUI.APPS.size()):
 		states.append([ComputerUI.APP_IDS[i], i, 0, true])
@@ -6163,3 +6173,478 @@ func _s12_notified(word: String) -> bool:
 		if str(n.get("text", n)).to_lower().contains(word):
 			return true
 	return false
+
+
+# =============================================================================
+# §13a Upgrades per item (Decision 8)
+# =============================================================================
+# Every item type has its own tracks (ItemUpgrades, built at load from one table and the item
+# data); a level keeps the old global upgrade's effect, its price scales with the item's price;
+# the ladder (HANDOFF §7's order) caps the levels for sale; old saves' global levels go to every
+# item they used to affect. The heated cab's warmth is §14's.
+
+## The tracks each item gets — the effects it used before §13 (hand tools: capacity and fill,
+## throw, push width, push strength and speed; machines and vehicles theirs; a cab where none).
+const S13_TRACKS := {
+	"hands": ["capacity", "throw", "push_width", "push"], "small_shovel": ["capacity", "throw", "push_width", "push"],
+	"standard_shovel": ["capacity", "throw", "push_width", "push"], "wide_pusher": ["capacity", "throw", "push_width", "push"],
+	"snow_scraper": ["capacity", "throw", "push_width", "push"], "large_scraper": ["capacity", "throw", "push_width", "push"],
+	"snow_sleigh": ["capacity", "throw", "push_width", "push"], "electric_shovel": ["throw", "push_width", "push"],
+	"small_blower": ["intake", "chute"], "large_blower": ["intake", "chute"],
+	"pickup": ["front_plow"], "pickup_plow": ["plow_width", "plow_power"], "atv_blade": ["plow_width", "plow_power", "cab"],
+	"tractor_blade": ["plow_width", "plow_power"], "tractor_blower": ["blower"], "grader": ["plow_width", "plow_power"],
+	"plow_truck": ["plow_width", "plow_power"], "rotary_blower": ["blower"], "dump_truck": [],
+}
+
+
+## Fill the tool (id, "" = bare hands) to the brim in deep snow on the front lawn with the real
+## controls, then throw it into the yard. Returns the most it held (m³).
+func _s13_fill(tool_id: String) -> float:
+	var pl: Player = world.player
+	var tc: ToolController = pl.tools
+	Game.slots[Game.selected] = tool_id
+	Game.inventory_changed.emit()
+	var spot := Layout.lot_to_world(Layout.player_lot, Layout.gu(Layout.player_lot, -5.0), 5.0)
+	Snow.set_rect(Rect2(spot - Vector2(3, 3), Vector2(6, 6)), 0.7)
+	pl.teleport(Vector3(spot.x, 0.05, spot.y), 0.0)
+	await _frames(3)
+	pl.pitch = deg_to_rad(-50.0)
+	pl.head.rotation.x = pl.pitch
+	var base := pl.yaw
+	var best := 0.0
+	Input.action_press("primary")
+	for k in range(150):
+		pl.set_yaw(base + 0.5 * sin(k * 0.15))
+		await _tree().physics_frame
+		best = maxf(best, tc.load)
+	pl.set_yaw(base)
+	pl.pitch = 0.0
+	pl.head.rotation.x = 0.0
+	await _frames(1)
+	Input.action_release("primary")
+	await _frames(20)
+	_release_all()
+	return best
+
+
+## Buy an upgrade level during store hours and collect its crate from the store's pad with E (as a
+## player does). True once it is in.
+func _s13_buy_and_collect(id: String) -> bool:
+	var r := Economy.buy(id)
+	if not r["ok"]:
+		runner.info("buy %s: %s" % [id, r["msg"]])
+		return false
+	await _frames(2)
+	for c in world.objects.get_children():
+		if c is ToolItem and (c as ToolItem).tool_id == "crate:" + id:
+			(c as ToolItem).interact(world.player)
+	await _frames(1)
+	return Game.has_upgrade(StringName(id))
+
+
+## Every item has its own tracks, from the effects it used; each level is the old global upgrade's
+## effect, priced with the item's price; an upgrade bought for one item changes that item only —
+## measured with the real controls for the hand tools, through the one lookup the game reads for
+## every tool, machine and vehicle (ItemUpgrades.mult).
+func test_s13_upgrades_belong_to_an_item() -> void:
+	await _s3_world("fun")
+	Game.money = 99999
+	var b: BalanceData = Catalog.balance
+	# The tracks.
+	var bad := []
+	for item in ItemUpgrades.ladder():
+		var got := ItemUpgrades.tracks(item).map(func(t): return String(t))
+		if got != S13_TRACKS.get(String(item), ["?"]):
+			bad.append("%s %s" % [item, str(got)])
+	runner.check(bad.is_empty() and ItemUpgrades.ladder().size() == S13_TRACKS.size(), "§13 every item type has its own tracks, from the effects it used (hands and each hand tool 4, the electric shovel 3, each blower 2, each vehicle its plow, blower, front plow or cab) %s" % str(bad))
+	# Each level: the old global upgrade's effect; the price scaled with the item's price.
+	var eff_bad := []
+	var price_bad := []
+	var n_levels := 0
+	for item in ItemUpgrades.items():
+		var ip: float = b.upgrade_hands_price if item == &"hands" else float(Economy.price_of(String(item)))
+		var ref: float = b.upgrade_price_ref_vehicle if Catalog.vehicles.has(item) else (b.upgrade_price_ref_machine if Catalog.tool(item).kind == ToolData.Kind.WALK_BLOWER else b.upgrade_price_ref_tool)
+		for t in ItemUpgrades.tracks(item):
+			var lv: Array = ItemUpgrades.TRACKS[t]["levels"]
+			for k in range(ItemUpgrades.ids(item, t).size()):
+				var u: UpgradeData = Catalog.upgrade(StringName(ItemUpgrades.ids(item, t)[k]))
+				n_levels += 1
+				var want_v := 1.0 if t == &"cab" else (Catalog.upgrade(lv[k]) as UpgradeData).value
+				var old_p: float = b.upgrade_cab_price if t == &"cab" else float((Catalog.upgrade(lv[k]) as UpgradeData).price)
+				var want_p := int(old_p) if t == &"front_plow" else ItemUpgrades.nice_price(old_p * ip / ref)
+				if not is_equal_approx(u.value, want_v) or u.stat != ItemUpgrades.TRACKS[t]["stat"] or u.item != item or u.level != k + 1:
+					eff_bad.append(String(u.id))
+				if u.price != want_p or u.price < 1:
+					price_bad.append("%s $%d (want $%d)" % [u.id, u.price, want_p])
+	runner.check(eff_bad.is_empty() and n_levels > 50, "§13 each of the %d levels has the old global upgrade's effect %s" % [n_levels, str(eff_bad)])
+	runner.check(price_bad.is_empty(), "§13 …and costs that upgrade's price × the item's price ÷ its family's reference (hand tools $%d, blowers $%d, vehicles $%d; bare hands as $%d) %s" % [int(b.upgrade_price_ref_tool), int(b.upgrade_price_ref_machine), int(b.upgrade_price_ref_vehicle), int(b.upgrade_hands_price), str(price_bad.slice(0, 6))])
+	var sm := Catalog.upgrade(StringName(ItemUpgrades.level_id(&"small_shovel", &"capacity", 1)))
+	var lg := Catalog.upgrade(StringName(ItemUpgrades.level_id(&"large_scraper", &"capacity", 1)))
+	runner.check(sm.price < lg.price and Catalog.upgrade(StringName(ItemUpgrades.level_id(&"atv_blade", &"plow_width", 1))).price < Catalog.upgrade(StringName(ItemUpgrades.level_id(&"plow_truck", &"plow_width", 1))).price,
+		"§13 …so the same upgrade costs more for a dearer item (capacity: small shovel $%d, large scraper $%d)" % [sm.price, lg.price])
+	# One lookup, item by item: a level bought for one item changes nothing else.
+	var leak := []
+	var saved := Game.upgrades.duplicate()
+	for item in ItemUpgrades.items():
+		for t in ItemUpgrades.tracks(item):
+			Game.upgrades = {}
+			Game.upgrades[ItemUpgrades.level_id(item, t, 1)] = true
+			var stat: StringName = ItemUpgrades.TRACKS[t]["stat"]
+			var v1 := (Catalog.upgrade(StringName(ItemUpgrades.level_id(item, t, 1))) as UpgradeData).value
+			if not is_equal_approx(ItemUpgrades.mult(item, stat), v1):
+				leak.append("%s:%s own" % [item, t])
+			for other in ItemUpgrades.ladder():
+				if other != item and not is_equal_approx(ItemUpgrades.mult(other, stat), 1.0):
+					leak.append("%s:%s → %s" % [item, t, other])
+	Game.upgrades = saved
+	runner.check(leak.is_empty(), "§13 a level of any track changes its own item's stat and no other item's %s" % str(leak.slice(0, 6)))
+	# With the real controls: the small shovel's capacity, bought at the computer and collected at
+	# the store; the standard shovel and bare hands carry what they did.
+	var std_base := await _s13_fill("standard_shovel")
+	var hands_base := await _s13_fill("")
+	var cap1 := ItemUpgrades.level_id(&"small_shovel", &"capacity", 1)
+	runner.check(Economy.can_buy(cap1) == "" and await _s13_buy_and_collect(cap1), "§13 the small shovel's capacity 1: bought on the computer, its crate collected at the store")
+	var small := await _s13_fill("small_shovel")
+	var std := await _s13_fill("standard_shovel")
+	var hands := await _s13_fill("")
+	var sd: ToolData = Catalog.tool(&"small_shovel")
+	runner.check(absf(small - sd.capacity * 1.25) < 5e-4, "§13 …the small shovel now fills to %.1f L (base %.0f L × 1.25)" % [small * 1000.0, sd.capacity * 1000.0])
+	runner.check(absf(std - std_base) < 5e-4 and absf(std - Catalog.tool(&"standard_shovel").capacity) < 5e-4 and absf(hands - hands_base) < 5e-4 and absf(hands - Catalog.tool(&"hands").capacity) < 5e-4,
+		"§13 …the standard shovel (%.1f L) and bare hands (%.1f L) are unchanged" % [std * 1000.0, hands * 1000.0])
+	# Two small shovels share the small shovel's upgrades.
+	Game.slots = ["small_shovel", "small_shovel", "", ""]
+	Game.select_slot(1)
+	await _frames(2)
+	var c2: float = world.player.tools._capacity()
+	Game.select_slot(0)
+	await _frames(2)
+	runner.check(is_equal_approx(c2, world.player.tools._capacity()) and is_equal_approx(c2, sd.capacity * 1.25), "§13 two small shovels share the small shovel's upgrades (%.1f L each)" % (c2 * 1000.0))
+	await _unload()
+
+
+## You can only upgrade what you own (an order counts); an item's upgrades stay with its type in
+## your hands, on the ground or on the rack; a level past the ladder isn't sold. The baseline bug:
+## the pickup's front plow ("pickup_plow", also the plowed pickup's vehicle id) was sold as a
+## vehicle — every purchase delivered another truck, and it could be bought again and again. Now
+## it is the pickup's upgrade, bought once. The heated cab: Survival only, its flag per vehicle type.
+func test_s13_ownership_and_the_front_plow() -> void:
+	await _s3_world("fun")
+	Game.money = 99999
+	var pl: Player = world.player
+	var tc: ToolController = pl.tools
+	var lsc := ItemUpgrades.level_id(&"large_scraper", &"capacity", 1)
+	runner.check(Economy.can_buy(lsc) == "Buy the Large Snow Scraper first." and not Economy.buy(lsc)["ok"], "§13 an item you don't own can't be upgraded: \"%s\"" % Economy.can_buy(lsc))
+	Economy.buy("large_scraper")
+	runner.check(Economy.can_buy(lsc) == "", "§13 …once it's bought (on order) it can")
+	var atv := ItemUpgrades.level_id(&"atv_blade", &"plow_width", 1)
+	runner.check(Economy.can_buy(atv) == "Buy the ATV with Blade first.", "§13 …a vehicle too: \"%s\"" % Economy.can_buy(atv))
+	# The ladder: the small shovel's second capacity level would take it well past the standard shovel.
+	var cap1 := ItemUpgrades.level_id(&"small_shovel", &"capacity", 1)
+	var cap2 := ItemUpgrades.level_id(&"small_shovel", &"capacity", 2)
+	var hthrow2 := ItemUpgrades.level_id(&"hands", &"throw", 2)
+	runner.check(Economy.can_buy(hthrow2) == "Requires level 1.", "§13 levels in order: \"%s\"" % Economy.can_buy(hthrow2))
+	Game.grant_upgrade(StringName(cap1))
+	runner.check(Economy.can_buy(cap2) == "Fully upgraded." and ItemUpgrades.max_level(&"small_shovel", &"capacity") == 1, "§13 a level past the ladder isn't sold: \"%s\"" % Economy.can_buy(cap2))
+	# The upgrades stay with the type: dropped, on the ground, picked up again; on the rack.
+	var spot := Layout.lot_to_world(Layout.player_lot, Layout.gu(Layout.player_lot, -5.0), 5.0)
+	Snow.set_rect(Rect2(spot - Vector2(3, 3), Vector2(6, 6)), 0.0)
+	pl.teleport(Vector3(spot.x, 0.05, spot.y), 0.0)
+	Game.slots = ["small_shovel", "", "", ""]
+	Game.select_slot(0)
+	await _frames(2)
+	var held := tc._capacity()
+	tc.drop_tool()
+	await _frames(2)
+	var lying: ToolItem = null
+	for c in world.objects.get_children():
+		if c is ToolItem and (c as ToolItem).tool_id == "small_shovel" and not (c as ToolItem).entry.get("buried", false):
+			lying = c
+	runner.check(lying != null and ItemUpgrades.owns(&"small_shovel") and is_equal_approx(ItemUpgrades.mult(&"small_shovel", &"shovel_capacity"), 1.25), "§13 a dropped small shovel keeps its upgrades (still yours, ×%.2f)" % ItemUpgrades.mult(&"small_shovel", &"shovel_capacity"))
+	lying.interact(pl)
+	await _frames(2)
+	runner.check(Game.current_tool_id() == "small_shovel" and is_equal_approx(tc._capacity(), held), "§13 …picked up again it carries %.1f L, as before" % (tc._capacity() * 1000.0))
+	Game.slots[Game.selected] = ""
+	Game.rack.append("small_shovel")
+	Game.inventory_changed.emit()
+	var buried := Game.items.filter(func(it): return it["tool"] == "small_shovel")
+	for it in buried:
+		Game.items.erase(it)
+	runner.check(ItemUpgrades.owns(&"small_shovel") and Game.has_upgrade(StringName(cap1)) and Economy.can_buy(ItemUpgrades.level_id(&"small_shovel", &"throw", 1)) == "", "§13 …on the rack it's still yours, with its upgrades, and can be upgraded")
+	Game.rack.erase("small_shovel")
+	for it in buried:
+		Game.items.append(it)
+	# The front plow: the pickup's upgrade, not a vehicle.
+	var plow := String(ItemUpgrades.PLOW_ID)
+	runner.check(Economy.item_kind(plow) == "upgrade" and Economy.can_buy("pickup_plow") == "Not sold in the store." and not Economy.buy("pickup_plow")["ok"],
+		"§13 the front plow is the pickup's upgrade; the plowed pickup isn't for sale as a vehicle (\"%s\")" % Economy.can_buy("pickup_plow"))
+	var nveh := Game.vehicles.size()
+	var r := Economy.buy(plow)
+	await _frames(3)
+	var o: Dictionary = Economy.orders[Economy.orders.size() - 1]
+	runner.check(r["ok"] and o["kind"] == "upgrade" and o["status"] == "spawned" and Game.vehicles.size() == nveh, "§13 buying it orders the plow: no truck in a store bay (vehicles %d → %d), no crate" % [nveh, Game.vehicles.size()])
+	runner.check(Economy.can_buy(plow) == "Already owned.", "§13 …and it can't be bought again while it waits (\"%s\")" % Economy.can_buy(plow))
+	var truck: Vehicle = null
+	for v in world.vehicle_nodes():
+		if (v as Vehicle).data.id == &"pickup":
+			truck = v
+	var lot: Rect2 = Layout.big_areas[1]["rect"]
+	truck.global_position = Vector3(lot.get_center().x, 0.0, lot.get_center().y)
+	await _frames(4)
+	var ids := Game.vehicles.map(func(v): return str(v["id"]))
+	runner.check(Game.has_upgrade(ItemUpgrades.PLOW_ID) and ids == ["pickup_plow"] and o["status"] == "collected", "§13 …driven into the store lot, the pickup gets its plow: one truck, plowed %s" % str(ids))
+	runner.check(Economy.can_buy(plow) == "Already owned." and Game.vehicles.size() == nveh, "§13 …and the plow is bought once (\"%s\")" % Economy.can_buy(plow))
+	runner.check(Economy.can_buy(ItemUpgrades.level_id(&"pickup_plow", &"plow_width", 1)) == "", "§13 …now the plow's own upgrades are for sale")
+	# The heated cab: for the ATV (no cab), Survival only; bought, it's that vehicle type's flag.
+	var cab := ItemUpgrades.level_id(&"atv_blade", &"cab", 1)
+	Game.vehicles.append({"uid": Game.uid(), "id": "atv_blade", "pos": Vector3(40, 0, 96), "yaw": 0.0, "snow": 0.0})
+	runner.check(cab != "" and ItemUpgrades.level_id(&"tractor_blade", &"cab", 1) == "" and Economy.can_buy(cab) == "Survival Mode only." and not ItemUpgrades.track_shown(&"atv_blade", &"cab"),
+		"§13 the heated cab: for vehicles without one (the ATV), not in Fun Mode (\"%s\")" % Economy.can_buy(cab))
+	Game.mode = "survival"
+	runner.check(Economy.can_buy(cab) == "" and not ItemUpgrades.has_heated_cab(&"atv_blade") and ItemUpgrades.has_heated_cab(&"tractor_blade"), "§13 …in Survival it's for sale; the tractor has a cab built in")
+	runner.check(await _s13_buy_and_collect(cab) and ItemUpgrades.has_heated_cab(&"atv_blade"), "§13 …bought and collected: the ATV has a heated cab (§14 wires its warmth)")
+	Game.mode = "fun"
+	await _unload()
+
+
+## Old saves: every global level goes to every item it used to affect (owned or not, even past an
+## item's ladder: nothing paid for is lost), with one notification; the effects are what they were.
+## The 2_upgrades fixture (every old upgrade bought; the baseline bug's second plowed pickup at the
+## store) loads, plays and saves the levels per item.
+func test_s13_old_global_levels_carry_over() -> void:
+	for mode in ["fun", "survival"]:
+		var path := "res://tests/fixtures/polish5/%s_2_upgrades.json" % mode
+		var raw: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+		var old_ups: Dictionary = raw["game"]["upgrades"]
+		runner.check(await _load_save_file(path), "§13 %s_2_upgrades loads" % mode)
+		# What each item had from the global upgrades before (the old rule: every upgrade with the
+		# stat, multiplied).
+		var bad := []
+		for item in ItemUpgrades.items():
+			for t in ItemUpgrades.tracks(item):
+				var stat: StringName = ItemUpgrades.TRACKS[t]["stat"]
+				var want := 1.0
+				for lid in ItemUpgrades.TRACKS[t]["levels"]:
+					if old_ups.has(String(lid)):
+						want *= (Catalog.upgrade(lid) as UpgradeData).value
+				var n_old: int = (ItemUpgrades.TRACKS[t]["levels"] as Array).filter(func(l): return old_ups.has(String(l))).size()
+				if t != &"cab" and (ItemUpgrades.level(item, t) != n_old or not is_equal_approx(ItemUpgrades.mult(item, stat), want)):
+					bad.append("%s:%s level %d (want %d)" % [item, t, ItemUpgrades.level(item, t), n_old])
+		var left := Game.upgrades.keys().filter(func(k): return ItemUpgrades.is_legacy(StringName(k)))
+		runner.check(bad.is_empty() and left.is_empty(), "§13 %s: every old level went to every item it used to affect, each item's effects as before %s" % [mode, str(bad.slice(0, 6))])
+		runner.check(ItemUpgrades.level(&"small_shovel", &"capacity") == 2 and ItemUpgrades.max_level(&"small_shovel", &"capacity") == 1 and ItemUpgrades.level(&"large_scraper", &"throw") == 2,
+			"§13 …past an item's ladder too (the small shovel keeps capacity 2; the large scraper, not owned, has throw 2)")
+		var kept := ["clothing_1", "clothing_2", "weather_pro", "weather_radar", "furnace", "tool_rack"].all(func(k): return Game.has_upgrade(StringName(k)))
+		runner.check(kept and Game.has_upgrade(ItemUpgrades.PLOW_ID), "§13 …the other upgrades stay as they were; the pickup's plow is its front plow")
+		# The baseline bug's extra truck: kept (it was delivered; nothing is taken away), its order the
+		# plow's, nothing new delivered, the plow not for sale again.
+		var plows := Game.vehicles.filter(func(v): return str(v["id"]) == "pickup_plow").size()
+		var po: Array = Economy.orders.filter(func(x): return str(x["item"]) == String(ItemUpgrades.PLOW_ID))
+		runner.check(plows == 2 and po.size() == 1 and po[0]["kind"] == "upgrade" and po[0]["status"] == "collected" and Economy.can_buy(String(ItemUpgrades.PLOW_ID)) == "Already owned.",
+			"§13 …the bug's second plowed pickup stays where it was delivered (%d plowed pickups); its order is the plow's, collected; the plow can't be bought again" % plows)
+		Notify.clear()
+		await _spawn_world()
+		await _frames(2)
+		var notes := Notify.history.filter(func(n): return str(n["text"]).begins_with("Upgrades now belong to each item"))
+		runner.check(notes.size() == 1 and Game.vehicles.size() == 2 and world.vehicle_nodes().size() == 2, "§13 …one notification: \"%s\"; both trucks in the world" % (notes[0]["text"] if not notes.is_empty() else ""))
+		# Plays: the store spawns nothing new; sleep, autosave, reload: the levels per item, no note.
+		var want_ups := JSON.stringify(Game.upgrades, "", true)
+		await world._do_sleep()
+		await _frames(3)
+		await _unload()
+		Notify.clear()
+		runner.check(Saves.load_game(mode), "§13 …the autosave reloads")
+		await _spawn_world()
+		await _frames(2)
+		runner.check(JSON.stringify(Game.upgrades, "", true) == want_ups and Game.vehicles.size() == 2 and not Notify.history.any(func(n): return str(n["text"]).begins_with("Upgrades now belong")),
+			"§13 …with the same levels per item (%d), no second notification" % Game.upgrades.size())
+		await _unload()
+		Saves.delete_save(mode)
+	# An old order's crate, collected after the change, goes to every item too.
+	await _s3_world("fun")
+	Game.grant_upgrade(&"blower_throw_1")
+	runner.check(Game.has_upgrade(StringName(ItemUpgrades.level_id(&"small_blower", &"chute", 1))) and Game.has_upgrade(StringName(ItemUpgrades.level_id(&"large_blower", &"chute", 1))) and not Game.has_upgrade(&"blower_throw_1"),
+		"§13 an old global upgrade collected now (an old order's crate) goes to every item it improved")
+	await _unload()
+
+
+## The ladder (HANDOFF §7's order): at base the items keep it; every track's levels for sale take an
+## item to about the next item's base of what it improves, never more than the ladder's slack past
+## it (unless the item is already ahead there at base). The table goes to the report.
+func test_s13_the_ladder() -> void:
+	var slack: float = Catalog.balance.upgrade_ladder_slack
+	# The new balance values: the same in data/balance.tres and the defaults (BalanceData).
+	var defaults := BalanceData.new()
+	var keys := ["upgrade_price_ref_tool", "upgrade_price_ref_machine", "upgrade_price_ref_vehicle", "upgrade_hands_price", "upgrade_cab_price", "upgrade_ladder_slack"]
+	runner.check(keys.all(func(k): return is_equal_approx(float(Catalog.balance.get(k)), float(defaults.get(k)))), "§13 the Upgrades balance values are the same in balance.tres and the defaults %s" % str(keys.map(func(k): return Catalog.balance.get(k))))
+	# Base order: HANDOFF §7 (bare hands, the hand tools by tier, the electric shovel, the blowers,
+	# then the vehicles); tier and price rise along it.
+	var order := ItemUpgrades.ladder()
+	var tiers := []
+	var prices := []
+	for id in Catalog.TOOL_IDS:
+		tiers.append(Catalog.tool(id).tier)
+		prices.append(Catalog.tool(id).price)
+	var rising := true
+	for k in range(1, tiers.size()):
+		rising = rising and tiers[k] > tiers[k - 1] and prices[k] > prices[k - 1]
+	runner.check(order.slice(0, Catalog.TOOL_IDS.size()) == Array(Catalog.TOOL_IDS) and order.slice(Catalog.TOOL_IDS.size()) == Array(Catalog.VEHICLE_IDS) and rising,
+		"§13 the ladder is HANDOFF §7's order: tier and price rise along it (%s)" % str(prices))
+	var rows := ItemUpgrades.ladder_rows()
+	var over := []
+	var each_track := []
+	runner.info("§13 ladder: item · track · what it improves · base → fully upgraded (levels) · next item's base (ratio)")
+	for r in rows:
+		var nb: float = r["next_base"]
+		var ratio: float = r["max"] / nb if nb > 0.0 else -1.0
+		runner.info("  %s · %s · %s · %s → %s (%d) · %s %s (%s)" % [r["item"], r["track"], ItemUpgrades.QTY[r["q"]], str(snappedf(r["base"], 0.0001)), str(snappedf(r["max"], 0.0001)), r["levels"], r["next"], str(snappedf(nb, 0.0001)), "%.2f" % ratio if nb > 0 else "—"])
+		if nb > 0.0 and r["base"] < nb and r["max"] > nb * (1.0 + slack) + 1e-9:
+			over.append("%s %s %.2f" % [r["item"], r["q"], ratio])
+		if r["levels"] < 1:
+			each_track.append("%s:%s" % [r["item"], r["track"]])
+	runner.check(over.is_empty() and rows.size() > 40, "§13 fully upgraded, no item passes the next item's base by more than %d %% on what a track improves (%d rows) %s" % [int(slack * 100.0), rows.size(), str(over)])
+	runner.check(each_track.is_empty(), "§13 …every track has a level for sale %s" % str(each_track))
+	# About the next item's base, where the next item is the same kind of tool: bare hands → small
+	# shovel → standard shovel; scraper → large scraper (load, fill speed, throw).
+	var near := []
+	for pair in [["hands", "capacity"], ["hands", "fill"], ["small_shovel", "capacity"], ["small_shovel", "fill"], ["small_shovel", "throw"],
+			["snow_scraper", "capacity"], ["snow_scraper", "fill"], ["snow_scraper", "throw"], ["wide_pusher", "throw"], ["wide_pusher", "push_strength"]]:
+		for r in rows:
+			if String(r["item"]) == pair[0] and r["q"] == pair[1]:
+				var ratio: float = r["max"] / r["next_base"]
+				if ratio < 0.85 or ratio > 1.0 + slack:
+					near.append("%s %s %.2f" % [pair[0], pair[1], ratio])
+	runner.check(near.is_empty(), "§13 …and reaches about it (within 85 %%–%d %%) where the next item is the same kind of tool %s" % [int(100.0 + slack * 100.0), str(near)])
+	# The levels past the ladder are the old global levels' only (carried over, never sold).
+	var past := 0
+	for item in ItemUpgrades.items():
+		for t in ItemUpgrades.tracks(item):
+			past += ItemUpgrades.ids(item, t).size() - ItemUpgrades.max_level(item, t)
+	runner.info("§13 levels kept for old saves past the ladder: %d (small shovel capacity 2 / throw 2, wide pusher capacity 2 / throw 2, scraper throw 2)" % past)
+	runner.check(past == 5, "§13 five levels exist past the ladder, for old saves only (%d)" % past)
+	# Full-upgrade cost against the next item's price (the report's table).
+	for item in ItemUpgrades.items():
+		var cost := 0
+		for t in ItemUpgrades.tracks(item):
+			for k in range(ItemUpgrades.max_level(item, t)):
+				cost += (Catalog.upgrade(StringName(ItemUpgrades.ids(item, t)[k])) as UpgradeData).price
+		var nxt_i := order.find(item) + 1
+		runner.info("  cost %s: %s for every level for sale; the item %s, the next %s %s" % [item, UIKit.money(cost), UIKit.money(Economy.price_of(String(item))), order[nxt_i] if nxt_i < order.size() else "—", UIKit.money(Economy.price_of(String(order[nxt_i]))) if nxt_i < order.size() else ""])
+
+
+## The Upgrades app: grouped by item, the items you own first (each card with its own icon — the
+## mitten for bare hands — and a row per track), then the other items, then clothing, weather and
+## property; Buy orders the next level; a level carried over past the ladder shows as the top;
+## Fun Mode has no heated cab; it fits and lines up at every resolution.
+func test_s13_upgrades_app() -> void:
+	await _s3_world("survival")
+	Game.money = 99999
+	Game.company_name = "W".repeat(Game.COMPANY_NAME_MAX)
+	Game.slots = ["standard_shovel", "", "", ""]
+	Game.machines.append({"uid": Game.uid(), "tool": "small_blower", "pos": Vector3(40, 0, 96), "yaw": 0.0})
+	Game.vehicles.append({"uid": Game.uid(), "id": "atv_blade", "pos": Vector3(44, 0, 96), "yaw": 0.0, "snow": 0.0})
+	Game.grant_upgrade(&"shovel_capacity_2")   # an old global level: carried over to every hand tool
+	Game.grant_upgrade(&"shovel_capacity_1")
+	Economy.buy(ItemUpgrades.level_id(&"standard_shovel", &"throw", 1))   # one on order
+	world.open_computer()
+	await _tree().process_frame
+	var comp: ComputerUI = world.modal
+	comp._open_app(ComputerUI.app_index("upgrades"))
+	await _tree().process_frame
+	var kids := comp.content.get_children()
+	var heads := kids.filter(func(n): return n is Label).map(func(n): return (n as Label).text)
+	var cards := kids.filter(func(n): return n.has_meta("upgrade_item")).map(func(n): return str(n.get_meta("upgrade_item")))
+	var want_cards := ["hands", "small_shovel", "standard_shovel", "small_blower", "pickup", "atv_blade"]
+	var i_yours := heads.find("Your items")
+	var i_other := heads.find("Other items")
+	runner.check(cards == want_cards and i_yours >= 0 and i_other > i_yours and heads.find("Cold protection") > i_other,
+		"§13 the Upgrades app: your items first, a card each in the ladder's order %s, then the other items, then clothing, weather and property" % str(cards))
+	var first_other := kids.find(kids.filter(func(n): return n is Label and (n as Label).text == "Other items")[0])
+	runner.check(kids.find(_s13_card(comp, "atv_blade")) < first_other, "§13 …every owned item's card comes before the other items")
+	# Each card: the item's own icon (the mitten for bare hands; vehicles none) and its tracks.
+	var bad := []
+	for item in want_cards:
+		var card: Node = _s13_card(comp, item)
+		var icons := _s6_icons(card)
+		var want_icon := ComputerUI._item_icon(StringName(item))
+		if (want_icon == "-" and not icons.is_empty()) or (want_icon != "-" and (icons.size() != 1 or (icons[0] as Icons).tool_id != ComputerUI._icon_id(want_icon))):
+			bad.append("%s icon" % item)
+		var grid: GridContainer = card.find_children("*", "GridContainer", true, false)[0]
+		var names := []
+		for k in range(0, grid.get_child_count(), 5):
+			names.append((grid.get_child(k) as Label).text)
+		var want_names := []
+		for member in [StringName(item)] + ([&"pickup_plow"] if item == "pickup" else []):
+			for t in ItemUpgrades.tracks(member):
+				want_names.append(ItemUpgrades.TRACKS[t]["name"])
+		if names != want_names:
+			bad.append("%s rows %s" % [item, str(names)])
+	runner.check(bad.is_empty(), "§13 …each card shows its item's own icon (the mitten for bare hands) and a row per track %s" % str(bad))
+	var txt := _s13_text(_s13_card(comp, "small_shovel"))
+	runner.check(txt.contains("Level 2 / 2") and txt.contains("Fully upgraded"), "§13 …the small shovel's capacity carried over past its ladder: \"Level 2 / 2\", fully upgraded")
+	var std_txt := _s13_text(_s13_card(comp, "standard_shovel"))
+	runner.check(std_txt.contains("On order."), "§13 …a level on order says so")
+	runner.check(_s13_text(_s13_card(comp, "atv_blade")).contains("Heated cab"), "§13 …Survival: the ATV's heated cab")
+	# Buy: the next level of bare hands' throw.
+	var hands_card: Node = _s13_card(comp, "hands")
+	var buys := hands_card.find_children("*", "Button", true, false).filter(func(x): return (x as Button).text == "Buy" and not (x as Button).disabled)
+	await _tree().process_frame
+	(buys[0] as Button).pressed.emit()
+	await _tree().process_frame
+	runner.check(Economy.has_open_order(ItemUpgrades.level_id(&"hands", &"throw", 1)) and comp.status_l.text.contains("Bare Hands: Throw 1"), "§13 …Buy orders the next level (\"%s\")" % comp.status_l.text)
+	# Fit: every resolution, top and bottom.
+	world.close_modal()
+	await _tree().process_frame
+	var probs := []
+	for res in S7_CANVASES.keys():
+		var logical: Vector2 = S7_CANVASES[res]
+		var host := Control.new()
+		host.size = logical
+		runner.add_child(host)
+		var c := ComputerUI.new()
+		host.add_child(c)
+		await _frames(2)
+		c._open_app(ComputerUI.app_index("upgrades"))
+		for k in range(4):
+			await _tree().process_frame
+		for p in _s7_fit_problems(c, Rect2(Vector2.ZERO, logical)):
+			probs.append("%s: %s" % [res, p])
+		c.scroll.scroll_vertical = int(c.content.size.y)
+		for k in range(2):
+			await _tree().process_frame
+		for p in _s7_fit_problems(c, Rect2(Vector2.ZERO, logical)):
+			probs.append("%s (scrolled): %s" % [res, p])
+		host.queue_free()
+		await _frames(1)
+	runner.check(probs.is_empty(), "§13 …it fits and lines up at every resolution %s" % str(probs.slice(0, 8)))
+	# Fun Mode: no heated cab anywhere.
+	Game.mode = "fun"
+	world.open_computer()
+	await _tree().process_frame
+	var comp2: ComputerUI = world.modal
+	comp2._open_app(ComputerUI.app_index("upgrades"))
+	await _tree().process_frame
+	runner.check(not _s13_text(comp2.content).contains("Heated cab"), "§13 Fun Mode: no heated cab (Decision 9)")
+	world.close_modal()
+	await _tree().process_frame
+	Game.mode = "survival"
+	Game.company_name = ""
+	await _unload()
+
+
+## An item's card in the Upgrades app (null if none).
+static func _s13_card(comp: ComputerUI, item: String) -> Node:
+	for n in comp.content.get_children():
+		if n.has_meta("upgrade_item") and str(n.get_meta("upgrade_item")) == item and not n.is_queued_for_deletion():
+			return n
+	return null
+
+
+## Every label and button text under a node, joined.
+static func _s13_text(n: Node) -> String:
+	var out := []
+	for c in n.find_children("*", "", true, false):
+		if c is Label:
+			out.append((c as Label).text)
+		elif c is Button:
+			out.append((c as Button).text)
+	return " | ".join(out)

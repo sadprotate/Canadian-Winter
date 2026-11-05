@@ -22,7 +22,8 @@ extends Node
 ##                 (Contracts.force_award, what F1's "Win first listing" calls, picking the kind);
 ##                 listings still open on the board
 ##   2_upgrades    every upgrade in the catalog bought and collected (the pickup plow fitted at the
-##                 store), three hand tools bought and in the slots, and a small blower
+##                 store), three hand tools bought and in the slots, and a small blower (polish 5
+##                 §13: the tools first, then every level of the items owned)
 ##   3_vehicle     keys dug up and found, the driveway cleared, an ATV with blade bought and parked
 ##                 in the driveway in front of the pickup
 ##   4_midwinter   around Jan 20: the first board from Jan 19 that lists 24 or 28 Maple Street (with
@@ -306,21 +307,25 @@ func _p5_setup(point: String) -> void:
 			await _f1("Complete tutorial")
 			await _f1_jump_to(Clock.at(1, 10.0))   # store hours: orders are ready at once
 			await _f1_money(60000)
+			# Polish 5 §13: upgrades belong to an item, and only owned items can be upgraded: the
+			# tools come first. (At the baseline build "pickup_plow" was also a vehicle id, so the store
+			# sold the plow as a vehicle — a second truck in a bay; the polish5 fixtures hold one.)
+			for t in ["standard_shovel", "wide_pusher", "snow_scraper", "small_blower"]:
+				Economy.buy(t)
+			await _collect_orders()
 			# Upgrades that require another one can only be bought once that one is installed.
-			# Each is bought once: "pickup_plow" is also a vehicle id, so at this build the store
-			# treats it as a vehicle (can_buy never says "Already owned", and an order also puts a
-			# pickup with a plow in a store bay) — buying it again would buy another truck.
 			var done := {}
+			var up_ids: Array = Catalog.upgrade_ids()
 			for rounds in range(4):
 				var bought := 0
-				for id in Catalog.UPGRADE_IDS:
+				for id in up_ids:
 					if not done.has(id) and Economy.can_buy(String(id)) == "":
 						if Economy.buy(String(id))["ok"]:
 							bought += 1
 							done[id] = true
 				await _collect_orders()
 				# The front plow is fitted when the pickup is driven into the store lot.
-				if Economy.has_open_order("pickup_plow") and _vehicle_node("pickup"):
+				if Economy.has_open_order(String(ItemUpgrades.PLOW_ID)) and _vehicle_node("pickup"):
 					var pk := _vehicle_node("pickup")
 					var home := Vector2(pk.global_position.x, pk.global_position.z)
 					var yaw := pk.rotation.y
@@ -336,9 +341,6 @@ func _p5_setup(point: String) -> void:
 						_park(pp, home, yaw)
 				if bought == 0:
 					break
-			for t in ["standard_shovel", "wide_pusher", "snow_scraper", "small_blower"]:
-				Economy.buy(t)
-			await _collect_orders()
 			await _f1("+1 hour")
 		"3_vehicle":
 			await _f1("Complete tutorial")
@@ -469,10 +471,17 @@ static func p5_summary() -> String:
 	var ups: Array = Game.upgrades.keys()
 	ups.sort()
 	var missing := []
-	for id in Catalog.UPGRADE_IDS:
+	# Polish 5 §13: every upgrade of the items owned (an item's levels within its ladder), and the rest.
+	var all_ids: Array = Catalog.upgrade_ids()
+	var sellable := 0
+	for id in all_ids:
+		var u: UpgradeData = Catalog.upgrade(id)
+		if u.item != &"" and (not ItemUpgrades.owns(u.item) or u.level > ItemUpgrades.max_level(u.item, u.track) or not ItemUpgrades.track_shown(u.item, u.track)):
+			continue
+		sellable += 1
 		if not Game.has_upgrade(id):
 			missing.append(String(id))
-	L.append("  upgrades %d/%d %s%s" % [ups.size(), Catalog.UPGRADE_IDS.size(), ups, ("  missing %s" % [missing]) if not missing.is_empty() else ""])
+	L.append("  upgrades %d (of %d for the items owned) %s%s" % [ups.size(), sellable, ups, ("  missing %s" % [missing]) if not missing.is_empty() else ""])
 	var drive: Rect2 = Layout.house_info(Layout.player_lot)["driveway"]
 	var veh := []
 	for v in Game.vehicles:

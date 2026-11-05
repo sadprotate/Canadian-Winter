@@ -204,3 +204,18 @@ extends Resource
 @export var pickup_shove_min_speed: float = 1.0
 ## Snow ahead deeper than this is a wall to the pickup (above the grille): it stops at any speed.
 @export var pickup_bank_max: float = 0.95
+
+@export_group("Upgrades")
+## Polish 5 §13 (Decision 8): every item type has its own upgrade tracks (ItemUpgrades). A level
+## keeps the effect of the old global upgrade it comes from; its price is that upgrade's price ×
+## the item's price ÷ the family's reference price (hand tools, walk-behind blowers, vehicles), to
+## two significant figures. Bare hands are priced as an item worth upgrade_hands_price.
+@export var upgrade_price_ref_tool: float = 400.0
+@export var upgrade_price_ref_machine: float = 790.0
+@export var upgrade_price_ref_vehicle: float = 14000.0
+@export var upgrade_hands_price: float = 12.0
+## The heated cab (vehicles without a cab): its price for a vehicle at the vehicle reference price.
+@export var upgrade_cab_price: float = 1500.0
+## The ladder: a track's levels stop where the item would pass the next item's base value of what
+## the track improves by more than this fraction (unless the item is already ahead there at base).
+@export var upgrade_ladder_slack: float = 0.15

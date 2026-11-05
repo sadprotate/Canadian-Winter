@@ -116,6 +116,10 @@ func _ready() -> void:
 	AudioMgr.set_menu_music(false)
 	AudioMgr.set_ambience_enabled(true)
 	_fade_in()
+	# Polish 5 §13: an old save's global upgrades were carried over to every item: one notification.
+	if ItemUpgrades.pending_note != "":
+		Notify.push(ItemUpgrades.pending_note, Notify.GOOD)
+		ItemUpgrades.pending_note = ""
 	if Game.stage() == Game.Stage.START and Clock.day_index() == 0 and Clock.minutes < Clock.at(0, 8.0):
 		_morning_line_due = true     # polish 5 §4: the door line waits for it
 		get_tree().create_timer(1.5).timeout.connect(func():

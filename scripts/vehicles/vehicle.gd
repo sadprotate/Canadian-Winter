@@ -328,11 +328,11 @@ func _physics_process(delta: float) -> void:
 		var bp: Vector3 = global_transform * Vector3(0, 0, info["blade_z"])
 		var face := fwd.rotated(deg_to_rad(blade_angle))
 		var adv := maxf(travel.dot(fwd), 0.0)
-		var hw := data.blade_width * 0.5 * Game.stat_value(&"vehicle_blade_width", 1.0)
+		var hw := data.blade_width * 0.5 * ItemUpgrades.mult(data.id, &"vehicle_blade_width")
 		# Polish 5 §3 (Decision 12): no road rule — a plow carries yard snow over the curb.
 		var r := Snow.blade_push(Vector2(bp.x, bp.z), face, hw, adv + 0.1, data.blade_floor, false, 0.6)
 		player_guard(Vector2(bp.x, bp.z), fwd, hw + 0.2)
-		var ratio: float = r["berm"] / (data.blade_capacity * Game.stat_value(&"vehicle_clear_speed", 1.0))
+		var ratio: float = r["berm"] / (data.blade_capacity * ItemUpgrades.mult(data.id, &"vehicle_clear_speed"))
 		work_drag = 1.0 / (1.0 + ratio * ratio)
 		Snow.stat_player_moved += r["moved"]
 		Game.stats_add("snow_moved", r["moved"])
@@ -418,6 +418,7 @@ func _physics_process(delta: float) -> void:
 		engine_snd.volume_db = -4.0
 		engine_snd.pitch_scale = data.engine_pitch * (0.75 + 0.7 * clampf(absf(speed) / data.max_speed, 0, 1) + (0.15 if stuck and absf(throttle) > 0 else 0.0))
 		tire_snd.volume_db = lerpf(-40.0, -6.0, clampf(absf(speed) / 6.0 * clampf(d_wheels * 8.0, 0.2, 1.0), 0, 1))
+		# Polish 5 §13 → §14: a cab bought for a vehicle without one is ItemUpgrades.has_heated_cab(id).
 		heat = minf(1.0, heat + delta / Catalog.balance.vehicle_heat_warmup_s) if data.heated_cabin else 0.0
 		Survival.vehicle_heat = heat
 		Game.player_pos = global_position
@@ -503,7 +504,7 @@ func _blow(delta: float, fwd: Vector2) -> void:
 	_land_timer -= delta
 	if _land_timer <= 0.0:
 		_land_timer = 0.15
-		_landing = Throw.compute(get_world_3d(), cp, cd, data.blower_throw * Game.stat_value(&"vehicle_blower", 1.0), 40.0, [get_rid()])
+		_landing = Throw.compute(get_world_3d(), cp, cd, data.blower_throw * ItemUpgrades.mult(data.id, &"vehicle_blower"), 40.0, [get_rid()])
 	work_snd.volume_db = move_toward(work_snd.volume_db, -3.0, delta * 40.0)
 	if stream_fx:
 		stream_fx.global_position = cp
@@ -520,7 +521,7 @@ func _blow(delta: float, fwd: Vector2) -> void:
 			Notify.push("The blower has nowhere to put the snow. Turn the chute with %s." % keys, Notify.WARN)
 		return
 	var fp := Vector2(global_position.x, global_position.z) + fwd * absf(float(info["blade_z"]))
-	var r := Snow.intake(fp, fwd, data.blower_width, 0.6, data.blower_rate * Game.stat_value(&"vehicle_blower", 1.0) * delta, 0.01)
+	var r := Snow.intake(fp, fwd, data.blower_width, 0.6, data.blower_rate * ItemUpgrades.mult(data.id, &"vehicle_blower") * delta, 0.01)
 	_stream_acc += r["volume"]
 	Snow.stat_player_moved += r["volume"]
 	Game.stats_add("snow_moved", r["volume"])

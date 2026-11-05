@@ -287,12 +287,20 @@ static func inventory(parent: Control) -> Control:
 		v.add_child(UIKit.label("Carrying: %s (%s to drop)" % [Catalog.item_name(StringName(Game.carried)), Settings.action_label("drop")], 20, UIKit.WARN))
 	v.add_child(UIKit.label("Utility: %d heating pouch%s  (%s to use)" % [Game.heat_pouches, "" if Game.heat_pouches == 1 else "es", Settings.action_label("use_pouch")], 20, UIKit.MUTED))
 	v.add_child(UIKit.label("Keys: %s" % ("pickup truck keys" if Game.flags.get("truck_keys", false) else "none found"), 20, UIKit.MUTED))
+	# Polish 5 §13: the upgrades of the tool in your hands (each item has its own), and clothing.
+	var cur := Game.current_tool()
 	var ups := []
+	var own := ItemUpgrades.summary(cur.id)
+	if own != "":
+		ups.append(own)
 	for id2 in Game.upgrades.keys():
 		var u: UpgradeData = Catalog.upgrade(StringName(id2))
-		if u and u.category in [UpgradeData.Category.TOOL, UpgradeData.Category.MACHINE, UpgradeData.Category.CLOTHING]:
+		if u and u.item == &"" and u.category == UpgradeData.Category.CLOTHING:
 			ups.append(u.display_name)
-	v.add_child(UIKit.label("Tool upgrades: %s" % (", ".join(ups) if not ups.is_empty() else "none"), 20, UIKit.MUTED))
+	var ul := UIKit.label("Upgrades — %s: %s" % [cur.display_name, ", ".join(ups) if not ups.is_empty() else "none"], 20, UIKit.MUTED)
+	ul.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	ul.custom_minimum_size.x = 700
+	v.add_child(ul)
 	v.add_child(UIKit.spacer(4))
 	var ctl := UIKit.label(ToolController.controls_hint(Game.current_tool()), 19, Color(0.85, 0.92, 1.0))
 	ctl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
