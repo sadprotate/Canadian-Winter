@@ -19,8 +19,8 @@ resume from here.
 
 | § | Title | Status | Commit | Report |
 |---|---|---|---|---|
-| §0 | Agent setup, the round-6 brief, baseline | done | this commit (`polish6 §0: agent setup, the round-6 brief`) | `report/s0.md` |
-| §1 | What round 5 never pushed | not started | | |
+| §0 | Agent setup, the round-6 brief, baseline | done | `aabe73c` | `report/s0.md` |
+| §1 | What round 5 never pushed | done | this commit (`polish6 §1: What round 5 never pushed`) | `report/s1.md` |
 | §2 | The Godot errors after pulling | not started | | |
 | §3 | Round 5's open items | not started | | |
 | §8.1 | Hold to fill, not spam-click | not started | | |
@@ -39,9 +39,15 @@ resume from here.
 ## Open items
 
 - The round-5 coordinator's status file (`claude/POLISH_ROUND_5_STATUS.md`) isn't on this PC.
-  §1 will build `docs/polish5/STATUS.md` from §3's list unless the owner attaches the original.
-- Tags `polish5-baseline` (`15be65a`) and `polish6-baseline` (`1b38f4a`) are not pushed (local
-  work only, for now).
+  §1 rebuilt `docs/polish5/STATUS.md` from the brief's §1/§3 lists, the git history and the
+  round-5 reports (it says so at the top). If the owner attaches the original, it replaces it.
+- Tags `polish5-baseline` (`15be65a`, created locally in §1) and `polish6-baseline` (`1b38f4a`)
+  are not pushed (local work only, for now). With the owner's OK:
+  `git push origin polish5-baseline polish6-baseline`.
+- **Exporting:** `export_presets.cfg` now exports to `build/windows/CanadianWinter.exe` (ignored
+  by `/build/`). Godot doesn't create the folder: until `build/windows/` exists the export fails
+  with "Prepare Template: The given export path doesn't exist." The owner makes the folder once
+  (or with the export dialog's file browser). Tell the owner in the PR description (report/s1.md).
 - The suites, `run_log` and `make_fixtures` use the owner's real `user://`
   (`%APPDATA%/Godot/app_userdata/Canadian Winter/`: `saves/fun.json`, `saves/survival.json`,
   `settings.cfg`) and overwrite or delete them, as they always have. The owner should know before
@@ -75,3 +81,23 @@ actions, function names, gotchas.
   any status but `collected`). Fun $100, Survival $1,500 after the purchase.
 - **Orientation shots** are in `docs/polish6/shots/00-orientation/`; the `shot.tscn` opening needs
   `--frames=240` to get past the fade-in.
+
+**From §1 (what round 5 never pushed):**
+- **`tools/data_gen/generate_data.gd` reproduces `data/` value for value** (40 files, 920 script
+  values; `--only=polish6 --test=s1_data_generator`). Any section that changes a data file
+  (`data/tools/*.tres`, `data/vehicles/*.tres`, `data/upgrades/*.tres`, `data/balance.tres`) or a
+  `BalanceData` default makes the same change in the generator (`_tools()`, `_vehicles()`,
+  `_upgrades()`; balance keys come from `balance_data.gd`'s defaults, so a new balance key needs
+  only the default and the `.tres` line). A new `.tres` under `data/` needs a generator entry, or
+  the test fails. §8's `throw_recovery_s` / capacities and §3's large-scraper text are the first.
+- **`data/balance.tres` equals `BalanceData`'s defaults** (115 stored values,
+  `--test=s1_balance_defaults`). Keep both in sync, as `CLAUDE.md` says.
+- **Never run the generator against `data/`** to check it: run it with
+  `-- --out=<scratch dir>` (or let the test do it in `user://polish6_s1_data_gen`, removed after).
+  Into `data/` it rewrites `balance.tres` without the lines equal to their defaults and gives the
+  two `heated_*.tres` new ext_resource ids: churn, no value change.
+- The generator is a `SceneTree` script with static `build()` (path → Resource) and
+  `generate(out_dir)`; `tests/test_polish6.gd` reaches it through `const _S1DataGen := preload(…)`.
+- `tests/test_polish6.gd` exists (suite `polish6` in `tests/test_runner.gd`), `extends RefCounted`
+  with `var runner`, no world of its own; each section adds its tests under a
+  `# ====` `§N` header, helpers prefixed `_sN_`.

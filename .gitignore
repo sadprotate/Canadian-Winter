@@ -22,6 +22,8 @@ export_credentials.cfg
 mono_crash.*.json
 
 # Export outputs
+# export_presets.cfg exports into build/ (polish 6 §1).
+/build/
 *.exe
 # Uncomment if your project does not version PCK files as runtime dependencies.
 # *.pck
