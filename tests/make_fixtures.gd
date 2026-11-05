@@ -36,6 +36,17 @@ extends Node
 ##                 globally", on Mar 30–31 of winter 1; recurring contracts renewed)
 ## A summary of every polish-5 fixture, read back from the file, is printed at the end.
 ## `-- --set=polish5 --verify` only prints those summaries (from the existing files).
+##
+## Polish 6 §0: `-- --set=polish5_v3` builds tests/fixtures/polish5_v3/ (fun_*/survival_*): the six
+## polish-5 points above, made the same way with this build (version-3 saves; round 5 §17 never made
+## them; 6_winter2's reputation is F1's Reputation "Set" at 100, as the board loop wins nothing at
+## this build), plus one more point for polish 6 §10's migration:
+##   7_keys_pickup_plow_order  tutorial done, Dec 2 (day 1): the truck keys dug up under the lawn
+##                 tree and picked up; the plain pickup where a new game puts it, in the player's
+##                 driveway (snowed in as it starts); the front plow (ItemUpgrades.PLOW_ID) bought from
+##                 the computer's store at 10:00, its order open and not fitted ("Waiting in the
+##                 store lot": the pickup never went to the store)
+## `-- --set=polish5_v3 --verify` prints their summaries.
 ## Options: --only=<point part>  --mode=fun|survival
 
 var OUT := "res://tests/fixtures/polish3/"
@@ -62,6 +73,10 @@ func _ready() -> void:
 		if a == "--set=polish5":
 			OUT = "res://tests/fixtures/polish5/"
 			points = P5_POINTS
+			p5 = true
+		if a == "--set=polish5_v3":
+			OUT = "res://tests/fixtures/polish5_v3/"
+			points = P5_POINTS + P6_POINTS
 			p5 = true
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT))
 	var verify_only := OS.get_cmdline_user_args().has("--verify")
@@ -182,6 +197,8 @@ func _make(mode: String, point: String) -> void:
 # -----------------------------------------------------------------------------
 
 const P5_POINTS := ["1_contracts", "2_upgrades", "3_vehicle", "4_midwinter", "5_evening", "6_winter2"]
+## Polish 6 §0: the extra point of the polish5_v3 set.
+const P6_POINTS := ["7_keys_pickup_plow_order"]
 ## 24 and 28 Maple Street (polish 5 decision 10 merges them).
 const P5_LOTS := [[24, Layout.STREET_MAPLE], [28, Layout.STREET_MAPLE]]
 
@@ -418,6 +435,25 @@ func _p5_setup(point: String) -> void:
 				if Game.year == 2 and Clock.running:
 					break
 			await _f1_jump_to(Clock.at(1, 12.0))
+		"7_keys_pickup_plow_order":
+			await _f1("Complete tutorial")
+			await _f1_jump_to(Clock.at(1, 10.0))   # store hours
+			# The keys: dug out of the lawn, then picked up (as 3_vehicle). The driveway and the pickup
+			# are left as a new game has them.
+			for c in world.objects.get_children():
+				if c is BuriedKeys:
+					var kp := Vector2((c as Node3D).global_position.x, (c as Node3D).global_position.z)
+					Snow.set_rect(Rect2(kp - Vector2(0.6, 0.6), Vector2(1.2, 1.2)), 0.0)
+					await _frames(2)
+					(c as BuriedKeys).interact(world.player)
+			# The front plow, bought from the computer's store with its price added by F1 first (the
+			# money is left as it was): an open order, never fitted (the pickup doesn't drive into the
+			# store lot).
+			var plow := String(ItemUpgrades.PLOW_ID)
+			await _f1_money(Economy.price_of(plow))
+			var res := Economy.buy(plow)
+			print("keys/pickup/plow order: keys %s, buy %s: %s" % [str(Game.flags.get("truck_keys", false)), str(res["ok"]), res["msg"]])
+			await _f1("+1 hour")
 
 
 ## Raise the reputation with F1: win every residential job the board offers ("New listings";
@@ -450,6 +486,14 @@ func _p5_raise_reputation() -> void:
 		await _f1("+1 hour")
 		if Game.reputation <= before:
 			break
+	# Polish 6 §0: from polish 5 §10 on, F1 has a Reputation row, and the board is refilled only up to
+	# its daily size (so the loop above wins nothing on a full board): "as high as F1 allows" is its
+	# Set, at 100.
+	var probe := DebugMenu.new()
+	var has_rep := "rep_e" in probe
+	probe.free()
+	if Game.reputation < 100.0 and has_rep:
+		await _f1("Set", func(d): d.rep_e.text = "100", "Reputation")
 	print("reputation raised to %.1f by %s" % [Game.reputation, Clock.format_time(Clock.minutes)])
 
 

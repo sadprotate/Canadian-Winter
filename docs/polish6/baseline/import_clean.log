@@ -1,0 +1,350 @@
+# command: godot --headless --path . --editor --quit
+# cwd: a fresh clone of the local repo in the scratchpad (git clone; git checkout polish6-baseline = 1b38f4a; no .godot/)
+# exit code: 0   wall time: 16 s   finished: 2026-11-05 08:49
+# Godot: 4.7.2.stable.official.ed1daf0bf
+# Result: no ERROR or WARNING line. The import rewrote the 74 *.import files with LF line endings
+# (line endings only: git diff --ignore-cr-at-eol is empty), the same as icon.svg.import in the main checkout.
+
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+[   0% ] first_scan_filesystem | Started Project initialization (5 steps)
+[   0% ] first_scan_filesystem | Scanning file structure...
+[  16% ] first_scan_filesystem | Loading global class names...
+[  33% ] first_scan_filesystem | Verifying GDExtensions...
+[  50% ] first_scan_filesystem | Creating autoload scripts...
+[  66% ] first_scan_filesystem | Initializing plugins...
+[  83% ] first_scan_filesystem | Starting file scan...
+[ DONE ] first_scan_filesystem
+
+[   0% ] update_scripts_classes | Started Registering global classes... (90 steps)
+[   0% ] update_scripts_classes | 
+[   1% ] update_scripts_classes | 
+[   2% ] update_scripts_classes | 
+[   3% ] update_scripts_classes | 
+[   4% ] update_scripts_classes | 
+[   5% ] update_scripts_classes | 
+[   6% ] update_scripts_classes | 
+[   7% ] update_scripts_classes | 
+[   8% ] update_scripts_classes | 
+[   9% ] update_scripts_classes | 
+[  10% ] update_scripts_classes | 
+[  12% ] update_scripts_classes | 
+[  13% ] update_scripts_classes | 
+[  14% ] update_scripts_classes | 
+[  15% ] update_scripts_classes | BalanceData
+[  16% ] update_scripts_classes | Equipment
+[  17% ] update_scripts_classes | ItemUpgrades
+[  18% ] update_scripts_classes | ToolData
+[  19% ] update_scripts_classes | UpgradeData
+[  20% ] update_scripts_classes | VehicleData
+[  21% ] update_scripts_classes | 
+[  23% ] update_scripts_classes | Neighbor
+[  24% ] update_scripts_classes | CharacterModel
+[  25% ] update_scripts_classes | FPArms
+[  26% ] update_scripts_classes | Player
+[  27% ] update_scripts_classes | ToolController
+[  28% ] update_scripts_classes | SnowFX
+[  29% ] update_scripts_classes | Throw
+[  30% ] update_scripts_classes | ThrownSnow
+[  31% ] update_scripts_classes | ToolModels
+[  32% ] update_scripts_classes | ComputerUI
+[  34% ] update_scripts_classes | DebugMenu
+[  35% ] update_scripts_classes | HelpText
+[  36% ] update_scripts_classes | HUD
+[  37% ] update_scripts_classes | Icons
+[  38% ] update_scripts_classes | 
+[  39% ] update_scripts_classes | MapUI
+[  40% ] update_scripts_classes | Panels
+[  41% ] update_scripts_classes | SettingsMenu
+[  42% ] update_scripts_classes | SpeedControl
+[  43% ] update_scripts_classes | ToolIcons
+[  45% ] update_scripts_classes | UIKit
+[  46% ] update_scripts_classes | GraderNPC
+[  47% ] update_scripts_classes | SidewalkCrew
+[  48% ] update_scripts_classes | Vehicle
+[  49% ] update_scripts_classes | VehicleModels
+[  50% ] update_scripts_classes | WalkBehind
+[  51% ] update_scripts_classes | AddressSigns
+[  52% ] update_scripts_classes | BoxOutline
+[  53% ] update_scripts_classes | Buildings
+[  54% ] update_scripts_classes | BuriedKeys
+[  56% ] update_scripts_classes | ComputerScreen
+[  57% ] update_scripts_classes | DayNight
+[  58% ] update_scripts_classes | Door
+[  59% ] update_scripts_classes | FramedPhoto
+[  60% ] update_scripts_classes | HeatedPad
+[  61% ] update_scripts_classes | Heating
+[  62% ] update_scripts_classes | HouseBuilder
+[  63% ] update_scripts_classes | Interactable
+[  64% ] update_scripts_classes | InteriorBuilder
+[  65% ] update_scripts_classes | Layout
+[  67% ] update_scripts_classes | Mats
+[  68% ] update_scripts_classes | MeshKit
+[  69% ] update_scripts_classes | Props
+[  70% ] update_scripts_classes | RoofSnow
+[  71% ] update_scripts_classes | SnowRenderer
+[  72% ] update_scripts_classes | Store
+[  73% ] update_scripts_classes | ToolItem
+[  74% ] update_scripts_classes | WeatherFX
+[  75% ] update_scripts_classes | WorldBuilder
+[  76% ] update_scripts_classes | ZoneMarkers
+[  78% ] update_scripts_classes | 
+[  79% ] update_scripts_classes | 
+[  80% ] update_scripts_classes | 
+[  81% ] update_scripts_classes | 
+[  82% ] update_scripts_classes | 
+[  83% ] update_scripts_classes | 
+[  84% ] update_scripts_classes | 
+[  85% ] update_scripts_classes | 
+[  86% ] update_scripts_classes | 
+[  87% ] update_scripts_classes | 
+[  89% ] update_scripts_classes | 
+[  90% ] update_scripts_classes | 
+[  91% ] update_scripts_classes | 
+[  92% ] update_scripts_classes | 
+[  93% ] update_scripts_classes | 
+[  94% ] update_scripts_classes | 
+[  95% ] update_scripts_classes | 
+[  96% ] update_scripts_classes | 
+[  97% ] update_scripts_classes | 
+[ DONE ] update_scripts_classes
+
+[   0% ] _update_scan_actions | Started Scanning actions... (74 steps)
+[   0% ] _update_scan_actions | blizzard.wav
+[   1% ] _update_scan_actions | blower_discharge.wav
+[   2% ] _update_scan_actions | blower_large.wav
+[   4% ] _update_scan_actions | blower_small.wav
+[   5% ] _update_scan_actions | box_complete.wav
+[   6% ] _update_scan_actions | death_sting.wav
+[   8% ] _update_scan_actions | door_close.wav
+[   9% ] _update_scan_actions | door_open.wav
+[  10% ] _update_scan_actions | electric_motor.wav
+[  12% ] _update_scan_actions | engine_diesel.wav
+[  13% ] _update_scan_actions | engine_small.wav
+[  14% ] _update_scan_actions | engine_start.wav
+[  16% ] _update_scan_actions | engine_truck.wav
+[  17% ] _update_scan_actions | fire_crackle.wav
+[  18% ] _update_scan_actions | furnace_hum.wav
+[  20% ] _update_scan_actions | gust_whistle.wav
+[  21% ] _update_scan_actions | hand_dig.wav
+[  22% ] _update_scan_actions | hand_scoop_1.wav
+[  24% ] _update_scan_actions | hand_scoop_2.wav
+[  25% ] _update_scan_actions | hand_scoop_3.wav
+[  26% ] _update_scan_actions | hand_toss.wav
+[  28% ] _update_scan_actions | heartbeat.wav
+[  29% ] _update_scan_actions | help_call.wav
+[  30% ] _update_scan_actions | horn.wav
+[  32% ] _update_scan_actions | keys_jingle.wav
+[  33% ] _update_scan_actions | mailbox.wav
+[  34% ] _update_scan_actions | music_calm.wav
+[  36% ] _update_scan_actions | music_snow.wav
+[  37% ] _update_scan_actions | neighbor_talk_1.wav
+[  38% ] _update_scan_actions | neighbor_talk_2.wav
+[  40% ] _update_scan_actions | neighbor_talk_3.wav
+[  41% ] _update_scan_actions | paper.wav
+[  42% ] _update_scan_actions | pickup_item.wav
+[  44% ] _update_scan_actions | plow_scrape.wav
+[  45% ] _update_scan_actions | power_off.wav
+[  46% ] _update_scan_actions | power_on.wav
+[  48% ] _update_scan_actions | push_scrape.wav
+[  49% ] _update_scan_actions | push_snow.wav
+[  50% ] _update_scan_actions | radio_jingle.wav
+[  52% ] _update_scan_actions | rattle.wav
+[  53% ] _update_scan_actions | room_tone.wav
+[  54% ] _update_scan_actions | shiver.wav
+[  56% ] _update_scan_actions | shovel_fill_1.wav
+[  57% ] _update_scan_actions | shovel_fill_2.wav
+[  58% ] _update_scan_actions | shovel_fill_3.wav
+[  60% ] _update_scan_actions | shovel_scoop.wav
+[  61% ] _update_scan_actions | shovel_scrape.wav
+[  62% ] _update_scan_actions | shovel_throw.wav
+[  64% ] _update_scan_actions | snow_land.wav
+[  65% ] _update_scan_actions | snow_land_1.wav
+[  66% ] _update_scan_actions | snow_land_2.wav
+[  68% ] _update_scan_actions | snow_land_3.wav
+[  69% ] _update_scan_actions | snow_land_big.wav
+[  70% ] _update_scan_actions | step_deep_1.wav
+[  72% ] _update_scan_actions | step_deep_2.wav
+[  73% ] _update_scan_actions | step_deep_3.wav
+[  74% ] _update_scan_actions | step_hard_1.wav
+[  76% ] _update_scan_actions | step_hard_2.wav
+[  77% ] _update_scan_actions | step_hard_3.wav
+[  78% ] _update_scan_actions | step_snow_1.wav
+[  80% ] _update_scan_actions | step_snow_2.wav
+[  81% ] _update_scan_actions | step_snow_3.wav
+[  82% ] _update_scan_actions | step_snow_4.wav
+[  84% ] _update_scan_actions | tires_snow.wav
+[  85% ] _update_scan_actions | truck_locked.wav
+[  86% ] _update_scan_actions | ui_alert.wav
+[  88% ] _update_scan_actions | ui_click.wav
+[  89% ] _update_scan_actions | ui_error.wav
+[  90% ] _update_scan_actions | ui_hover.wav
+[  92% ] _update_scan_actions | ui_money.wav
+[  93% ] _update_scan_actions | ui_notify.wav
+[  94% ] _update_scan_actions | wind_light.wav
+[  96% ] _update_scan_actions | wind_strong.wav
+[  97% ] _update_scan_actions | icon.svg
+[ DONE ] _update_scan_actions
+
+[   0% ] reimport | Started (Re)Importing Assets (74 steps)
+[   0% ] reimport | Preparing files to reimport...
+[   1% ] reimport | Preparing files to reimport...
+[   2% ] reimport | Preparing files to reimport...
+[   4% ] reimport | Preparing files to reimport...
+[   5% ] reimport | Preparing files to reimport...
+[   6% ] reimport | Preparing files to reimport...
+[   8% ] reimport | Preparing files to reimport...
+[   9% ] reimport | Preparing files to reimport...
+[  10% ] reimport | Preparing files to reimport...
+[  12% ] reimport | Preparing files to reimport...
+[  13% ] reimport | Preparing files to reimport...
+[  14% ] reimport | Preparing files to reimport...
+[  16% ] reimport | Preparing files to reimport...
+[  17% ] reimport | Preparing files to reimport...
+[  18% ] reimport | Preparing files to reimport...
+[  20% ] reimport | Preparing files to reimport...
+[  21% ] reimport | Preparing files to reimport...
+[  22% ] reimport | Preparing files to reimport...
+[  24% ] reimport | Preparing files to reimport...
+[  25% ] reimport | Preparing files to reimport...
+[  26% ] reimport | Preparing files to reimport...
+[  28% ] reimport | Preparing files to reimport...
+[  29% ] reimport | Preparing files to reimport...
+[  30% ] reimport | Preparing files to reimport...
+[  32% ] reimport | Preparing files to reimport...
+[  33% ] reimport | Preparing files to reimport...
+[  34% ] reimport | Preparing files to reimport...
+[  36% ] reimport | Preparing files to reimport...
+[  37% ] reimport | Preparing files to reimport...
+[  38% ] reimport | Preparing files to reimport...
+[  40% ] reimport | Preparing files to reimport...
+[  41% ] reimport | Preparing files to reimport...
+[  42% ] reimport | Preparing files to reimport...
+[  44% ] reimport | Preparing files to reimport...
+[  45% ] reimport | Preparing files to reimport...
+[  46% ] reimport | Preparing files to reimport...
+[  48% ] reimport | Preparing files to reimport...
+[  49% ] reimport | Preparing files to reimport...
+[  50% ] reimport | Preparing files to reimport...
+[  52% ] reimport | Preparing files to reimport...
+[  53% ] reimport | Preparing files to reimport...
+[  54% ] reimport | Preparing files to reimport...
+[  56% ] reimport | Preparing files to reimport...
+[  57% ] reimport | Preparing files to reimport...
+[  58% ] reimport | Preparing files to reimport...
+[  60% ] reimport | Preparing files to reimport...
+[  61% ] reimport | Preparing files to reimport...
+[  62% ] reimport | Preparing files to reimport...
+[  64% ] reimport | Preparing files to reimport...
+[  65% ] reimport | Preparing files to reimport...
+[  66% ] reimport | Preparing files to reimport...
+[  68% ] reimport | Preparing files to reimport...
+[  69% ] reimport | Preparing files to reimport...
+[  70% ] reimport | Preparing files to reimport...
+[  72% ] reimport | Preparing files to reimport...
+[  73% ] reimport | Preparing files to reimport...
+[  74% ] reimport | Preparing files to reimport...
+[  76% ] reimport | Preparing files to reimport...
+[  77% ] reimport | Preparing files to reimport...
+[  78% ] reimport | Preparing files to reimport...
+[  80% ] reimport | Preparing files to reimport...
+[  81% ] reimport | Preparing files to reimport...
+[  82% ] reimport | Preparing files to reimport...
+[  84% ] reimport | Preparing files to reimport...
+[  85% ] reimport | Preparing files to reimport...
+[  86% ] reimport | Preparing files to reimport...
+[  88% ] reimport | Preparing files to reimport...
+[  89% ] reimport | Preparing files to reimport...
+[  90% ] reimport | Preparing files to reimport...
+[  92% ] reimport | Preparing files to reimport...
+[  93% ] reimport | Preparing files to reimport...
+[  94% ] reimport | Preparing files to reimport...
+[  96% ] reimport | Preparing files to reimport...
+[  97% ] reimport | Preparing files to reimport...
+[   0% ] reimport | Executing pre-reimport operations...
+[   0% ] reimport | icon.svg
+[   1% ] reimport | icon.svg
+[   2% ] reimport | step_deep_2.wav
+[   4% ] reimport | step_deep_1.wav
+[   5% ] reimport | snow_land_big.wav
+[   6% ] reimport | snow_land_3.wav
+[   8% ] reimport | snow_land_2.wav
+[   9% ] reimport | snow_land_1.wav
+[  10% ] reimport | snow_land.wav
+[  12% ] reimport | shovel_throw.wav
+[  13% ] reimport | shovel_scrape.wav
+[  14% ] reimport | shovel_scoop.wav
+[  16% ] reimport | shovel_fill_3.wav
+[  17% ] reimport | shovel_fill_2.wav
+[  18% ] reimport | shovel_fill_1.wav
+[  20% ] reimport | shiver.wav
+[  21% ] reimport | room_tone.wav
+[  22% ] reimport | rattle.wav
+[  24% ] reimport | radio_jingle.wav
+[  25% ] reimport | push_snow.wav
+[  26% ] reimport | wind_strong.wav
+[  28% ] reimport | wind_light.wav
+[  29% ] reimport | ui_notify.wav
+[  30% ] reimport | ui_money.wav
+[  32% ] reimport | ui_hover.wav
+[  33% ] reimport | ui_error.wav
+[  34% ] reimport | ui_click.wav
+[  36% ] reimport | ui_alert.wav
+[  37% ] reimport | truck_locked.wav
+[  38% ] reimport | tires_snow.wav
+[  40% ] reimport | step_snow_4.wav
+[  41% ] reimport | step_snow_3.wav
+[  42% ] reimport | step_snow_2.wav
+[  44% ] reimport | step_snow_1.wav
+[  45% ] reimport | step_hard_3.wav
+[  46% ] reimport | step_hard_2.wav
+[  48% ] reimport | step_hard_1.wav
+[  49% ] reimport | step_deep_3.wav
+[  50% ] reimport | hand_scoop_1.wav
+[  52% ] reimport | hand_dig.wav
+[  53% ] reimport | gust_whistle.wav
+[  54% ] reimport | furnace_hum.wav
+[  56% ] reimport | fire_crackle.wav
+[  57% ] reimport | engine_truck.wav
+[  58% ] reimport | engine_start.wav
+[  60% ] reimport | engine_small.wav
+[  61% ] reimport | engine_diesel.wav
+[  62% ] reimport | electric_motor.wav
+[  64% ] reimport | door_open.wav
+[  65% ] reimport | door_close.wav
+[  66% ] reimport | death_sting.wav
+[  68% ] reimport | box_complete.wav
+[  69% ] reimport | blower_small.wav
+[  70% ] reimport | blower_large.wav
+[  72% ] reimport | blower_discharge.wav
+[  73% ] reimport | blizzard.wav
+[  74% ] reimport | push_scrape.wav
+[  76% ] reimport | power_on.wav
+[  77% ] reimport | power_off.wav
+[  78% ] reimport | plow_scrape.wav
+[  80% ] reimport | pickup_item.wav
+[  81% ] reimport | paper.wav
+[  82% ] reimport | neighbor_talk_3.wav
+[  84% ] reimport | neighbor_talk_2.wav
+[  85% ] reimport | neighbor_talk_1.wav
+[  86% ] reimport | music_snow.wav
+[  88% ] reimport | music_calm.wav
+[  89% ] reimport | mailbox.wav
+[  90% ] reimport | keys_jingle.wav
+[  92% ] reimport | horn.wav
+[  93% ] reimport | help_call.wav
+[  94% ] reimport | heartbeat.wav
+[  96% ] reimport | hand_toss.wav
+[  97% ] reimport | hand_scoop_3.wav
+[  98% ] reimport | Finalizing Asset Import...
+[ DONE ] reimport
+
+[   0% ] reimport | Started (Re)Importing Assets (74 steps)
+[   0% ] reimport | Executing post-reimport operations...
+[ DONE ] reimport
+
+[   0% ] loading_editor_layout | Started Loading editor (5 steps)
+[   0% ] loading_editor_layout | Loading editor layout...
+[  16% ] loading_editor_layout | Loading docks...
+[ DONE ] loading_editor_layout
+

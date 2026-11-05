@@ -1,0 +1,126 @@
+# command: godot --headless --path . res://tests/weather_truth.tscn -- --out=docs/polish6/baseline/weather_truth.json
+# cwd: /c/Users/orsin/OneDrive/Desktop/Canadian Winter/Canadian-Winter (at 1b38f4a, game code = polish6-baseline)
+# exit code: 0   wall time: 9 s   finished: 2026-11-05 09:46
+# Godot: 4.7.2.stable.official.ed1daf0bf
+
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Severe weather advisory: heavy snow expected around Dec 12 00:03.
+[notify] Severe weather advisory: blizzard expected around Jan 20 13:56.
+[notify] BLIZZARD WARNING in effect. Stay safe and warm.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Extreme cold warning: -26 °C, wind chill -41.
+[notify] Severe weather advisory: heavy snow expected around Mar 6 11:48.
+[notify] Extreme cold warning: -32 °C, wind chill -47.
+[notify] Severe weather advisory: heavy snow expected around Dec 5 10:02.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Severe weather advisory: heavy snow expected around Dec 20 06:46.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Extreme cold warning: -25 °C, wind chill -38.
+[notify] Severe weather advisory: heavy snow expected around Jan 16 15:49.
+[notify] Severe weather advisory: heavy snow expected around Jan 31 03:26.
+[notify] WEATHER ALERT: an unforecast storm is dumping snow at 20 cm an hour — stay indoors!
+[notify] Extreme cold warning: -32 °C, wind chill -47.
+[notify] Extreme cold warning: -32 °C, wind chill -45.
+[notify] Severe weather advisory: blizzard expected around Dec 9 04:56.
+[notify] Severe weather advisory: blizzard expected around Dec 9 10:41.
+[notify] BLIZZARD WARNING in effect. Stay safe and warm.
+[notify] BLIZZARD WARNING in effect. Stay safe and warm.
+[notify] Extreme cold warning: -24 °C, wind chill -38.
+[notify] Severe weather advisory: heavy snow expected around Jan 3 16:10.
+[notify] Extreme cold warning: -30 °C, wind chill -46.
+[notify] Extreme cold warning: -28 °C, wind chill -42.
+[notify] Severe weather advisory: heavy snow expected around Jan 16 06:54.
+[notify] Extreme cold warning: -25 °C, wind chill -39.
+[notify] Extreme cold warning: -26 °C, wind chill -41.
+[notify] Severe weather advisory: heavy snow expected around Feb 18 19:44.
+[notify] Severe weather advisory: heavy snow expected around Feb 22 03:41.
+[notify] Severe weather advisory: heavy snow expected around Feb 26 00:56.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Severe weather advisory: heavy snow expected around Dec 14 15:35.
+[notify] WEATHER ALERT: an unforecast storm is dumping snow at 24 cm an hour — stay indoors!
+[notify] Severe weather advisory: heavy snow expected around Dec 20 10:42.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Extreme cold warning: -24 °C, wind chill -37.
+[notify] Extreme cold warning: -29 °C, wind chill -44.
+[notify] Extreme cold warning: -27 °C, wind chill -39.
+[notify] Severe weather advisory: heavy snow expected around Feb 25 17:54.
+[notify] Severe weather advisory: heavy snow expected around Dec 5 01:10.
+[notify] Severe weather advisory: heavy snow expected around Dec 11 13:09.
+[notify] WEATHER ALERT: an unforecast storm is dumping snow at 26 cm an hour — stay indoors!
+[notify] Severe weather advisory: heavy snow expected around Jan 1 23:55.
+[notify] Extreme cold warning: -24 °C, wind chill -37.
+[notify] Severe weather advisory: heavy snow expected around Feb 8 00:50.
+[notify] Severe weather advisory: heavy snow expected around Feb 8 16:53.
+[notify] Extreme cold warning: -24 °C, wind chill -35.
+[notify] Severe weather advisory: heavy snow expected around Dec 6 06:46.
+[notify] WEATHER ALERT: an unforecast storm is dumping snow at 22 cm an hour — stay indoors!
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Extreme cold warning: -30 °C, wind chill -44.
+[notify] Severe weather advisory: heavy snow expected around Jan 15 08:34.
+[notify] Severe weather advisory: heavy snow expected around Jan 17 15:56.
+[notify] WEATHER ALERT: an unforecast storm is dumping snow at 19 cm an hour — stay indoors!
+[notify] Extreme cold warning: -26 °C, wind chill -40.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Severe weather advisory: heavy snow expected around Mar 14 13:48.
+[notify] Severe weather advisory: heavy snow expected around Dec 10 10:48.
+[notify] Severe weather advisory: heavy snow expected around Dec 27 04:06.
+[notify] Extreme cold warning: -25 °C, wind chill -38.
+[notify] Severe weather advisory: heavy snow expected around Feb 1 11:39.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Extreme cold warning: -29 °C, wind chill -44.
+[notify] Extreme cold warning: -24 °C, wind chill -37.
+[notify] Severe weather advisory: blizzard expected around Mar 16 14:04.
+[notify] BLIZZARD WARNING in effect. Stay safe and warm.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Severe weather advisory: heavy snow expected around Dec 8 10:47.
+[notify] Severe weather advisory: heavy snow expected around Dec 13 00:56.
+[notify] Severe weather advisory: heavy snow expected around Dec 24 01:49.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] WEATHER ALERT: an unforecast storm is dumping snow at 20 cm an hour — stay indoors!
+[notify] Extreme cold warning: -28 °C, wind chill -43.
+[notify] Extreme cold warning: -31 °C, wind chill -47.
+[notify] Extreme cold warning: -27 °C, wind chill -41.
+[notify] Severe weather advisory: heavy snow expected around Mar 8 14:47.
+[notify] Severe weather advisory: heavy snow expected around Dec 30 13:16.
+[notify] Severe weather advisory: heavy snow expected around Jan 8 23:25.
+[notify] Severe weather advisory: heavy snow expected around Jan 25 19:14.
+[notify] Severe weather advisory: blizzard expected around Feb 7 13:49.
+[notify] BLIZZARD WARNING in effect. Stay safe and warm.
+[notify] Severe weather advisory: heavy snow expected around Feb 9 07:22.
+[notify] Severe weather advisory: heavy snow expected around Feb 11 12:02.
+[notify] Severe weather advisory: heavy snow expected around Mar 2 00:40.
+[notify] WEATHER ALERT: an unforecast storm is dumping snow at 23 cm an hour — stay indoors!
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Severe weather advisory: heavy snow expected around Dec 10 06:57.
+[notify] WEATHER ALERT: an unforecast storm is dumping snow at 28 cm an hour — stay indoors!
+[notify] Extreme cold warning: -27 °C, wind chill -40.
+[notify] Severe weather advisory: heavy snow expected around Jan 20 08:47.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Extreme cold warning: -29 °C, wind chill -45.
+[notify] Extreme cold warning: -26 °C, wind chill -40.
+[notify] Extreme cold warning: -25 °C, wind chill -37.
+[notify] Extreme cold warning: -32 °C, wind chill -46.
+[notify] Extreme cold warning: -24 °C, wind chill -33.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Severe weather advisory: blizzard expected around Dec 7 20:11.
+[notify] BLIZZARD WARNING in effect. Stay safe and warm.
+[notify] Severe weather advisory: heavy snow expected around Dec 13 10:11.
+[notify] Extreme cold warning: -26 °C, wind chill -39.
+[notify] Severe weather advisory: heavy snow expected around Jan 27 21:26.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Severe weather advisory: heavy snow expected around Mar 15 11:24.
+[notify] Severe weather advisory: heavy snow expected around Dec 5 13:28.
+[notify] Severe weather advisory: blizzard expected around Dec 8 06:24.
+[notify] BLIZZARD WARNING in effect. Stay safe and warm.
+[notify] Severe weather advisory: heavy snow expected around Dec 15 10:43.
+[notify] WEATHER ALERT: an unforecast storm is dumping snow at 24 cm an hour — stay indoors!
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Severe weather advisory: heavy snow expected around Feb 18 20:41.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Extreme cold warning: -32 °C, wind chill -48.
+[notify] Extreme cold warning: -24 °C, wind chill -37.
+[notify] Severe weather advisory: heavy snow expected around Mar 17 00:38.
+wrote docs/polish6/baseline/weather_truth.json (106 winters)

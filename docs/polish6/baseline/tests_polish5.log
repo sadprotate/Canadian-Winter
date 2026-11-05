@@ -1,0 +1,623 @@
+# command: godot --headless --fixed-fps 60 --path . res://tests/test_runner.tscn -- --only=polish5
+# cwd: /c/Users/orsin/OneDrive/Desktop/Canadian Winter/Canadian-Winter (at 1b38f4a, game code = polish6-baseline)
+# exit code: 0   wall time: 1352 s   finished: 2026-11-05 09:24
+# Godot: 4.7.2.stable.official.ed1daf0bf
+
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+[notify] Good morning.
+[notify] Game saved.
+[notify] Good morning.
+[notify] Game saved.
+[notify] Upgrades now belong to each item. Everything you bought carries over to every item it improved.
+[notify] Good morning.
+[notify] Game saved.
+[notify] Upgrades now belong to each item. Everything you bought carries over to every item it improved.
+[notify] Your jacket and parka are now one insulated coat: the same warmth, worn as before.
+[notify] Good morning.
+[notify] Game saved.
+[notify] Good morning.
+[notify] Game saved.
+[notify] Good morning.
+[notify] Game saved.
+[notify] Good morning.
+[notify] Game saved.
+[notify] Good morning.
+[notify] Game saved.
+[notify] Good morning.
+[notify] Game saved.
+[notify] Good morning.
+[notify] Game saved.
+[notify] Good morning.
+[notify] Game saved.
+[notify] Good morning.
+[notify] Game saved.
+  PASS  test_polish5.gd::test_polish5_fixtures_load_and_play (54576 ms)
+  PASS  test_polish5.gd::test_s1_project_references_resolve (539 ms)
+  PASS  test_polish5.gd::test_s2_key_defaults (1 ms)
+  PASS  test_polish5.gd::test_s2_settings_migration (81 ms)
+[notify] You crack a heating pouch. Warmth +30.
+[notify] The pickup truck is snowed in: about 80 cm of snow around the wheels. It won't move until you dig around them and clear a path.
+  PASS  test_polish5.gd::test_s2_no_conflict_in_any_context (1912 ms)
+      hold + sweep: 0.0407 m3/s; clicking at the cap (6/s): 0.0713 m3/s, 4.5 registered/s, 15.0 L per press
+      clicking at 20/s: 0.0706 m3/s (x0.99 the cap rate, x1.73 hold + sweep), 303 sent, 98 registered
+      clicking at 50/s: 0.0746 m3/s (x1.05 the cap rate, x1.83 hold + sweep), 751 sent, 98 registered
+      without the cap, clicking at 20/s: 0.1423 m3/s, 203 registered
+  PASS  test_polish5.gd::test_s2_autoclick_capped (34762 ms)
+  PASS  test_polish5.gd::test_s2_drop_presses_lose_and_duplicate_nothing (10027 ms)
+  PASS  test_polish5.gd::test_s2_tapping_5_per_s_works (10236 ms)
+  PASS  test_polish5.gd::test_s2_keys_shown_from_input_map (2239 ms)
+  PASS  test_polish5.gd::test_s3_walls_closed_and_finished (1832 ms)
+[notify] Snowblower: hold Left Mouse to run, Z / C to turn the chute, E to let go.
+  PASS  test_polish5.gd::test_s3_no_snow_work_from_inside (28181 ms)
+      standard_shovel at the living-room window: 52.0 L landed at the wall foot, 0.02 m from the indicator
+      hands at the open door: 24.0 L landed at the wall foot, 0.00 m from the indicator
+      electric_shovel at the bedroom window: 25.0 L landed at the wall foot, 0.05 m from the indicator
+[notify] Snowblower: hold Left Mouse to run, Z / C to turn the chute, E to let go.
+      small_blower at the side wall: 36.8 L landed at the wall foot, 0.07 m from the indicator
+      large_blower at the roof: 79.3 L landed at the wall foot, 0.08 m from the indicator
+  PASS  test_polish5.gd::test_s3_thrown_snow_stops_at_buildings (5543 ms)
+  PASS  test_polish5.gd::test_s3_buildings_registry (2183 ms)
+[notify] Snowblower: hold Left Mouse to run, Z / C to turn the chute, E to let go.
+  PASS  test_polish5.gd::test_s3_road_rule_removed (7642 ms)
+[notify] +$1,000
+[notify] +$1,000
+[notify] +$1,000
+[notify] +$1,000
+[notify] +$1,000
+[notify] +$1,000
+[notify] +$1,000
+[notify] +$1,000
+[notify] +$1,000
+[notify] +$1,000
+[notify] +$1,000
+[notify] +$1,000
+[notify] +$1,000
+[notify] +$1,000
+[notify] +$1,000
+[notify] +$1,000
+[notify] +$1,000
+[notify] +$1,000
+[notify] +$1,000
+[notify] +$1,000
+  PASS  test_polish5.gd::test_s3_money_plant (7426 ms)
+  PASS  test_polish5.gd::test_s4_door_line (27587 ms)
+[notify] Contract accepted: Gerry's path, 15 Maple Street — $55. Clear the outlined path from his steps down to his mailbox.
+[notify] Payment received: $55 from Gerry (neighbour).
+[notify] 15 Maple Street — all clear.
+[notify] Contract accepted: Gerry's path, 15 Maple Street — $55. Clear the outlined path from his steps down to his mailbox.
+[notify] Payment received: $55 from Gerry (neighbour).
+[notify] 15 Maple Street — all clear.
+  PASS  test_polish5.gd::test_s4_gerry_snow_tips (8027 ms)
+[notify] Payment received: $50 from Gerry (neighbour).
+[notify] 15 Maple Street — all clear.
+[notify] Gerry taught you the business. Your computer's Help app has his advice. Time to head home!
+[notify] Payment received: $50 from Gerry (neighbour).
+[notify] 15 Maple Street — all clear.
+[notify] Gerry taught you the business. Your computer's Help app has his advice. Time to head home!
+[notify] Payment received: $50 from Gerry (neighbour).
+[notify] 15 Maple Street — all clear.
+[notify] Gerry taught you the business. Your computer's Help app has his advice. Time to head home!
+[notify] Payment received: $50 from Gerry (neighbour).
+[notify] 15 Maple Street — all clear.
+[notify] Gerry taught you the business. Your computer's Help app has his advice. Time to head home!
+  PASS  test_polish5.gd::test_s4_gerry_keys_line (7906 ms)
+  PASS  test_polish5.gd::test_s4_keys_beside_the_front_lawn_tree (1734 ms)
+  PASS  test_polish5.gd::test_s4_photo_hint_and_view (1960 ms)
+      §5 the buildings: Maple Ridge School 12 Cedar Lane, Northern Supply Co. 11 Cedar Lane, St. Andrew's Church 40 Cedar Lane
+  PASS  test_polish5.gd::test_s5_addresses_from_the_layout (1 ms)
+      §5 Maple Ridge School: 12 Cedar Lane on its end wall, 28° off the way to its lot's entrance, 18 px from there
+      §5 Northern Supply Co.: 11 Cedar Lane on its front, 48° off the way to its lot's entrance, 24 px from there
+      §5 St. Andrew's Church: 40 Cedar Lane on its end wall, 12° off the way to its lot's entrance, 15 px from there
+  PASS  test_polish5.gd::test_s5_numbers_on_every_house_and_building (1873 ms)
+[notify] Commercial tier reached (reputation 68): parking lot contracts are open to you.
+[notify] Bid of $982 placed on Maple Ridge School, 12 Cedar Lane.
+[notify] Payment received: $17 from Amélie Campbell.
+[notify] 28 Maple Street — all clear.
+  PASS  test_polish5.gd::test_s5_same_addresses_everywhere (3841 ms)
+  PASS  test_polish5.gd::test_s5_map_shows_every_number (1801 ms)
+      §6 blade widths: small_shovel 0.342 (profile 0.34 / push 0.36), standard_shovel 0.462 (profile 0.46 / push 0.48), wide_pusher 0.902 (profile 0.90 / push 0.90), snow_scraper 0.750 (profile 0.75 / push 0.75), large_scraper 1.000 (profile 1.00 / push 1.20), snow_sleigh 0.812 (profile 0.80 / push 0.80), electric_shovel 0.348 (profile 0.32 / push 0.34)
+  PASS  test_polish5.gd::test_s6_blades_match_the_profiles (2 ms)
+  PASS  test_polish5.gd::test_s6_models_grips_and_exposure_points (2342 ms)
+  PASS  test_polish5.gd::test_s6_one_icon_set (2046 ms)
+  PASS  test_polish5.gd::test_s7_app_order_and_layout (2519 ms)
+[notify] The computer is locked — Gerry across the street set it up for you and has the password. Go see if he needs a hand.
+  PASS  test_polish5.gd::test_s7_opens_on_weather (4757 ms)
+[notify] Bid of $33 placed on 15 Birch Avenue.
+[notify] Bid won! Maple Ridge Clearing wins 15 Birch Avenue — one-time job at $33, due 9 p.m. Thu.
+  PASS  test_polish5.gd::test_s7_company_name (5596 ms)
+      sent: move_forward=W, move_back=S, move_left=A, move_right=D, jump=Space, sprint=Shift, crouch=Ctrl, primary=Left Mouse, secondary=Right Mouse, tool_angle=R, slot_1=1, slot_2=2, slot_3=3, slot_4=4, slot_next=Wheel Down, slot_prev=Wheel Up, drop=G, store=F, use_pouch=H, interact=E, camera_toggle=V, map=M, inventory=Tab, fast_forward=T, debug=F1, veh_accelerate=W, veh_reverse=S, veh_left=A, veh_right=D, veh_brake=Space, veh_tool=Left Mouse, veh_aim_left=Z, veh_aim_right=C, veh_horn=H, veh_radio=T
+  PASS  test_polish5.gd::test_s7_typing_fires_no_game_action (2635 ms)
+[notify] Payment received: $116 from Raj Gagnon.
+[notify] 11 Maple Street — all clear.
+[notify] Payment received: $39 from Priya Martin.
+[notify] 19 Maple Street — all clear.
+[notify] MISSED: 23 Maple Street wasn't cleared by 12:01 p.m. — no pay, -6 reputation. It's back on the board.
+  PASS  test_polish5.gd::test_s7_contract_history (1879 ms)
+  PASS  test_polish5.gd::test_s7_v2_save_loads_into_v3 (3408 ms)
+[notify] Severe weather advisory: heavy snow expected around Dec 3 14:00.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Bid of $41 placed on 15 Birch Avenue.
+[notify] Outbid on 15 Birch Avenue — lowest bid $40.
+  PASS  test_polish5.gd::test_s7_v3_save_round_trips (2775 ms)
+[notify] POWER CUT: your hydro bill was not paid. The house will cool down over the day.
+[notify] Bid of $140 placed on 12 Birch Avenue.
+      fit: 3 contracts, 3 listings, 1 bids, 4 history entries
+[notify] Order placed: Standard Snow Shovel — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+  PASS  test_polish5.gd::test_s7_every_app_fits (5109 ms)
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Severe weather advisory: heavy snow expected around Dec 12 00:03.
+[notify] Severe weather advisory: blizzard expected around Jan 20 13:56.
+[notify] BLIZZARD WARNING in effect. Stay safe and warm.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Extreme cold warning: -26 °C, wind chill -41.
+[notify] Severe weather advisory: heavy snow expected around Mar 6 11:48.
+[notify] Extreme cold warning: -32 °C, wind chill -47.
+[notify] Severe weather advisory: heavy snow expected around Dec 5 10:02.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Severe weather advisory: heavy snow expected around Dec 20 06:46.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Extreme cold warning: -25 °C, wind chill -38.
+[notify] Severe weather advisory: heavy snow expected around Jan 16 15:49.
+[notify] Severe weather advisory: heavy snow expected around Jan 31 03:26.
+[notify] WEATHER ALERT: an unforecast storm is dumping snow at 20 cm an hour — stay indoors!
+[notify] Extreme cold warning: -32 °C, wind chill -47.
+[notify] Extreme cold warning: -32 °C, wind chill -45.
+[notify] Severe weather advisory: blizzard expected around Dec 9 04:56.
+[notify] Severe weather advisory: blizzard expected around Dec 9 10:41.
+[notify] BLIZZARD WARNING in effect. Stay safe and warm.
+[notify] BLIZZARD WARNING in effect. Stay safe and warm.
+[notify] Extreme cold warning: -24 °C, wind chill -38.
+[notify] Severe weather advisory: heavy snow expected around Jan 3 16:10.
+[notify] Extreme cold warning: -30 °C, wind chill -46.
+[notify] Extreme cold warning: -28 °C, wind chill -42.
+[notify] Severe weather advisory: heavy snow expected around Jan 16 06:54.
+[notify] Extreme cold warning: -25 °C, wind chill -39.
+[notify] Extreme cold warning: -26 °C, wind chill -41.
+[notify] Severe weather advisory: heavy snow expected around Feb 18 19:44.
+[notify] Severe weather advisory: heavy snow expected around Feb 22 03:41.
+[notify] Severe weather advisory: heavy snow expected around Feb 26 00:56.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Severe weather advisory: heavy snow expected around Dec 14 15:35.
+[notify] WEATHER ALERT: an unforecast storm is dumping snow at 24 cm an hour — stay indoors!
+[notify] Severe weather advisory: heavy snow expected around Dec 20 10:42.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Extreme cold warning: -24 °C, wind chill -37.
+[notify] Extreme cold warning: -29 °C, wind chill -44.
+[notify] Extreme cold warning: -27 °C, wind chill -39.
+[notify] Severe weather advisory: heavy snow expected around Feb 25 17:54.
+[notify] Severe weather advisory: heavy snow expected around Dec 5 01:10.
+[notify] Severe weather advisory: heavy snow expected around Dec 11 13:09.
+[notify] WEATHER ALERT: an unforecast storm is dumping snow at 26 cm an hour — stay indoors!
+[notify] Severe weather advisory: heavy snow expected around Jan 1 23:55.
+[notify] Extreme cold warning: -24 °C, wind chill -37.
+[notify] Severe weather advisory: heavy snow expected around Feb 8 00:50.
+[notify] Severe weather advisory: heavy snow expected around Feb 8 16:53.
+[notify] Extreme cold warning: -24 °C, wind chill -35.
+[notify] Severe weather advisory: heavy snow expected around Dec 6 06:46.
+[notify] WEATHER ALERT: an unforecast storm is dumping snow at 22 cm an hour — stay indoors!
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Extreme cold warning: -30 °C, wind chill -44.
+[notify] Severe weather advisory: heavy snow expected around Jan 15 08:34.
+[notify] Severe weather advisory: heavy snow expected around Jan 17 15:56.
+[notify] WEATHER ALERT: an unforecast storm is dumping snow at 19 cm an hour — stay indoors!
+[notify] Extreme cold warning: -26 °C, wind chill -40.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Severe weather advisory: heavy snow expected around Mar 14 13:48.
+[notify] Severe weather advisory: heavy snow expected around Dec 10 10:48.
+[notify] Severe weather advisory: heavy snow expected around Dec 27 04:06.
+[notify] Extreme cold warning: -25 °C, wind chill -38.
+[notify] Severe weather advisory: heavy snow expected around Feb 1 11:39.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Extreme cold warning: -29 °C, wind chill -44.
+[notify] Extreme cold warning: -24 °C, wind chill -37.
+[notify] Severe weather advisory: blizzard expected around Mar 16 14:04.
+[notify] BLIZZARD WARNING in effect. Stay safe and warm.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Severe weather advisory: heavy snow expected around Dec 8 10:47.
+[notify] Severe weather advisory: heavy snow expected around Dec 13 00:56.
+[notify] Severe weather advisory: heavy snow expected around Dec 24 01:49.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] WEATHER ALERT: an unforecast storm is dumping snow at 20 cm an hour — stay indoors!
+[notify] Extreme cold warning: -28 °C, wind chill -43.
+[notify] Extreme cold warning: -31 °C, wind chill -47.
+[notify] Extreme cold warning: -27 °C, wind chill -41.
+[notify] Severe weather advisory: heavy snow expected around Mar 8 14:47.
+[notify] Severe weather advisory: heavy snow expected around Dec 30 13:16.
+[notify] Severe weather advisory: heavy snow expected around Jan 8 23:25.
+[notify] Severe weather advisory: heavy snow expected around Jan 25 19:14.
+[notify] Severe weather advisory: blizzard expected around Feb 7 13:49.
+[notify] BLIZZARD WARNING in effect. Stay safe and warm.
+[notify] Severe weather advisory: heavy snow expected around Feb 9 07:22.
+[notify] Severe weather advisory: heavy snow expected around Feb 11 12:02.
+[notify] Severe weather advisory: heavy snow expected around Mar 2 00:40.
+[notify] WEATHER ALERT: an unforecast storm is dumping snow at 23 cm an hour — stay indoors!
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Severe weather advisory: heavy snow expected around Dec 10 06:57.
+[notify] WEATHER ALERT: an unforecast storm is dumping snow at 28 cm an hour — stay indoors!
+[notify] Extreme cold warning: -27 °C, wind chill -40.
+[notify] Severe weather advisory: heavy snow expected around Jan 20 08:47.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Extreme cold warning: -29 °C, wind chill -45.
+[notify] Extreme cold warning: -26 °C, wind chill -40.
+[notify] Extreme cold warning: -25 °C, wind chill -37.
+[notify] Extreme cold warning: -32 °C, wind chill -46.
+[notify] Extreme cold warning: -24 °C, wind chill -33.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Severe weather advisory: blizzard expected around Dec 7 20:11.
+[notify] BLIZZARD WARNING in effect. Stay safe and warm.
+[notify] Severe weather advisory: heavy snow expected around Dec 13 10:11.
+[notify] Extreme cold warning: -26 °C, wind chill -39.
+[notify] Severe weather advisory: heavy snow expected around Jan 27 21:26.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Severe weather advisory: heavy snow expected around Mar 15 11:24.
+[notify] Severe weather advisory: heavy snow expected around Dec 5 13:28.
+[notify] Severe weather advisory: blizzard expected around Dec 8 06:24.
+[notify] BLIZZARD WARNING in effect. Stay safe and warm.
+[notify] Severe weather advisory: heavy snow expected around Dec 15 10:43.
+[notify] WEATHER ALERT: an unforecast storm is dumping snow at 24 cm an hour — stay indoors!
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Severe weather advisory: heavy snow expected around Feb 18 20:41.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Extreme cold warning: -32 °C, wind chill -48.
+[notify] Extreme cold warning: -24 °C, wind chill -37.
+[notify] Severe weather advisory: heavy snow expected around Mar 17 00:38.
+  PASS  test_polish5.gd::test_s8_truth_unchanged (2389 ms)
+  PASS  test_polish5.gd::test_s8_tier_right_from_three_days_out (66873 ms)
+  PASS  test_polish5.gd::test_s8_accuracy_targets (42350 ms)
+  PASS  test_polish5.gd::test_s8_surprises (5992 ms)
+  PASS  test_polish5.gd::test_s8_radio_start_to_end (3722 ms)
+  PASS  test_polish5.gd::test_s8_sync_every_hour (31655 ms)
+[notify] Severe weather advisory: heavy snow expected around Jan 28 11:29.
+[notify] Severe weather advisory: heavy snow expected around Jan 28 11:29.
+[notify] Severe weather advisory: heavy snow expected around Jan 28 11:29.
+[notify] Severe weather advisory: heavy snow expected around Jan 28 11:29.
+  PASS  test_polish5.gd::test_s8_same_in_real_time_sleep_and_reload (16334 ms)
+      fullest TV: winter 3, Jan 1 00:20: ["Light snow  ·  Under 1 cm  ·  overnight", "Light snow  ·  2–4 cm  ·  from about midnight to 3 a.m.", "Snowstorm  ·  11–27 cm  ·  from about 4 p.m."]; longest bulletin (283 characters): Radio: Right now: moderate snow developing. 10 p.m. moderate snow, −5°, wind picking up. 11 p.m. blizzard, −14°, wind picking up, 65 to 76 cm an hour. Midnight blizzard, 39 to 47 cm an hour. Major snowstorm ending around 1 a.m. tomorrow, another 109 to 127 cm. City crews: Mon 8 a.m.
+[notify] POWER CUT: your hydro bill was not paid. The house will cool down over the day.
+  PASS  test_polish5.gd::test_s8_fullest_displays_fit (8586 ms)
+  PASS  test_polish5.gd::test_s9_clock_rate (3296 ms)
+  PASS  test_polish5.gd::test_s9_felt_rates (2251 ms)
+[notify] Bid of $117 placed on 16 Birch Avenue.
+[notify] Payment received: $17 from Kevin MacDonald.
+[notify] 23 Maple Street — all clear.
+[notify] The city crews are clearing the streets and sidewalks.
+[notify] URGENT: 11 Maple Street is due 10 p.m. Thu — 2 h left.
+[notify] Storm: 19 Maple Street is now due 9 p.m. Sat.
+[notify] Storm: 27 Maple Street is now due 9 p.m. Sat.
+[notify] Payment received: $40 from Sandra MacDonald.
+[notify] 19 Maple Street — all clear.
+[notify] Bid won! 16 Birch Avenue — one-time job at $117, due 9 p.m. Fri.
+[notify] Storm: 16 Birch Avenue is now due 9 p.m. Sat.
+[notify] 23 Maple Street needs clearing — new snow on the property.
+[notify] MISSED: 11 Maple Street wasn't cleared by 10 p.m. — no pay, -6 reputation. It's back on the board.
+[notify] Storm: 23 Maple Street is due 9 p.m. Sat, a day later.
+[notify] Bid of $117 placed on 16 Birch Avenue.
+[notify] Payment received: $17 from Kevin MacDonald.
+[notify] 23 Maple Street — all clear.
+[notify] The city crews are clearing the streets and sidewalks.
+[notify] URGENT: 11 Maple Street is due 10 p.m. Thu — 2 h left.
+[notify] Storm: 19 Maple Street is now due 9 p.m. Sat.
+[notify] Storm: 27 Maple Street is now due 9 p.m. Sat.
+[notify] Payment received: $40 from Sandra MacDonald.
+[notify] 19 Maple Street — all clear.
+[notify] Bid won! 16 Birch Avenue — one-time job at $117, due 9 p.m. Fri.
+[notify] Storm: 16 Birch Avenue is now due 9 p.m. Sat.
+[notify] 23 Maple Street needs clearing — new snow on the property.
+[notify] MISSED: 11 Maple Street wasn't cleared by 10 p.m. — no pay, -6 reputation. It's back on the board.
+[notify] Storm: 23 Maple Street is due 9 p.m. Sat, a day later.
+[notify] Bid of $117 placed on 16 Birch Avenue.
+[notify] Payment received: $17 from Kevin MacDonald.
+[notify] 23 Maple Street — all clear.
+[notify] The city crews are clearing the streets and sidewalks.
+[notify] URGENT: 11 Maple Street is due 10 p.m. Thu — 2 h left.
+[notify] Storm: 19 Maple Street is now due 9 p.m. Sat.
+[notify] Storm: 27 Maple Street is now due 9 p.m. Sat.
+[notify] Payment received: $40 from Sandra MacDonald.
+[notify] 19 Maple Street — all clear.
+[notify] Bid won! 16 Birch Avenue — one-time job at $117, due 9 p.m. Fri.
+[notify] Storm: 16 Birch Avenue is now due 9 p.m. Sat.
+[notify] 23 Maple Street needs clearing — new snow on the property.
+[notify] MISSED: 11 Maple Street wasn't cleared by 10 p.m. — no pay, -6 reputation. It's back on the board.
+[notify] Storm: 23 Maple Street is due 9 p.m. Sat, a day later.
+      1×: 11242 frames, 11242 substeps; storm 4.5 cm, grader passes 1 → 1, bid won, drops []
+      2×: 6498 frames (11242 substeps), 73 % of the frames at more than 1×, held 1754 frames, drops ["contract", "bid", "contract"]
+      10×: 2712 frames (11242 substeps), 35 % of the frames at more than 1×, held 1754 frames, drops ["contract", "bid", "contract"]
+  PASS  test_polish5.gd::test_s9_fast_forward_equals_1x (340298 ms)
+[notify] Test alert.
+[notify] Sidewalks, 11–19 Maple Street is due 12:02 a.m. Thu — 12 h left to clear it.
+[notify] Bid of $41 placed on 15 Birch Avenue.
+[notify] Bid won! 15 Birch Avenue — one-time job at $41, due 9 p.m. Thu.
+[notify] You are cold.
+[notify] The pickup truck is snowed in: about 80 cm of snow around the wheels. It won't move until you dig around them and clear a path.
+[notify] Radio: 1 p.m. light snow, −3°, wind picking up. 2 p.m. cloudy, 0°. 3 p.m. light snow, −3°. Light snow ending around 2 p.m., another 1 to 2 cm. Light snow ending around midnight, 3 to 5 cm in all.
+[notify] Snowblower: hold Left Mouse to run, Z / C to turn the chute, E to let go.
+[notify] Good morning.
+[notify] Game saved.
+  PASS  test_polish5.gd::test_s9_auto_return_and_availability (4307 ms)
+[notify] The city crews are clearing the streets and sidewalks.
+[notify] BLIZZARD WARNING: a blizzard has developed suddenly!
+[notify] BLIZZARD WARNING: a blizzard has developed suddenly!
+  PASS  test_polish5.gd::test_s9_holds_and_caps (14006 ms)
+[notify] The pickup truck is snowed in: about 80 cm of snow around the wheels. It won't move until you dig around them and clear a path.
+  PASS  test_polish5.gd::test_s9_speed_control (1994 ms)
+  PASS  test_polish5.gd::test_s9_not_saved (5068 ms)
+[notify] Payment received: $50 from Gerry (neighbour).
+[notify] 15 Maple Street — all clear.
+  PASS  test_polish5.gd::test_s9_gerry_walk_holds (2630 ms)
+[notify] Commercial tier reached (reputation 68): parking lot contracts are open to you.
+[notify] Bid of $162 placed on Maple Ridge School, 12 Cedar Lane.
+[notify] City tier reached (reputation 85): street and sidewalk contracts are open to you.
+[notify] Payment received: $17 from Mei Bouchard.
+[notify] 11 Maple Street — all clear.
+[notify] MISSED: 19 Maple Street wasn't cleared by 10 a.m. — no pay, -6 reputation. It's back on the board.
+  PASS  test_polish5.gd::test_s10_tiers_and_reputation (1198 ms)
+      driveway share by reputation 0 / 30 / 50 / 68: [0.27, 0.37, 0.42, 0.46] ([{ "path": 627, "driveway": 228 }, { "path": 542, "driveway": 312 }, { "path": 478, "driveway": 342 }, { "path": 464, "driveway": 398 }])
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+  PASS  test_polish5.gd::test_s10_paths_first (7913 ms)
+[notify] Bid of $39 placed on 31 Birch Avenue.
+[notify] Bid on 31 Birch Avenue changed to $49.
+[notify] Bid on 31 Birch Avenue changed to $34.
+[notify] Bid on 31 Birch Avenue withdrawn.
+[notify] Bid of $39 placed on 31 Birch Avenue.
+[notify] Outbid on 31 Birch Avenue — lowest bid $36.
+[notify] Bid of $41 placed on 31 Birch Avenue.
+[notify] Outbid on 31 Birch Avenue — lowest bid $40.
+[notify] Bid on 31 Birch Avenue changed to $39.
+[notify] Outbid on 31 Birch Avenue — lowest bid $38.
+[notify] Bid on 31 Birch Avenue changed to $37.
+[notify] Bid of $41 placed on 31 Birch Avenue.
+[notify] Outbid on 31 Birch Avenue — lowest bid $40.
+[notify] Bid on 31 Birch Avenue changed to $39.
+[notify] Outbid on 31 Birch Avenue — lowest bid $38.
+[notify] Bid on 31 Birch Avenue changed to $37.
+[notify] Bid of $32 placed on 31 Birch Avenue.
+[notify] Bid of $111 placed on 31 Maple Street.
+[notify] Outbid on 31 Maple Street — lowest bid $41.
+[notify] Bid on 31 Birch Avenue changed to $33.
+[notify] Bid on 31 Birch Avenue changed to $32.
+[notify] Bid won! Test Snow Co. wins 31 Birch Avenue — one-time job at $32, due 9 p.m. Thu.
+[notify] Bid lost: 31 Maple Street — Frost Brothers Snow Removal won at $41.
+  PASS  test_polish5.gd::test_s10_bidding_day (3942 ms)
+[notify] 11 Maple Street is due 9 p.m. Thu — 12 h left to clear it.
+[notify] 19 Maple Street is due 9 p.m. Thu — 12 h left to clear it.
+[notify] URGENT: 11 Maple Street is due 9 p.m. Thu — 3 h left.
+[notify] URGENT: 19 Maple Street is due 9 p.m. Thu — 3 h left.
+[notify] Payment received: $17 from Mei Bouchard.
+[notify] 11 Maple Street — all clear.
+[notify] MISSED: 19 Maple Street wasn't cleared by 9 p.m. — no pay, -6 reputation. It's back on the board.
+[notify] Storm: 23 Maple Street is now due 9 p.m. Fri.
+[notify] Payment received: $39 from City of Maple Ridge.
+[notify] Sidewalks, 12–20 Maple Street — all clear.
+[notify] Sidewalks, 12–20 Maple Street needs clearing — new snow on the property.
+[notify] Payment received: $39 from City of Maple Ridge.
+[notify] Sidewalks, 12–20 Maple Street — all clear.
+[notify] Sidewalks, 12–20 Maple Street needs clearing — new snow on the property.
+[notify] Storm: Sidewalks, 12–20 Maple Street is due 9 p.m. Fri, a day later.
+  PASS  test_polish5.gd::test_s10_due_times (3646 ms)
+  PASS  test_polish5.gd::test_s10_old_saves (529 ms)
+[notify] Bid of $40 placed on 31 Birch Avenue.
+[notify] Payment received: $37 from Mei Roy.
+[notify] 31 Maple Street — all clear.
+[notify] Outbid on 31 Birch Avenue — lowest bid $39.
+[notify] Bid lost: 31 Birch Avenue — Northern Shovelers won at $39.
+[notify] Payment received: $38 from Jacques Campbell.
+[notify] 27 Maple Street — all clear.
+[notify] Outbid on 31 Birch Avenue — lowest bid $39.
+[notify] Bid lost: 31 Birch Avenue — Northern Shovelers won at $39.
+[notify] Payment received: $38 from Jacques Campbell.
+[notify] 27 Maple Street — all clear.
+  PASS  test_polish5.gd::test_s10_save_mid_bidding_and_mid_job (1596 ms)
+[notify] Bid of $41 placed on 15 Birch Avenue.
+[notify] Bid on 15 Birch Avenue changed to $36.
+[notify] Bid on 15 Birch Avenue withdrawn.
+[notify] Bid of $41 placed on 15 Birch Avenue.
+[notify] Outbid on 15 Birch Avenue — lowest bid $40.
+[notify] Bid on 15 Birch Avenue changed to $39.
+[notify] Bid on 15 Birch Avenue changed to $37.
+[notify] Outbid on 15 Birch Avenue — lowest bid $36.
+  PASS  test_polish5.gd::test_s10_board_live (2064 ms)
+[notify] Payment received: $24 from Yves Tremblay.
+[notify] 20 Maple Street — all clear.
+  PASS  test_polish5.gd::test_s10b_no_flags_green_outlines (3507 ms)
+  PASS  test_polish5.gd::test_s10b_hud_box_line (2980 ms)
+  PASS  test_polish5.gd::test_s10b_map_jobs (2443 ms)
+[notify] City tier reached (reputation 85): street and sidewalk contracts are open to you.
+[notify] Bid of $39 placed on Sidewalks, 12–20 Birch Avenue.
+[notify] Bid of $93 placed on Maple Street (east).
+  PASS  test_polish5.gd::test_s10b_street_needs_a_vehicle (2191 ms)
+[notify] Bid of $41 placed on 15 Birch Avenue.
+[notify] Bid on 15 Birch Avenue changed to $36.
+[notify] Bid on 15 Birch Avenue withdrawn.
+  PASS  test_polish5.gd::test_s10b_board_updates_in_place (2759 ms)
+  PASS  test_polish5.gd::test_s11_weekdays (13 ms)
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Severe weather advisory: heavy snow expected around Dec 12 00:03.
+[notify] Severe weather advisory: blizzard expected around Jan 20 13:56.
+[notify] BLIZZARD WARNING in effect. Stay safe and warm.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Extreme cold warning: -26 °C, wind chill -41.
+[notify] Severe weather advisory: heavy snow expected around Mar 6 11:48.
+[notify] Extreme cold warning: -32 °C, wind chill -47.
+      seed 2024, winter 1: drawn 7.60 h, passes at 8:00 — { "Fri": 17, "Mon": 17 }, first Fri Dec 4 08:00
+[notify] Severe weather advisory: heavy snow expected around Dec 10 10:48.
+[notify] Severe weather advisory: heavy snow expected around Dec 27 04:06.
+[notify] Extreme cold warning: -25 °C, wind chill -38.
+[notify] Severe weather advisory: heavy snow expected around Feb 1 11:39.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Extreme cold warning: -29 °C, wind chill -44.
+[notify] Extreme cold warning: -24 °C, wind chill -37.
+[notify] Severe weather advisory: blizzard expected around Mar 16 14:04.
+[notify] BLIZZARD WARNING in effect. Stay safe and warm.
+      seed 7, winter 1: drawn 7.67 h, passes at 8:00 — { "Fri": 17, "Mon": 17 }, first Fri Dec 4 08:00
+[notify] Severe weather advisory: heavy snow expected around Dec 3 00:57.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Extreme cold warning: -32 °C, wind chill -48.
+[notify] Severe weather advisory: heavy snow expected around Jan 14 02:42.
+[notify] Severe weather advisory: heavy snow expected around Feb 16 17:08.
+[notify] Severe weather advisory: heavy snow expected around Feb 26 18:26.
+      seed 99, winter 1: drawn 5.24 h, passes at 6:00 — { "Fri": 17, "Mon": 17 }, first Fri Dec 4 06:00
+[notify] Severe weather advisory: blizzard expected around Dec 9 04:56.
+[notify] Severe weather advisory: blizzard expected around Dec 9 10:41.
+[notify] BLIZZARD WARNING in effect. Stay safe and warm.
+      seed 2024, winter 3: drawn 6.71 h, passes at 7:00 — { "Mon": 1, "Fri": 1 }, first Mon Dec 4 07:00
+  PASS  test_polish5.gd::test_s11_crew_days_whole_winter (185383 ms)
+      §11 across the strip, from the sidewalk out (m³ over the 21 boxes): crew [266.8, 266.8, 177.9, 106.7, 53.4, 17.8], grader's windrow [53.1, 106.1, 185.7, 265.3, 291.9, 265.3]
+  PASS  test_polish5.gd::test_s11_sidewalk_pass (3186 ms)
+  PASS  test_polish5.gd::test_s11_grader_pass_unchanged (2738 ms)
+[notify] The city crews are clearing the streets and sidewalks.
+      §11 real time: 10862 frames; the plow on a sidewalk box 6888, moving 7343, held 1× for it 1320
+[notify] The city crews are clearing the streets and sidewalks.
+  PASS  test_polish5.gd::test_s11_skip_equals_real_time (105842 ms)
+[notify] The city crews are clearing the streets and sidewalks.
+  PASS  test_polish5.gd::test_s11_displays (4255 ms)
+  PASS  test_polish5.gd::test_s12_street_at_storm_depth (7833 ms)
+  PASS  test_polish5.gd::test_s12_windrow_across_an_apron (15321 ms)
+  PASS  test_polish5.gd::test_s12_bank_with_a_run_up (3956 ms)
+  PASS  test_polish5.gd::test_s12_bogging_down_in_deep_snow (8276 ms)
+  PASS  test_polish5.gd::test_s12_volume_conserved (6440 ms)
+[notify] The pickup truck is snowed in: about 80 cm of snow around the wheels. It won't move until you dig around them and clear a path.
+  PASS  test_polish5.gd::test_s12_opening_by_the_numbers (2753 ms)
+[notify] Order placed: Small Snow Shovel: Capacity 1 — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Small Snow Shovel: Capacity 1 installed.
+  PASS  test_polish5.gd::test_s13_upgrades_belong_to_an_item (5162 ms)
+[notify] Order placed: Large Snow Scraper — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] You found a small snow shovel! Hold Left Mouse and sweep it through the snow to fill it, release to throw, hold Right Mouse to push.
+[notify] Order placed: Pickup Truck: Front plow — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] The store crew bolted a front plow onto your pickup! Left Mouse to drop the blade, Z/C to angle it.
+[notify] Order placed: ATV with Blade: Heated cab — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] ATV with Blade: Heated cab installed.
+  PASS  test_polish5.gd::test_s13_ownership_and_the_front_plow (2188 ms)
+[notify] Upgrades now belong to each item. Everything you bought carries over to every item it improved.
+[notify] Good morning.
+[notify] Game saved.
+[notify] Upgrades now belong to each item. Everything you bought carries over to every item it improved.
+[notify] Your jacket and parka are now one insulated coat: the same warmth, worn as before.
+[notify] Good morning.
+[notify] Game saved.
+  PASS  test_polish5.gd::test_s13_old_global_levels_carry_over (10341 ms)
+      §13 ladder: item · track · what it improves · base → fully upgraded (levels) · next item's base (ratio)
+        hands · capacity · load (m³) · 0.03 → 0.0469 (2) · small_shovel 0.05 (0.94)
+        hands · capacity · fill speed (m³/s) · 0.085 → 0.1328 (2) · small_shovel 0.13 (1.02)
+        hands · throw · throw (m) · 1.8 → 2.7 (2) · small_shovel 4.2 (0.64)
+        hands · push_width · push width (m) · 0.5 → 0.575 (1) · small_shovel 0.36 (1.60)
+        hands · push · push strength (m³) · 0.035 → 0.0403 (1) · small_shovel 0.09 (0.45)
+        small_shovel · capacity · load (m³) · 0.05 → 0.0625 (1) · standard_shovel 0.065 (0.96)
+        small_shovel · capacity · fill speed (m³/s) · 0.13 → 0.1625 (1) · standard_shovel 0.16 (1.02)
+        small_shovel · throw · throw (m) · 4.2 → 5.25 (1) · standard_shovel 5.2 (1.01)
+        small_shovel · push_width · push width (m) · 0.36 → 0.414 (1) · standard_shovel 0.48 (0.86)
+        small_shovel · push · push strength (m³) · 0.09 → 0.1035 (1) · standard_shovel 0.14 (0.74)
+        standard_shovel · capacity · load (m³) · 0.065 → 0.1016 (2) · wide_pusher 0.045 (2.26)
+        standard_shovel · capacity · fill speed (m³/s) · 0.16 → 0.25 (2) · wide_pusher 0.09 (2.78)
+        standard_shovel · throw · throw (m) · 5.2 → 7.8 (2) · wide_pusher 2.2 (3.55)
+        standard_shovel · push_width · push width (m) · 0.48 → 0.552 (1) · wide_pusher 0.9 (0.61)
+        standard_shovel · push · push strength (m³) · 0.14 → 0.161 (1) · wide_pusher 0.5 (0.32)
+        wide_pusher · capacity · load (m³) · 0.045 → 0.0562 (1) · snow_scraper 0.05 (1.12)
+        wide_pusher · capacity · fill speed (m³/s) · 0.09 → 0.1125 (1) · snow_scraper 0.1 (1.12)
+        wide_pusher · throw · throw (m) · 2.2 → 2.75 (1) · snow_scraper 2.8 (0.98)
+        wide_pusher · push_width · push width (m) · 0.9 → 1.035 (1) · snow_scraper 0.75 (1.38)
+        wide_pusher · push · push strength (m³) · 0.5 → 0.575 (1) · snow_scraper 0.6 (0.96)
+        snow_scraper · capacity · load (m³) · 0.05 → 0.0781 (2) · large_scraper 0.08 (0.98)
+        snow_scraper · capacity · fill speed (m³/s) · 0.1 → 0.1563 (2) · large_scraper 0.16 (0.98)
+        snow_scraper · throw · throw (m) · 2.8 → 3.5 (1) · large_scraper 3.4 (1.03)
+        snow_scraper · push_width · push width (m) · 0.75 → 0.8625 (1) · large_scraper 1.2 (0.72)
+        snow_scraper · push · push strength (m³) · 0.6 → 0.69 (1) · large_scraper 0.95 (0.73)
+        large_scraper · capacity · load (m³) · 0.08 → 0.125 (2) · snow_sleigh 0.4 (0.31)
+        large_scraper · capacity · fill speed (m³/s) · 0.16 → 0.25 (2) · snow_sleigh 0.32 (0.78)
+        large_scraper · throw · throw (m) · 3.4 → 5.1 (2) · snow_sleigh 1.0 (5.10)
+        large_scraper · push_width · push width (m) · 1.2 → 1.38 (1) · snow_sleigh 0.8 (1.72)
+        large_scraper · push · push strength (m³) · 0.95 → 1.0925 (1) · snow_sleigh 1.4 (0.78)
+        snow_sleigh · capacity · load (m³) · 0.4 → 0.625 (2) ·  -1.0 (—)
+        snow_sleigh · capacity · fill speed (m³/s) · 0.32 → 0.5 (2) ·  -1.0 (—)
+        snow_sleigh · throw · throw (m) · 1.0 → 1.5 (2) · electric_shovel 5.0 (0.30)
+        snow_sleigh · push_width · push width (m) · 0.8 → 0.92 (1) · electric_shovel 0.34 (2.71)
+        snow_sleigh · push · push strength (m³) · 1.4 → 1.61 (1) · electric_shovel 0.08 (20.12)
+        electric_shovel · throw · throw (m) · 5.0 → 7.5 (2) · small_blower 8.0 (0.94)
+        electric_shovel · push_width · push width (m) · 0.34 → 0.391 (1) · pickup_plow 2.4 (0.16)
+        electric_shovel · push · push strength (m³) · 0.08 → 0.092 (1) · pickup_plow 2.8 (0.03)
+        small_blower · intake · intake (m³/s) · 0.065 → 0.0845 (1) · large_blower 0.14 (0.60)
+        small_blower · chute · throw (m) · 8.0 → 10.4 (1) · large_blower 12.5 (0.83)
+        large_blower · intake · intake (m³/s) · 0.14 → 0.182 (1) · tractor_blower 0.95 (0.19)
+        large_blower · chute · throw (m) · 12.5 → 16.25 (1) · tractor_blower 16.0 (1.02)
+        pickup_plow · plow_width · push width (m) · 2.4 → 2.76 (1) · atv_blade 1.5 (1.84)
+        pickup_plow · plow_power · push strength (m³) · 2.8 → 3.36 (1) · atv_blade 1.3 (2.58)
+        atv_blade · plow_width · push width (m) · 1.5 → 1.725 (1) · tractor_blade 2.4 (0.72)
+        atv_blade · plow_power · push strength (m³) · 1.3 → 1.56 (1) · tractor_blade 4.5 (0.35)
+        tractor_blade · plow_width · push width (m) · 2.4 → 2.76 (1) · grader 3.7 (0.75)
+        tractor_blade · plow_power · push strength (m³) · 4.5 → 5.4 (1) · grader 9.0 (0.60)
+        tractor_blower · blower · intake (m³/s) · 0.95 → 1.235 (1) · rotary_blower 2.4 (0.51)
+        tractor_blower · blower · throw (m) · 16.0 → 20.8 (1) · rotary_blower 25.0 (0.83)
+        grader · plow_width · push width (m) · 3.7 → 4.255 (1) · plow_truck 3.4 (1.25)
+        grader · plow_power · push strength (m³) · 9.0 → 10.8 (1) · plow_truck 8.0 (1.35)
+        plow_truck · plow_width · push width (m) · 3.4 → 3.91 (1) ·  -1.0 (—)
+        plow_truck · plow_power · push strength (m³) · 8.0 → 9.6 (1) ·  -1.0 (—)
+        rotary_blower · blower · intake (m³/s) · 2.4 → 3.12 (1) ·  -1.0 (—)
+        rotary_blower · blower · throw (m) · 25.0 → 32.5 (1) ·  -1.0 (—)
+      §13 levels kept for old saves past the ladder: 5 (small shovel capacity 2 / throw 2, wide pusher capacity 2 / throw 2, scraper throw 2)
+        cost hands: $23 for every level for sale; the item $0, the next small_shovel $25
+        cost small_shovel: $26 for every level for sale; the item $25, the next standard_shovel $35
+        cost standard_shovel: $66 for every level for sale; the item $35, the next wide_pusher $79
+        cost wide_pusher: $80 for every level for sale; the item $79, the next snow_scraper $145
+        cost snow_scraper: $204 for every level for sale; the item $145, the next large_scraper $265
+        cost large_scraper: $506 for every level for sale; the item $265, the next snow_sleigh $320
+        cost snow_sleigh: $598 for every level for sale; the item $320, the next electric_shovel $480
+        cost electric_shovel: $636 for every level for sale; the item $480, the next small_blower $790
+        cost small_blower: $780 for every level for sale; the item $790, the next large_blower $1,690
+        cost large_blower: $1,670 for every level for sale; the item $1,690, the next pickup $0
+        cost pickup: $3,400 for every level for sale; the item $0, the next pickup_plow $3,400
+        cost pickup_plow: $520 for every level for sale; the item $3,400, the next atv_blade $6,500
+        cost atv_blade: $1,700 for every level for sale; the item $6,500, the next tractor_blade $14,000
+        cost tractor_blade: $2,150 for every level for sale; the item $14,000, the next tractor_blower $22,000
+        cost tractor_blower: $2,800 for every level for sale; the item $22,000, the next grader $48,000
+        cost grader: $7,400 for every level for sale; the item $48,000, the next plow_truck $65,000
+        cost plow_truck: $10,000 for every level for sale; the item $65,000, the next rotary_blower $90,000
+        cost rotary_blower: $12,000 for every level for sale; the item $90,000, the next dump_truck $38,000
+  PASS  test_polish5.gd::test_s13_the_ladder (92 ms)
+[notify] Order placed: Standard Snow Shovel: Throw 1 — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Bare Hands: Throw 1 — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+  PASS  test_polish5.gd::test_s13_upgrades_app (3777 ms)
+[notify] Order placed: Insulated Coat — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] You put on the insulated coat.
+[notify] Order placed: Snowshoes — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Snowshoes on. Hold Tab and press E to take them off.
+[notify] Order placed: Heated Snow-Melting Pad — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] You're carrying the heated pad. Put it down on your own lot with G.
+[notify] Your arms are full. Put down what you're carrying first (G).
+[notify] You're carrying the heated pad. Put it down on your own lot with G.
+  PASS  test_polish5.gd::test_s13b_equipment_bought_and_collected (4478 ms)
+[notify] POWER CUT: your hydro bill was not paid. The house will cool down over the day.
+[notify] Upgrades now belong to each item. Everything you bought carries over to every item it improved.
+[notify] Good morning.
+[notify] Game saved.
+[notify] Upgrades now belong to each item. Everything you bought carries over to every item it improved.
+[notify] Your jacket and parka are now one insulated coat: the same warmth, worn as before.
+[notify] Good morning.
+[notify] Game saved.
+  PASS  test_polish5.gd::test_s13b_the_coat (8681 ms)
+      metres in 1 s, without / with snowshoes: ["0.00 m: 4.12 / 4.12", "0.30 m: 2.42 / 3.82", "0.60 m: 1.30 / 3.34", "0.85 m: 0.63 / 2.96"]
+  PASS  test_polish5.gd::test_s13b_snowshoes (9614 ms)
+[notify] POWER CUT: your hydro bill was not paid. The house will cool down over the day.
+[notify] Power and heating restored. The house is warming back up.
+[notify] New hydro bill: $87 (heating $2) due January 15.
+[notify] Your arms are full. Put down what you're carrying first (G).
+  PASS  test_polish5.gd::test_s13b_heated_pad (4651 ms)
+[notify] Heated Driveway is now active.
+[notify] Heated Path is now active.
+[notify] Hydro bill paid ($85).
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Severe weather advisory: heavy snow expected around Dec 12 00:03.
+[notify] New hydro bill: $179 (heating $94) due January 15.
+[notify] Hydro bill paid ($179).
+[notify] Severe weather advisory: blizzard expected around Jan 20 13:56.
+[notify] BLIZZARD WARNING in effect. Stay safe and warm.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] POWER CUT: your hydro bill was not paid. The house will cool down over the day.
+[notify] Power and heating restored. The house is warming back up.
+[notify] New hydro bill: $292 (heating $207) due February 15.
+  PASS  test_polish5.gd::test_s13b_heated_driveway_and_path (85219 ms)
+      ledger residual (snow + melted − before) after each, and over its melting: a throw onto the pad 0.000000000 / melt 0.000000000, a throw onto the driveway 0.000000060 / melt 0.000000000, a cut beside the pad 0.000000082 / melt 0.000000000, a scoop off the driveway onto the lawn 0.000000075 / melt 0.000000000, a push across the driveway 0.000000003 / melt 0.000000000, wading across the pad -0.000000018 / melt 0.000000000, the grader on Maple Street -0.000000109 / melt 0.000000000, the sidewalk crew in front -0.000000107 / melt 0.000000000, relaxation 0.000000475 / melt 0.000000000
+  PASS  test_polish5.gd::test_s13b_melting_ledger (7556 ms)
+  PASS  test_polish5.gd::test_s13b_melting_in_skips_as_in_play (5612 ms)
+
+==== 87 passed, 0 failed (1346.6 s) ====

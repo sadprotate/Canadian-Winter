@@ -1,0 +1,153 @@
+# command: godot --headless --fixed-fps 60 --path . res://tests/perf.tscn
+# cwd: /c/Users/orsin/OneDrive/Desktop/Canadian Winter/Canadian-Winter (at 1b38f4a, game code = polish6-baseline)
+# exit code: 0   wall time: 306 s   finished: 2026-11-05 09:30
+# Godot: 4.7.2.stable.official.ed1daf0bf
+
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+Menu background build: 3489 ms
+main menu                    avg  0.54 ms  p95  1.30 ms  max  29.18 ms @frame 0  (chunk mesh updates 5, relax queue 0)
+World load: 3575 ms
+idle outdoors                avg  2.66 ms  p95  5.86 ms  max  16.46 ms @frame 20  (chunk mesh updates 24, relax queue 0)
+indoors (screen + photo)     avg  4.19 ms  p95  8.83 ms  max  48.55 ms @frame 90  (chunk mesh updates 24, relax queue 0)
+  indoors: in the house true, screen re-renders 6
+[notify] BLIZZARD WARNING: a blizzard has developed suddenly!
+blizzard + shovelling        avg 14.54 ms  p95 26.31 ms  max  48.81 ms @frame 13  (chunk mesh updates 1287, relax queue 0)
+hand push (RMB) in deep snow avg 14.90 ms  p95 27.46 ms  max  43.42 ms @frame 143  (chunk mesh updates 566, relax queue 0)
+[notify] The large snowplow truck is snowed in: about 79 cm of snow around the wheels. It won't move until you dig around them and clear a path.
+plow truck pushing a berm    avg  9.30 ms  p95 15.26 ms  max  31.58 ms @frame 306  (chunk mesh updates 1056, relax queue 24)
+[notify] BLIZZARD WARNING: a blizzard has developed suddenly!
+4 m deep map + major event   avg 19.21 ms  p95 28.57 ms  max  47.23 ms @frame 48  (chunk mesh updates 942, relax queue 155)
+[notify] BLIZZARD WARNING: a blizzard has developed suddenly!
+4 m map + peak major (1x)    avg 17.88 ms  p95 27.58 ms  max 103.07 ms @frame 15  (chunk mesh updates 1157, relax queue 196)
+3-day time skip: 2751 ms
+Save: 358 ms (file 956 KB)
+Load: 145 ms
+idle outdoors (fresh world)  avg  2.25 ms  p95  4.29 ms  max   6.43 ms @frame 95  (chunk mesh updates 0, relax queue 0)
+Fast-forward caps: 2× from 0.5 cm/h (snowing), 1× from 80.0 cm/h (blizzard)
+2× clear                     avg  4.22 ms  p95  8.68 ms  max  22.36 ms @frame 140  (chunk mesh updates 24, relax queue 0)
+  2× clear: speed set true, ran at 2× (2.0 substeps a frame)
+2× clear (capped)            avg  2.92 ms  p95  5.63 ms  max   7.87 ms @frame 272  (chunk mesh updates 0, relax queue 0)
+  2× clear (capped): speed set true, ran at 2× (2.0 substeps a frame)
+10× clear                    avg  5.04 ms  p95  9.12 ms  max  15.25 ms @frame 46  (chunk mesh updates 0, relax queue 0)
+  10× clear: speed set true, ran at 10× (10.0 substeps a frame)
+10× clear (capped)           avg  5.13 ms  p95  9.69 ms  max  12.08 ms @frame 58  (chunk mesh updates 0, relax queue 0)
+  10× clear (capped): speed set true, ran at 10× (10.0 substeps a frame)
+2× light snow                avg  2.71 ms  p95  4.91 ms  max   8.00 ms @frame 281  (chunk mesh updates 0, relax queue 0)
+  2× light snow: speed set true, ran at 2× (2.0 substeps a frame)
+2× light snow (capped)       avg  4.41 ms  p95 11.63 ms  max  25.43 ms @frame 152  (chunk mesh updates 67, relax queue 0)
+  2× light snow (capped): speed set true, ran at 2× (2.0 substeps a frame)
+10× light snow               avg 10.65 ms  p95 27.83 ms  max  47.65 ms @frame 174  (chunk mesh updates 377, relax queue 0)
+  10× light snow: speed set true, ran at 10× (10.0 substeps a frame)
+10× light snow (capped)      avg  3.97 ms  p95 11.00 ms  max  28.38 ms @frame 133  (chunk mesh updates 127, relax queue 0)
+  10× light snow (capped): speed set true, ran at 2× (2.0 substeps a frame)
+2× storm peak                avg  7.64 ms  p95 15.98 ms  max  34.05 ms @frame 47  (chunk mesh updates 410, relax queue 0)
+  2× storm peak: speed set true, ran at 2× (2.0 substeps a frame)
+2× storm peak (capped)       avg  6.59 ms  p95 15.41 ms  max  26.07 ms @frame 212  (chunk mesh updates 380, relax queue 0)
+  2× storm peak (capped): speed set true, ran at 2× (2.0 substeps a frame)
+10× storm peak               avg 24.43 ms  p95 43.41 ms  max  70.34 ms @frame 76  (chunk mesh updates 329, relax queue 0)
+  10× storm peak: speed set true, ran at 10× (10.0 substeps a frame)
+10× storm peak (capped)      avg  8.95 ms  p95 18.64 ms  max  26.50 ms @frame 51  (chunk mesh updates 512, relax queue 0)
+  10× storm peak (capped): speed set true, ran at 2× (2.0 substeps a frame)
+[notify] BLIZZARD WARNING: a blizzard has developed suddenly!
+2× major peak                avg 17.97 ms  p95 28.75 ms  max  34.42 ms @frame 179  (chunk mesh updates 464, relax queue 0)
+  2× major peak: speed set true, ran at 2× (2.0 substeps a frame)
+[notify] BLIZZARD WARNING: a blizzard has developed suddenly!
+2× major peak (capped)       avg 10.89 ms  p95 21.84 ms  max  33.08 ms @frame 101  (chunk mesh updates 615, relax queue 0)
+  2× major peak (capped): speed set true, ran at 1× (1.0 substeps a frame)
+[notify] BLIZZARD WARNING: a blizzard has developed suddenly!
+10× major peak               avg 47.18 ms  p95 62.84 ms  max 134.46 ms @frame 4  (chunk mesh updates 328, relax queue 0)
+  10× major peak: speed set true, ran at 10× (10.0 substeps a frame)
+[notify] BLIZZARD WARNING: a blizzard has developed suddenly!
+10× major peak (capped)      avg 13.10 ms  p95 27.84 ms  max  52.35 ms @frame 234  (chunk mesh updates 585, relax queue 0)
+  10× major peak (capped): speed set true, ran at 1× (1.0 substeps a frame)
+10× snow settling            avg 11.36 ms  p95 43.94 ms  max  70.99 ms @frame 5  (chunk mesh updates 218, relax queue 0)
+  10× snow settling: relax queue 12 at the start, 10.0 substeps a frame
+2× snow settling             avg 14.17 ms  p95 20.39 ms  max  24.12 ms @frame 141  (chunk mesh updates 502, relax queue 7)
+  2× snow settling: relax queue 10 at the start, 2.0 substeps a frame
+10× snow settling (capped)   avg 16.86 ms  p95 30.54 ms  max  79.73 ms @frame 46  (chunk mesh updates 549, relax queue 27)
+  10× snow settling (capped): relax queue 20 at the start, 2.0 substeps a frame
+[notify] The city crews are clearing the streets and sidewalks.
+10× + grader pass, away      avg 44.49 ms  p95 57.66 ms  max  93.71 ms @frame 304  (chunk mesh updates 1673, relax queue 1113)
+  10× + grader pass, away: grader still driving, held at 1× for 0 of 480 frames (10.0 substeps a frame)
+[notify] The city crews are clearing the streets and sidewalks.
+2× + grader pass, away       avg 12.32 ms  p95 15.59 ms  max  21.58 ms @frame 87  (chunk mesh updates 1866, relax queue 2620)
+  2× + grader pass, away: grader still driving, held at 1× for 0 of 480 frames (2.0 substeps a frame)
+[notify] The city crews are clearing the streets and sidewalks.
+10× + grader pass, away (capped) avg 13.70 ms  p95 20.27 ms  max  65.30 ms @frame 4  (chunk mesh updates 1814, relax queue 2997)
+  10× + grader pass, away (capped): grader still driving, held at 1× for 0 of 480 frames (2.0 substeps a frame)
+[notify] The city crews are clearing the streets and sidewalks.
+10× + grader pass, from the yard (capped) avg 12.38 ms  p95 19.21 ms  max  33.44 ms @frame 74  (chunk mesh updates 1340, relax queue 3013)
+  10× + grader pass, from the yard (capped): grader still driving, held at 1× for 404 of 480 frames (1.2 substeps a frame)
+[notify] Bid of $33 placed on 16 Birch Avenue.
+[notify] Bid of $33 placed on 31 Birch Avenue.
+[notify] Bid of $33 placed on 28 Maple Street.
+[notify] Bid of $15 placed on 11 Maple Street.
+[notify] Bid of $15 placed on 19 Maple Street.
+[notify] Bid of $49 placed on 23 Maple Street.
+[notify] Bid of $15 placed on 27 Maple Street.
+[notify] Bid on 31 Birch Avenue changed to $34.
+[notify] Bid on 28 Maple Street changed to $35.
+[notify] Bid on 19 Maple Street changed to $16.
+[notify] Bid on 23 Maple Street changed to $51.
+[notify] Bid on 16 Birch Avenue changed to $34.
+[notify] Bid on 31 Birch Avenue changed to $35.
+[notify] Bid on 28 Maple Street changed to $33.
+[notify] Bid on 11 Maple Street changed to $16.
+[notify] Bid on 19 Maple Street changed to $17.
+computer: live board (1×)    avg 10.72 ms  p95 14.40 ms  max  27.25 ms @frame 0  (chunk mesh updates 1508, relax queue 3023)
+  live board 1×: 10 listings, bids 7 → 27, clock at 1×
+[notify] Bid on 16 Birch Avenue changed to $33.
+[notify] Bid on 31 Birch Avenue changed to $33.
+[notify] Bid on 11 Maple Street changed to $15.
+[notify] Bid on 19 Maple Street changed to $15.
+[notify] Bid on 23 Maple Street changed to $49.
+[notify] Bid of $52 placed on 11 Maple Street.
+[notify] Bid of $48 placed on 19 Maple Street.
+[notify] Bid of $15 placed on 23 Maple Street.
+[notify] Bid of $47 placed on 27 Maple Street.
+[notify] Bid on 31 Birch Avenue changed to $34.
+[notify] Bid on 28 Maple Street changed to $35.
+[notify] Bid on 19 Maple Street changed to $16.
+[notify] Bid on 23 Maple Street changed to $51.
+[notify] Bid on 11 Maple Street changed to $53.
+[notify] Bid on 19 Maple Street changed to $50.
+[notify] Bid on 27 Maple Street changed to $48.
+[notify] Bid on 16 Birch Avenue changed to $35.
+computer: live board (10×)   avg 13.92 ms  p95 17.50 ms  max  38.02 ms @frame 0  (chunk mesh updates 1302, relax queue 3025)
+  live board 10×: 14 listings, bids 11 → 16, clock at 2×
+jobs: idle among them        avg 10.86 ms  p95 15.35 ms  max  32.60 ms @frame 217  (chunk mesh updates 1523, relax queue 3020)
+jobs: working a driveway     avg 10.69 ms  p95 14.28 ms  max  21.63 ms @frame 15  (chunk mesh updates 1506, relax queue 3015)
+jobs: walking past them      avg 10.05 ms  p95 14.68 ms  max  22.91 ms @frame 205  (chunk mesh updates 1616, relax queue 3007)
+[notify] Outbid on 16 Birch Avenue — lowest bid $33.
+jobs: light snow (1x)        avg 11.05 ms  p95 17.35 ms  max  51.65 ms @frame 397  (chunk mesh updates 1516, relax queue 3054)
+  jobs: 24 boxes in 20 jobs; outlines laid now 12
+[notify] The city crews are clearing the streets and sidewalks.
+[notify] Outbid on 27 Maple Street — lowest bid $47.
+city pass by the house (1×)  avg 10.74 ms  p95 14.42 ms  max  26.80 ms @frame 329  (chunk mesh updates 2925, relax queue 3034)
+  city pass: grader driving, sidewalk plow driving (within 20 m of the player for 429 of 900 frames)
+pickup shoving deep snow (1×) avg  9.52 ms  p95 13.59 ms  max  28.85 ms @frame 446  (chunk mesh updates 2129, relax queue 2861)
+  pickup: front at x 49.4 (the snow from x 24), 14.66 m³ shoved while measured, 6.8 km/h at the end
+[notify] Storm: 12 Maple Street is now due 9 p.m. Fri.
+[notify] Storm: 12 Maple Street is now due 9 p.m. Fri.
+[notify] Storm: 20 Maple Street is now due 9 p.m. Fri.
+[notify] Storm: 20 Maple Street is now due 9 p.m. Fri.
+[notify] Storm: 11 Maple Street is now due 9 p.m. Fri.
+[notify] Storm: 11 Maple Street is now due 9 p.m. Fri.
+[notify] Storm: 19 Maple Street is now due 9 p.m. Fri.
+[notify] Storm: 19 Maple Street is now due 9 p.m. Fri.
+[notify] Storm: 24 Maple Street is now due 9 p.m. Fri.
+[notify] Storm: 24 Maple Street is now due 9 p.m. Fri.
+[notify] Storm: 23 Maple Street is now due 9 p.m. Fri.
+[notify] Storm: 23 Maple Street is now due 9 p.m. Fri.
+[notify] Storm: 15 Birch Avenue is now due 9 p.m. Fri.
+[notify] Storm: 15 Birch Avenue is now due 9 p.m. Fri.
+[notify] Storm: 19 Birch Avenue is now due 9 p.m. Fri.
+[notify] Storm: 19 Birch Avenue is now due 9 p.m. Fri.
+[notify] Storm: Sidewalks, 24–32 Maple Street is now due 9 p.m. Fri.
+[notify] Storm: Sidewalks, 23–31 Maple Street is now due 9 p.m. Fri.
+[notify] Storm: Maple Street (west) is now due 9 p.m. Fri.
+[notify] Storm: Maple Ridge School, 12 Cedar Lane is now due 9 p.m. Fri.
+heated, storm, by the player (1×) avg 12.12 ms  p95 20.77 ms  max  93.46 ms @frame 109  (chunk mesh updates 1841, relax queue 2848)
+heated, storm, fast-forward  avg 17.84 ms  p95 26.55 ms  max  40.59 ms @frame 331  (chunk mesh updates 1364, relax queue 2932)
+  heated: the driveway, the path and the pad, 0.74 m³ melted while measured (speed capped at 2×)

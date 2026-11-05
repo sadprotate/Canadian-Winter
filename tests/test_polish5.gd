@@ -10,6 +10,7 @@ var world: Node = null
 ## at the end of the round (--set=polish5_v3) is added by listing its folder here.
 const FIXTURE_DIRS := [
 	"res://tests/fixtures/polish5/",
+	"res://tests/fixtures/polish5_v3/",
 ]
 
 

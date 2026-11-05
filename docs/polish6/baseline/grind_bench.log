@@ -1,0 +1,16 @@
+# command: godot --headless --fixed-fps 60 --path . res://tests/grind_bench.tscn -- --full=1
+# cwd: /c/Users/orsin/OneDrive/Desktop/Canadian Winter/Canadian-Winter (at 1b38f4a, game code = polish6-baseline)
+# exit code: 0   wall time: 63 s   finished: 2026-11-05 09:31
+# Godot: 4.7.2.stable.official.ed1daf0bf
+
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+
+BUILD: polish pass (sweep-fill hands)
+path box snow: 8.51 m3 (walkway 10.3 m2 + stairs + porch)
+removed in the first 120 s of play: 4.514 m3  ->  0.0376 m3/s
+projected time to clear 90% by hand: 3.4 min real (2.7 game hours)
+MEASURED: the path box completed after 3.2 min of bot play (2.6 game hours), 348 scoop-and-toss strokes
+at a human pace (~1.1 s per scoop, turn, toss and turn back): about 6.4 min real (5.1 game hours)
+walking along the path: 0.64 m/s before, 4.17 m/s after clearing
+wading speed before: 0.64 m/s

@@ -1,0 +1,362 @@
+# command: godot --headless --fixed-fps 60 --path . res://tests/make_fixtures.tscn -- --set=polish5_v3
+# cwd: /c/Users/orsin/OneDrive/Desktop/Canadian Winter/Canadian-Winter (at 1b38f4a, game code = polish6-baseline)
+# exit code: 0   wall time: 186 s   finished: 2026-11-05 10:04
+# Godot: 4.7.2.stable.official.ed1daf0bf
+
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+[notify] Payment received: $50 from Gerry (neighbour).
+[notify] 15 Maple Street — all clear.
+fixture fun 1_contracts: saved=true copy=0  day 1 11:00  stage 4  contracts 3  snow 28869.4 m3
+[notify] Payment received: $50 from Gerry (neighbour).
+[notify] 15 Maple Street — all clear.
+[notify] Order placed: Standard Snow Shovel — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Wide Snow Pusher — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Snow Scraper — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Small Walk-Behind Snowblower — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Bare Hands: Capacity 1 — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Bare Hands: Throw 1 — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Bare Hands: Push width — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Bare Hands: Push power — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Small Snow Shovel: Capacity 1 — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Small Snow Shovel: Throw 1 — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Small Snow Shovel: Push width — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Small Snow Shovel: Push power — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Standard Snow Shovel: Capacity 1 — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Standard Snow Shovel: Throw 1 — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Standard Snow Shovel: Push width — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Standard Snow Shovel: Push power — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Wide Snow Pusher: Capacity 1 — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Wide Snow Pusher: Throw 1 — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Wide Snow Pusher: Push width — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Wide Snow Pusher: Push power — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Snow Scraper: Capacity 1 — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Snow Scraper: Throw 1 — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Snow Scraper: Push width — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Snow Scraper: Push power — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Small Walk-Behind Snowblower: Intake — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Small Walk-Behind Snowblower: Chute — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Pickup Truck: Front plow — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] WeatherWise Pro App is now active.
+[notify] Radar+ Subscription is now active.
+[notify] High-Efficiency Furnace is now active.
+[notify] Order placed: Garage Tool Rack — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Heated Driveway is now active.
+[notify] Heated Path is now active.
+[notify] Bare Hands: Capacity 1 installed.
+[notify] Bare Hands: Throw 1 installed.
+[notify] Bare Hands: Push width installed.
+[notify] Bare Hands: Push power installed.
+[notify] Small Snow Shovel: Capacity 1 installed.
+[notify] Small Snow Shovel: Throw 1 installed.
+[notify] Small Snow Shovel: Push width installed.
+[notify] Small Snow Shovel: Push power installed.
+[notify] Standard Snow Shovel: Capacity 1 installed.
+[notify] Standard Snow Shovel: Throw 1 installed.
+[notify] Standard Snow Shovel: Push width installed.
+[notify] Standard Snow Shovel: Push power installed.
+[notify] Wide Snow Pusher: Capacity 1 installed.
+[notify] Wide Snow Pusher: Throw 1 installed.
+[notify] Wide Snow Pusher: Push width installed.
+[notify] Wide Snow Pusher: Push power installed.
+[notify] Snow Scraper: Capacity 1 installed.
+[notify] Snow Scraper: Throw 1 installed.
+[notify] Snow Scraper: Push width installed.
+[notify] Snow Scraper: Push power installed.
+[notify] Small Walk-Behind Snowblower: Intake installed.
+[notify] Small Walk-Behind Snowblower: Chute installed.
+[notify] Garage Tool Rack installed.
+[notify] The store crew bolted a front plow onto your pickup! Left Mouse to drop the blade, Z/C to angle it.
+[notify] Order placed: Bare Hands: Capacity 2 — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Bare Hands: Throw 2 — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Standard Snow Shovel: Capacity 2 — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Standard Snow Shovel: Throw 2 — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Snow Scraper: Capacity 2 — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Pickup Truck with Front Plow: Plow width — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Pickup Truck with Front Plow: Plow power — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Bare Hands: Capacity 2 installed.
+[notify] Bare Hands: Throw 2 installed.
+[notify] Standard Snow Shovel: Capacity 2 installed.
+[notify] Standard Snow Shovel: Throw 2 installed.
+[notify] Snow Scraper: Capacity 2 installed.
+[notify] Pickup Truck with Front Plow: Plow width installed.
+[notify] Pickup Truck with Front Plow: Plow power installed.
+fixture fun 2_upgrades: saved=true copy=0  day 1 11:00  stage 4  contracts 1  snow 28873.0 m3
+[notify] Payment received: $50 from Gerry (neighbour).
+[notify] 15 Maple Street — all clear.
+[notify] You found your truck keys! (The truck still can't drive through deep snow.)
+[notify] Order placed: ATV with Blade — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+fixture fun 3_vehicle: saved=true copy=0  day 1 11:00  stage 4  contracts 1  snow 28808.6 m3
+[notify] Payment received: $50 from Gerry (neighbour).
+[notify] 15 Maple Street — all clear.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Severe weather advisory: heavy snow expected around Dec 12 00:03.
+midwinter: contract on 24/28 Maple Street: 28 Maple Street (recurring), won Jan 19 12:00; the street in front of home 0.03 m deep then, grader Jan 22 08:00, 0.03 m now (Jan 19 12:00)
+fixture fun 4_midwinter: saved=true copy=0  day 49 13:00  stage 4  contracts 2  snow 59917.4 m3
+[notify] Payment received: $50 from Gerry (neighbour).
+[notify] 15 Maple Street — all clear.
+fixture fun 5_evening: saved=true copy=0  day 2 20:30  stage 4  contracts 1  snow 31836.2 m3
+[notify] Payment received: $50 from Gerry (neighbour).
+[notify] 15 Maple Street — all clear.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Severe weather advisory: heavy snow expected around Dec 12 00:03.
+[notify] Severe weather advisory: blizzard expected around Jan 20 13:56.
+[notify] BLIZZARD WARNING in effect. Stay safe and warm.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Extreme cold warning: -26 °C, wind chill -41.
+[notify] Severe weather advisory: heavy snow expected around Mar 6 11:48.
+[notify] Extreme cold warning: -32 °C, wind chill -47.
+reputation after the board: 52.0 (1 contracts)
+[notify] City tier reached (reputation 100): street and sidewalk contracts are open to you.
+reputation raised to 100.0 by Mar 30 11:00
+[notify] Winter 2 begins. Good luck out there!
+fixture fun 6_winter2: saved=true copy=0  day 1 12:00  stage 4  contracts 0  snow 12767.1 m3
+[notify] Payment received: $50 from Gerry (neighbour).
+[notify] 15 Maple Street — all clear.
+[notify] You found your truck keys! (The truck still can't drive through deep snow.)
+[notify] Order placed: Pickup Truck: Front plow — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+keys/pickup/plow order: keys true, buy true: Pickup Truck: Front plow is ready for pickup at the store lot.
+fixture fun 7_keys_pickup_plow_order: saved=true copy=0  day 1 11:00  stage 4  contracts 1  snow 28869.0 m3
+[notify] Payment received: $50 from Gerry (neighbour).
+[notify] 15 Maple Street — all clear.
+[notify] Hydro bill paid ($85).
+fixture survival 1_contracts: saved=true copy=0  day 1 11:00  stage 4  contracts 3  snow 28870.0 m3
+[notify] Payment received: $50 from Gerry (neighbour).
+[notify] 15 Maple Street — all clear.
+[notify] Hydro bill paid ($85).
+[notify] Order placed: Standard Snow Shovel — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Wide Snow Pusher — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Snow Scraper — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Small Walk-Behind Snowblower — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Bare Hands: Capacity 1 — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Bare Hands: Throw 1 — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Bare Hands: Push width — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Bare Hands: Push power — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Small Snow Shovel: Capacity 1 — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Small Snow Shovel: Throw 1 — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Small Snow Shovel: Push width — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Small Snow Shovel: Push power — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Standard Snow Shovel: Capacity 1 — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Standard Snow Shovel: Throw 1 — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Standard Snow Shovel: Push width — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Standard Snow Shovel: Push power — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Wide Snow Pusher: Capacity 1 — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Wide Snow Pusher: Throw 1 — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Wide Snow Pusher: Push width — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Wide Snow Pusher: Push power — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Snow Scraper: Capacity 1 — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Snow Scraper: Throw 1 — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Snow Scraper: Push width — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Snow Scraper: Push power — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Small Walk-Behind Snowblower: Intake — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Small Walk-Behind Snowblower: Chute — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Pickup Truck: Front plow — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] WeatherWise Pro App is now active.
+[notify] Radar+ Subscription is now active.
+[notify] High-Efficiency Furnace is now active.
+[notify] Order placed: Garage Tool Rack — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Heated Driveway is now active.
+[notify] Heated Path is now active.
+[notify] Bare Hands: Capacity 1 installed.
+[notify] Bare Hands: Throw 1 installed.
+[notify] Bare Hands: Push width installed.
+[notify] Bare Hands: Push power installed.
+[notify] Small Snow Shovel: Capacity 1 installed.
+[notify] Small Snow Shovel: Throw 1 installed.
+[notify] Small Snow Shovel: Push width installed.
+[notify] Small Snow Shovel: Push power installed.
+[notify] Standard Snow Shovel: Capacity 1 installed.
+[notify] Standard Snow Shovel: Throw 1 installed.
+[notify] Standard Snow Shovel: Push width installed.
+[notify] Standard Snow Shovel: Push power installed.
+[notify] Wide Snow Pusher: Capacity 1 installed.
+[notify] Wide Snow Pusher: Throw 1 installed.
+[notify] Wide Snow Pusher: Push width installed.
+[notify] Wide Snow Pusher: Push power installed.
+[notify] Snow Scraper: Capacity 1 installed.
+[notify] Snow Scraper: Throw 1 installed.
+[notify] Snow Scraper: Push width installed.
+[notify] Snow Scraper: Push power installed.
+[notify] Small Walk-Behind Snowblower: Intake installed.
+[notify] Small Walk-Behind Snowblower: Chute installed.
+[notify] Garage Tool Rack installed.
+[notify] The store crew bolted a front plow onto your pickup! Left Mouse to drop the blade, Z/C to angle it.
+[notify] Order placed: Bare Hands: Capacity 2 — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Bare Hands: Throw 2 — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Standard Snow Shovel: Capacity 2 — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Standard Snow Shovel: Throw 2 — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Snow Scraper: Capacity 2 — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Pickup Truck with Front Plow: Plow width — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Order placed: Pickup Truck with Front Plow: Plow power — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Bare Hands: Capacity 2 installed.
+[notify] Bare Hands: Throw 2 installed.
+[notify] Standard Snow Shovel: Capacity 2 installed.
+[notify] Standard Snow Shovel: Throw 2 installed.
+[notify] Snow Scraper: Capacity 2 installed.
+[notify] Pickup Truck with Front Plow: Plow width installed.
+[notify] Pickup Truck with Front Plow: Plow power installed.
+fixture survival 2_upgrades: saved=true copy=0  day 1 11:00  stage 4  contracts 1  snow 28872.4 m3
+[notify] Payment received: $50 from Gerry (neighbour).
+[notify] 15 Maple Street — all clear.
+[notify] Hydro bill paid ($85).
+[notify] You found your truck keys! (The truck still can't drive through deep snow.)
+[notify] Order placed: ATV with Blade — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+fixture survival 3_vehicle: saved=true copy=0  day 1 11:00  stage 4  contracts 1  snow 28808.6 m3
+[notify] Payment received: $50 from Gerry (neighbour).
+[notify] 15 Maple Street — all clear.
+[notify] Hydro bill paid ($85).
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Severe weather advisory: heavy snow expected around Dec 12 00:03.
+[notify] New hydro bill: $85 due January 15.
+[notify] Hydro bill paid ($85).
+midwinter: contract on 24/28 Maple Street: 28 Maple Street (recurring), won Jan 19 12:00; the street in front of home 0.03 m deep then, grader Jan 22 08:00, 0.03 m now (Jan 19 12:00)
+fixture survival 4_midwinter: saved=true copy=0  day 49 13:00  stage 4  contracts 2  snow 59917.4 m3
+[notify] Payment received: $50 from Gerry (neighbour).
+[notify] 15 Maple Street — all clear.
+[notify] Hydro bill paid ($85).
+fixture survival 5_evening: saved=true copy=0  day 2 20:30  stage 4  contracts 1  snow 31836.2 m3
+[notify] Payment received: $50 from Gerry (neighbour).
+[notify] 15 Maple Street — all clear.
+[notify] Hydro bill paid ($85).
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Severe weather advisory: heavy snow expected around Dec 12 00:03.
+[notify] New hydro bill: $85 due January 15.
+[notify] Hydro bill paid ($85).
+[notify] Severe weather advisory: blizzard expected around Jan 20 13:56.
+[notify] BLIZZARD WARNING in effect. Stay safe and warm.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] New hydro bill: $85 due February 15.
+[notify] Hydro bill paid ($85).
+[notify] Extreme cold warning: -26 °C, wind chill -41.
+[notify] New hydro bill: $85 due March 15.
+[notify] Hydro bill paid ($85).
+[notify] Severe weather advisory: heavy snow expected around Mar 6 11:48.
+[notify] Extreme cold warning: -32 °C, wind chill -47.
+reputation after the board: 52.0 (1 contracts)
+[notify] City tier reached (reputation 100): street and sidewalk contracts are open to you.
+reputation raised to 100.0 by Mar 30 11:00
+[notify] Winter 2 begins. Good luck out there!
+[notify] Hydro bill paid ($85).
+fixture survival 6_winter2: saved=true copy=0  day 1 12:00  stage 4  contracts 0  snow 12767.1 m3
+[notify] Payment received: $50 from Gerry (neighbour).
+[notify] 15 Maple Street — all clear.
+[notify] Hydro bill paid ($85).
+[notify] You found your truck keys! (The truck still can't drive through deep snow.)
+[notify] Order placed: Pickup Truck: Front plow — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+keys/pickup/plow order: keys true, buy true: Pickup Truck: Front plow is ready for pickup at the store lot.
+fixture survival 7_keys_pickup_plow_order: saved=true copy=0  day 1 11:00  stage 4  contracts 1  snow 28869.0 m3
+
+==== polish-5 fixtures, read back from the files ====
+fun_1_contracts.json: loads
+  fun, winter 1, Dec 2 11:00 (day 1), stage 4, money $100, reputation 52.0
+  tools in the slots [], carried '', lying about ["small_shovel (buried)"], machines [], rack []
+  upgrades 0 (of 17 for the items owned) []  missing ["hands:capacity:1", "hands:capacity:2", "hands:throw:1", "hands:throw:2", "hands:push_width:1", "hands:push:1", "small_shovel:capacity:1", "small_shovel:throw:1", "small_shovel:push_width:1", "small_shovel:push:1", "pickup:front_plow:1", "weather_pro", "weather_radar", "furnace", "tool_rack", "heated_driveway", "heated_path"]
+  vehicles ["pickup @ 16 Maple Street (in the player\'s driveway)"], truck keys false, driveway box complete false
+  contracts: 2 running of 2 ["#14 one_time active 31 Birch Avenue", "#15 municipal needs_service Sidewalks, 11–19 Birch Avenue"]
+  listings: 4 ["one_time 31 Maple Street (closes Dec 2 21:00)", "one_time 23 Birch Avenue (closes Dec 2 21:00)", "recurring 19 Maple Street (closes Dec 2 21:00)", "recurring Northern Supply Co., 11 Cedar Lane (closes Dec 2 21:00)"]; bids 0; orders []
+  snow: 24 Maple Street [lot 9]: driveway 55.68 m3 (avg 0.83 m), path 7.84 m3 (avg 0.53 m), sidewalk 34.46 m3 (avg 0.83 m); front yard 0.77 m | 28 Maple Street [lot 10]: driveway 63.22 m3 (avg 0.81 m), path 8.95 m3 (avg 0.53 m), sidewalk 34.06 m3 (avg 0.82 m); front yard 0.80 m
+fun_2_upgrades.json: loads
+  fun, winter 1, Dec 2 11:00 (day 1), stage 4, money $47042, reputation 52.0
+  tools in the slots ["standard_shovel", "wide_pusher", "snow_scraper"], carried '', lying about ["small_shovel (buried)"], machines ["small_blower @ Northern Supply Co., 11 Cedar Lane"], rack []
+  upgrades 36 (of 35 for the items owned) ["furnace", "hands:capacity:1", "hands:capacity:2", "hands:push:1", "hands:push_width:1", "hands:throw:1", "hands:throw:2", "heated_driveway", "heated_path", "pickup:front_plow:1", "pickup_plow:plow_power:1", "pickup_plow:plow_width:1", "small_blower:chute:1", "small_blower:intake:1", "small_shovel:capacity:1", "small_shovel:push:1", "small_shovel:push_width:1", "small_shovel:throw:1", "snow_scraper:capacity:1", "snow_scraper:capacity:2", "snow_scraper:push:1", "snow_scraper:push_width:1", "snow_scraper:throw:1", "standard_shovel:capacity:1", "standard_shovel:capacity:2", "standard_shovel:push:1", "standard_shovel:push_width:1", "standard_shovel:throw:1", "standard_shovel:throw:2", "tool_rack", "weather_pro", "weather_radar", "wide_pusher:capacity:1", "wide_pusher:push:1", "wide_pusher:push_width:1", "wide_pusher:throw:1"]
+  vehicles ["pickup_plow @ 16 Maple Street (in the player\'s driveway)"], truck keys false, driveway box complete false
+  contracts: 0 running of 0 []
+  listings: 6 ["one_time 31 Birch Avenue (closes Dec 2 21:00)", "one_time 31 Maple Street (closes Dec 2 21:00)", "one_time 23 Birch Avenue (closes Dec 2 21:00)", "municipal Sidewalks, 11–19 Birch Avenue (closes Dec 2 21:00)", "recurring 19 Maple Street (closes Dec 2 21:00)", "recurring Northern Supply Co., 11 Cedar Lane (closes Dec 2 21:00)"]; bids 0; orders ["standard_shovel:collected", "wide_pusher:collected", "snow_scraper:collected", "small_blower:spawned", "hands:capacity:1:collected", "hands:throw:1:collected", "hands:push_width:1:collected", "hands:push:1:collected", "small_shovel:capacity:1:collected", "small_shovel:throw:1:collected", "small_shovel:push_width:1:collected", "small_shovel:push:1:collected", "standard_shovel:capacity:1:collected", "standard_shovel:throw:1:collected", "standard_shovel:push_width:1:collected", "standard_shovel:push:1:collected", "wide_pusher:capacity:1:collected", "wide_pusher:throw:1:collected", "wide_pusher:push_width:1:collected", "wide_pusher:push:1:collected", "snow_scraper:capacity:1:collected", "snow_scraper:throw:1:collected", "snow_scraper:push_width:1:collected", "snow_scraper:push:1:collected", "small_blower:intake:1:collected", "small_blower:chute:1:collected", "pickup:front_plow:1:collected", "tool_rack:collected", "hands:capacity:2:collected", "hands:throw:2:collected", "standard_shovel:capacity:2:collected", "standard_shovel:throw:2:collected", "snow_scraper:capacity:2:collected", "pickup_plow:plow_width:1:collected", "pickup_plow:plow_power:1:collected"]
+  snow: 24 Maple Street [lot 9]: driveway 55.69 m3 (avg 0.83 m), path 7.84 m3 (avg 0.53 m), sidewalk 34.46 m3 (avg 0.83 m); front yard 0.77 m | 28 Maple Street [lot 10]: driveway 63.22 m3 (avg 0.81 m), path 8.95 m3 (avg 0.53 m), sidewalk 34.06 m3 (avg 0.82 m); front yard 0.80 m
+fun_3_vehicle.json: loads
+  fun, winter 1, Dec 2 11:00 (day 1), stage 4, money $600, reputation 52.0
+  tools in the slots [], carried '', lying about ["small_shovel (buried)"], machines [], rack []
+  upgrades 0 (of 19 for the items owned) []  missing ["hands:capacity:1", "hands:capacity:2", "hands:throw:1", "hands:throw:2", "hands:push_width:1", "hands:push:1", "small_shovel:capacity:1", "small_shovel:throw:1", "small_shovel:push_width:1", "small_shovel:push:1", "pickup:front_plow:1", "atv_blade:plow_width:1", "atv_blade:plow_power:1", "weather_pro", "weather_radar", "furnace", "tool_rack", "heated_driveway", "heated_path"]
+  vehicles ["pickup @ 16 Maple Street (in the player\'s driveway)", "atv_blade @ 16 Maple Street (in the player\'s driveway)"], truck keys true, driveway box complete true
+  contracts: 0 running of 0 []
+  listings: 6 ["one_time 31 Birch Avenue (closes Dec 2 21:00)", "one_time 31 Maple Street (closes Dec 2 21:00)", "one_time 23 Birch Avenue (closes Dec 2 21:00)", "municipal Sidewalks, 11–19 Birch Avenue (closes Dec 2 21:00)", "recurring 19 Maple Street (closes Dec 2 21:00)", "recurring Northern Supply Co., 11 Cedar Lane (closes Dec 2 21:00)"]; bids 0; orders ["atv_blade:collected"]
+  snow: 24 Maple Street [lot 9]: driveway 55.68 m3 (avg 0.83 m), path 7.84 m3 (avg 0.53 m), sidewalk 34.46 m3 (avg 0.83 m); front yard 0.77 m | 28 Maple Street [lot 10]: driveway 63.22 m3 (avg 0.81 m), path 8.95 m3 (avg 0.53 m), sidewalk 34.06 m3 (avg 0.82 m); front yard 0.80 m
+fun_4_midwinter.json: loads
+  fun, winter 1, Jan 19 13:00 (day 49), stage 4, money $100, reputation 52.0
+  tools in the slots [], carried '', lying about ["small_shovel (buried)"], machines [], rack []
+  upgrades 0 (of 17 for the items owned) []  missing ["hands:capacity:1", "hands:capacity:2", "hands:throw:1", "hands:throw:2", "hands:push_width:1", "hands:push:1", "small_shovel:capacity:1", "small_shovel:throw:1", "small_shovel:push_width:1", "small_shovel:push:1", "pickup:front_plow:1", "weather_pro", "weather_radar", "furnace", "tool_rack", "heated_driveway", "heated_path"]
+  vehicles ["pickup @ 16 Maple Street (in the player\'s driveway)"], truck keys false, driveway box complete false
+  contracts: 1 running of 1 ["#302 recurring needs_service 28 Maple Street"]
+  listings: 5 ["recurring 32 Maple Street (closes Jan 19 21:00)", "municipal Sidewalks, 23–31 Birch Avenue (closes Jan 19 21:00)", "one_time 27 Birch Avenue (closes Jan 19 21:00)", "municipal Cedar Lane (north) (closes Jan 19 21:00)", "one_time 19 Maple Street (closes Jan 19 21:00)"]; bids 0; orders []
+  snow: 24 Maple Street [lot 9]: driveway 133.92 m3 (avg 1.97 m), path 15.53 m3 (avg 1.04 m), sidewalk 0.00 m3 (avg 0.00 m); front yard 1.52 m | 28 Maple Street [lot 10]: driveway 148.50 m3 (avg 1.90 m), path 17.89 m3 (avg 1.04 m), sidewalk 0.00 m3 (avg 0.00 m); front yard 1.60 m
+fun_5_evening.json: loads
+  fun, winter 1, Dec 3 20:30 (day 2), stage 4, money $100, reputation 52.0
+  tools in the slots [], carried '', lying about ["small_shovel (buried)"], machines [], rack []
+  upgrades 0 (of 17 for the items owned) []  missing ["hands:capacity:1", "hands:capacity:2", "hands:throw:1", "hands:throw:2", "hands:push_width:1", "hands:push:1", "small_shovel:capacity:1", "small_shovel:throw:1", "small_shovel:push_width:1", "small_shovel:push:1", "pickup:front_plow:1", "weather_pro", "weather_radar", "furnace", "tool_rack", "heated_driveway", "heated_path"]
+  vehicles ["pickup @ 16 Maple Street (in the player\'s driveway)"], truck keys false, driveway box complete false
+  contracts: 0 running of 0 []
+  listings: 6 ["municipal Cedar Lane (north) (closes Dec 3 21:00)", "recurring 12 Birch Avenue (closes Dec 3 21:00)", "one_time 23 Birch Avenue (closes Dec 3 21:00)", "one_time 31 Birch Avenue (closes Dec 3 21:00)", "recurring St. Andrew\'s Church, 40 Cedar Lane (closes Dec 3 21:00)", "recurring Maple Ridge School, 12 Cedar Lane (closes Dec 3 21:00)"]; bids 0; orders []
+  snow: 24 Maple Street [lot 9]: driveway 61.09 m3 (avg 0.91 m), path 8.58 m3 (avg 0.58 m), sidewalk 37.71 m3 (avg 0.91 m); front yard 0.85 m | 28 Maple Street [lot 10]: driveway 69.28 m3 (avg 0.89 m), path 9.80 m3 (avg 0.58 m), sidewalk 37.32 m3 (avg 0.90 m); front yard 0.87 m
+fun_6_winter2.json: loads
+  fun, winter 2, Dec 2 12:00 (day 1), stage 4, money $100, reputation 100.0
+  tools in the slots [], carried '', lying about ["small_shovel"], machines [], rack []
+  upgrades 0 (of 17 for the items owned) []  missing ["hands:capacity:1", "hands:capacity:2", "hands:throw:1", "hands:throw:2", "hands:push_width:1", "hands:push:1", "small_shovel:capacity:1", "small_shovel:throw:1", "small_shovel:push_width:1", "small_shovel:push:1", "pickup:front_plow:1", "weather_pro", "weather_radar", "furnace", "tool_rack", "heated_driveway", "heated_path"]
+  vehicles ["pickup @ 16 Maple Street (in the player\'s driveway)"], truck keys false, driveway box complete false
+  contracts: 0 running of 0 []
+  listings: 6 ["one_time 28 Birch Avenue (closes Dec 2 21:00)", "municipal Sidewalks, 11–19 Birch Avenue (closes Dec 2 21:00)", "one_time Northern Supply Co., 11 Cedar Lane (closes Dec 2 21:00)", "one_time 12 Maple Street (closes Dec 2 21:00)", "municipal Birch Avenue (east) (closes Dec 2 21:00)", "recurring 19 Maple Street (closes Dec 2 21:00)"]; bids 0; orders []
+  snow: 24 Maple Street [lot 9]: driveway 24.63 m3 (avg 0.37 m), path 3.34 m3 (avg 0.23 m), sidewalk 14.83 m3 (avg 0.36 m); front yard 0.34 m | 28 Maple Street [lot 10]: driveway 27.69 m3 (avg 0.36 m), path 3.81 m3 (avg 0.23 m), sidewalk 14.92 m3 (avg 0.37 m); front yard 0.36 m
+fun_7_keys_pickup_plow_order.json: loads
+  fun, winter 1, Dec 2 11:00 (day 1), stage 4, money $100, reputation 52.0
+  tools in the slots [], carried '', lying about ["small_shovel (buried)"], machines [], rack []
+  upgrades 0 (of 17 for the items owned) []  missing ["hands:capacity:1", "hands:capacity:2", "hands:throw:1", "hands:throw:2", "hands:push_width:1", "hands:push:1", "small_shovel:capacity:1", "small_shovel:throw:1", "small_shovel:push_width:1", "small_shovel:push:1", "pickup:front_plow:1", "weather_pro", "weather_radar", "furnace", "tool_rack", "heated_driveway", "heated_path"]
+  vehicles ["pickup @ 16 Maple Street (in the player\'s driveway)"], truck keys true, driveway box complete false
+  contracts: 0 running of 0 []
+  listings: 6 ["one_time 31 Birch Avenue (closes Dec 2 21:00)", "one_time 31 Maple Street (closes Dec 2 21:00)", "one_time 23 Birch Avenue (closes Dec 2 21:00)", "municipal Sidewalks, 11–19 Birch Avenue (closes Dec 2 21:00)", "recurring 19 Maple Street (closes Dec 2 21:00)", "recurring Northern Supply Co., 11 Cedar Lane (closes Dec 2 21:00)"]; bids 0; orders ["pickup:front_plow:1:spawned"]
+  snow: 24 Maple Street [lot 9]: driveway 55.68 m3 (avg 0.83 m), path 7.84 m3 (avg 0.53 m), sidewalk 34.46 m3 (avg 0.83 m); front yard 0.77 m | 28 Maple Street [lot 10]: driveway 63.22 m3 (avg 0.81 m), path 8.95 m3 (avg 0.53 m), sidewalk 34.06 m3 (avg 0.82 m); front yard 0.80 m
+survival_1_contracts.json: loads
+  survival, winter 1, Dec 2 11:00 (day 1), stage 4, money $1500, reputation 52.0
+  tools in the slots [], carried '', lying about ["small_shovel (buried)"], machines [], rack []
+  upgrades 0 (of 17 for the items owned) []  missing ["hands:capacity:1", "hands:capacity:2", "hands:throw:1", "hands:throw:2", "hands:push_width:1", "hands:push:1", "small_shovel:capacity:1", "small_shovel:throw:1", "small_shovel:push_width:1", "small_shovel:push:1", "pickup:front_plow:1", "weather_pro", "weather_radar", "furnace", "tool_rack", "heated_driveway", "heated_path"]
+  vehicles ["pickup @ 16 Maple Street (in the player\'s driveway)"], truck keys false, driveway box complete false
+  contracts: 2 running of 2 ["#14 one_time active 31 Birch Avenue", "#15 municipal needs_service Sidewalks, 11–19 Birch Avenue"]
+  listings: 4 ["one_time 31 Maple Street (closes Dec 2 21:00)", "one_time 23 Birch Avenue (closes Dec 2 21:00)", "recurring 19 Maple Street (closes Dec 2 21:00)", "recurring Northern Supply Co., 11 Cedar Lane (closes Dec 2 21:00)"]; bids 0; orders []
+  snow: 24 Maple Street [lot 9]: driveway 55.68 m3 (avg 0.83 m), path 7.84 m3 (avg 0.53 m), sidewalk 34.46 m3 (avg 0.83 m); front yard 0.77 m | 28 Maple Street [lot 10]: driveway 63.22 m3 (avg 0.81 m), path 8.95 m3 (avg 0.53 m), sidewalk 34.06 m3 (avg 0.82 m); front yard 0.80 m
+survival_2_upgrades.json: loads
+  survival, winter 1, Dec 2 11:00 (day 1), stage 4, money $48442, reputation 52.0
+  tools in the slots ["standard_shovel", "wide_pusher", "snow_scraper"], carried '', lying about ["small_shovel (buried)"], machines ["small_blower @ Northern Supply Co., 11 Cedar Lane"], rack []
+  upgrades 36 (of 35 for the items owned) ["furnace", "hands:capacity:1", "hands:capacity:2", "hands:push:1", "hands:push_width:1", "hands:throw:1", "hands:throw:2", "heated_driveway", "heated_path", "pickup:front_plow:1", "pickup_plow:plow_power:1", "pickup_plow:plow_width:1", "small_blower:chute:1", "small_blower:intake:1", "small_shovel:capacity:1", "small_shovel:push:1", "small_shovel:push_width:1", "small_shovel:throw:1", "snow_scraper:capacity:1", "snow_scraper:capacity:2", "snow_scraper:push:1", "snow_scraper:push_width:1", "snow_scraper:throw:1", "standard_shovel:capacity:1", "standard_shovel:capacity:2", "standard_shovel:push:1", "standard_shovel:push_width:1", "standard_shovel:throw:1", "standard_shovel:throw:2", "tool_rack", "weather_pro", "weather_radar", "wide_pusher:capacity:1", "wide_pusher:push:1", "wide_pusher:push_width:1", "wide_pusher:throw:1"]
+  vehicles ["pickup_plow @ 16 Maple Street (in the player\'s driveway)"], truck keys false, driveway box complete false
+  contracts: 0 running of 0 []
+  listings: 6 ["one_time 31 Birch Avenue (closes Dec 2 21:00)", "one_time 31 Maple Street (closes Dec 2 21:00)", "one_time 23 Birch Avenue (closes Dec 2 21:00)", "municipal Sidewalks, 11–19 Birch Avenue (closes Dec 2 21:00)", "recurring 19 Maple Street (closes Dec 2 21:00)", "recurring Northern Supply Co., 11 Cedar Lane (closes Dec 2 21:00)"]; bids 0; orders ["standard_shovel:collected", "wide_pusher:collected", "snow_scraper:collected", "small_blower:spawned", "hands:capacity:1:collected", "hands:throw:1:collected", "hands:push_width:1:collected", "hands:push:1:collected", "small_shovel:capacity:1:collected", "small_shovel:throw:1:collected", "small_shovel:push_width:1:collected", "small_shovel:push:1:collected", "standard_shovel:capacity:1:collected", "standard_shovel:throw:1:collected", "standard_shovel:push_width:1:collected", "standard_shovel:push:1:collected", "wide_pusher:capacity:1:collected", "wide_pusher:throw:1:collected", "wide_pusher:push_width:1:collected", "wide_pusher:push:1:collected", "snow_scraper:capacity:1:collected", "snow_scraper:throw:1:collected", "snow_scraper:push_width:1:collected", "snow_scraper:push:1:collected", "small_blower:intake:1:collected", "small_blower:chute:1:collected", "pickup:front_plow:1:collected", "tool_rack:collected", "hands:capacity:2:collected", "hands:throw:2:collected", "standard_shovel:capacity:2:collected", "standard_shovel:throw:2:collected", "snow_scraper:capacity:2:collected", "pickup_plow:plow_width:1:collected", "pickup_plow:plow_power:1:collected"]
+  snow: 24 Maple Street [lot 9]: driveway 55.69 m3 (avg 0.83 m), path 7.84 m3 (avg 0.53 m), sidewalk 34.46 m3 (avg 0.83 m); front yard 0.77 m | 28 Maple Street [lot 10]: driveway 63.22 m3 (avg 0.81 m), path 8.95 m3 (avg 0.53 m), sidewalk 34.06 m3 (avg 0.82 m); front yard 0.80 m
+survival_3_vehicle.json: loads
+  survival, winter 1, Dec 2 11:00 (day 1), stage 4, money $2000, reputation 52.0
+  tools in the slots [], carried '', lying about ["small_shovel (buried)"], machines [], rack []
+  upgrades 0 (of 20 for the items owned) []  missing ["hands:capacity:1", "hands:capacity:2", "hands:throw:1", "hands:throw:2", "hands:push_width:1", "hands:push:1", "small_shovel:capacity:1", "small_shovel:throw:1", "small_shovel:push_width:1", "small_shovel:push:1", "pickup:front_plow:1", "atv_blade:plow_width:1", "atv_blade:plow_power:1", "atv_blade:cab:1", "weather_pro", "weather_radar", "furnace", "tool_rack", "heated_driveway", "heated_path"]
+  vehicles ["pickup @ 16 Maple Street (in the player\'s driveway)", "atv_blade @ 16 Maple Street (in the player\'s driveway)"], truck keys true, driveway box complete true
+  contracts: 0 running of 0 []
+  listings: 6 ["one_time 31 Birch Avenue (closes Dec 2 21:00)", "one_time 31 Maple Street (closes Dec 2 21:00)", "one_time 23 Birch Avenue (closes Dec 2 21:00)", "municipal Sidewalks, 11–19 Birch Avenue (closes Dec 2 21:00)", "recurring 19 Maple Street (closes Dec 2 21:00)", "recurring Northern Supply Co., 11 Cedar Lane (closes Dec 2 21:00)"]; bids 0; orders ["atv_blade:collected"]
+  snow: 24 Maple Street [lot 9]: driveway 55.68 m3 (avg 0.83 m), path 7.84 m3 (avg 0.53 m), sidewalk 34.46 m3 (avg 0.83 m); front yard 0.77 m | 28 Maple Street [lot 10]: driveway 63.22 m3 (avg 0.81 m), path 8.95 m3 (avg 0.53 m), sidewalk 34.06 m3 (avg 0.82 m); front yard 0.80 m
+survival_4_midwinter.json: loads
+  survival, winter 1, Jan 19 13:00 (day 49), stage 4, money $1500, reputation 52.0
+  tools in the slots [], carried '', lying about ["small_shovel (buried)"], machines [], rack []
+  upgrades 0 (of 17 for the items owned) []  missing ["hands:capacity:1", "hands:capacity:2", "hands:throw:1", "hands:throw:2", "hands:push_width:1", "hands:push:1", "small_shovel:capacity:1", "small_shovel:throw:1", "small_shovel:push_width:1", "small_shovel:push:1", "pickup:front_plow:1", "weather_pro", "weather_radar", "furnace", "tool_rack", "heated_driveway", "heated_path"]
+  vehicles ["pickup @ 16 Maple Street (in the player\'s driveway)"], truck keys false, driveway box complete false
+  contracts: 1 running of 1 ["#302 recurring needs_service 28 Maple Street"]
+  listings: 5 ["recurring 32 Maple Street (closes Jan 19 21:00)", "municipal Sidewalks, 23–31 Birch Avenue (closes Jan 19 21:00)", "one_time 27 Birch Avenue (closes Jan 19 21:00)", "municipal Cedar Lane (north) (closes Jan 19 21:00)", "one_time 19 Maple Street (closes Jan 19 21:00)"]; bids 0; orders []
+  snow: 24 Maple Street [lot 9]: driveway 133.92 m3 (avg 1.97 m), path 15.53 m3 (avg 1.04 m), sidewalk 0.00 m3 (avg 0.00 m); front yard 1.52 m | 28 Maple Street [lot 10]: driveway 148.50 m3 (avg 1.90 m), path 17.89 m3 (avg 1.04 m), sidewalk 0.00 m3 (avg 0.00 m); front yard 1.60 m
+survival_5_evening.json: loads
+  survival, winter 1, Dec 3 20:30 (day 2), stage 4, money $1500, reputation 52.0
+  tools in the slots [], carried '', lying about ["small_shovel (buried)"], machines [], rack []
+  upgrades 0 (of 17 for the items owned) []  missing ["hands:capacity:1", "hands:capacity:2", "hands:throw:1", "hands:throw:2", "hands:push_width:1", "hands:push:1", "small_shovel:capacity:1", "small_shovel:throw:1", "small_shovel:push_width:1", "small_shovel:push:1", "pickup:front_plow:1", "weather_pro", "weather_radar", "furnace", "tool_rack", "heated_driveway", "heated_path"]
+  vehicles ["pickup @ 16 Maple Street (in the player\'s driveway)"], truck keys false, driveway box complete false
+  contracts: 0 running of 0 []
+  listings: 6 ["municipal Cedar Lane (north) (closes Dec 3 21:00)", "recurring 12 Birch Avenue (closes Dec 3 21:00)", "one_time 23 Birch Avenue (closes Dec 3 21:00)", "one_time 31 Birch Avenue (closes Dec 3 21:00)", "recurring St. Andrew\'s Church, 40 Cedar Lane (closes Dec 3 21:00)", "recurring Maple Ridge School, 12 Cedar Lane (closes Dec 3 21:00)"]; bids 0; orders []
+  snow: 24 Maple Street [lot 9]: driveway 61.09 m3 (avg 0.91 m), path 8.58 m3 (avg 0.58 m), sidewalk 37.71 m3 (avg 0.91 m); front yard 0.85 m | 28 Maple Street [lot 10]: driveway 69.28 m3 (avg 0.89 m), path 9.80 m3 (avg 0.58 m), sidewalk 37.32 m3 (avg 0.90 m); front yard 0.87 m
+survival_6_winter2.json: loads
+  survival, winter 2, Dec 2 12:00 (day 1), stage 4, money $1500, reputation 100.0
+  tools in the slots [], carried '', lying about ["small_shovel"], machines [], rack []
+  upgrades 0 (of 17 for the items owned) []  missing ["hands:capacity:1", "hands:capacity:2", "hands:throw:1", "hands:throw:2", "hands:push_width:1", "hands:push:1", "small_shovel:capacity:1", "small_shovel:throw:1", "small_shovel:push_width:1", "small_shovel:push:1", "pickup:front_plow:1", "weather_pro", "weather_radar", "furnace", "tool_rack", "heated_driveway", "heated_path"]
+  vehicles ["pickup @ 16 Maple Street (in the player\'s driveway)"], truck keys false, driveway box complete false
+  contracts: 0 running of 0 []
+  listings: 6 ["one_time 28 Birch Avenue (closes Dec 2 21:00)", "municipal Sidewalks, 11–19 Birch Avenue (closes Dec 2 21:00)", "one_time Northern Supply Co., 11 Cedar Lane (closes Dec 2 21:00)", "one_time 12 Maple Street (closes Dec 2 21:00)", "municipal Birch Avenue (east) (closes Dec 2 21:00)", "recurring 19 Maple Street (closes Dec 2 21:00)"]; bids 0; orders []
+  snow: 24 Maple Street [lot 9]: driveway 24.63 m3 (avg 0.37 m), path 3.34 m3 (avg 0.23 m), sidewalk 14.83 m3 (avg 0.36 m); front yard 0.34 m | 28 Maple Street [lot 10]: driveway 27.69 m3 (avg 0.36 m), path 3.81 m3 (avg 0.23 m), sidewalk 14.92 m3 (avg 0.37 m); front yard 0.36 m
+survival_7_keys_pickup_plow_order.json: loads
+  survival, winter 1, Dec 2 11:00 (day 1), stage 4, money $1500, reputation 52.0
+  tools in the slots [], carried '', lying about ["small_shovel (buried)"], machines [], rack []
+  upgrades 0 (of 17 for the items owned) []  missing ["hands:capacity:1", "hands:capacity:2", "hands:throw:1", "hands:throw:2", "hands:push_width:1", "hands:push:1", "small_shovel:capacity:1", "small_shovel:throw:1", "small_shovel:push_width:1", "small_shovel:push:1", "pickup:front_plow:1", "weather_pro", "weather_radar", "furnace", "tool_rack", "heated_driveway", "heated_path"]
+  vehicles ["pickup @ 16 Maple Street (in the player\'s driveway)"], truck keys true, driveway box complete false
+  contracts: 0 running of 0 []
+  listings: 6 ["one_time 31 Birch Avenue (closes Dec 2 21:00)", "one_time 31 Maple Street (closes Dec 2 21:00)", "one_time 23 Birch Avenue (closes Dec 2 21:00)", "municipal Sidewalks, 11–19 Birch Avenue (closes Dec 2 21:00)", "recurring 19 Maple Street (closes Dec 2 21:00)", "recurring Northern Supply Co., 11 Cedar Lane (closes Dec 2 21:00)"]; bids 0; orders ["pickup:front_plow:1:spawned"]
+  snow: 24 Maple Street [lot 9]: driveway 55.68 m3 (avg 0.83 m), path 7.84 m3 (avg 0.53 m), sidewalk 34.46 m3 (avg 0.83 m); front yard 0.77 m | 28 Maple Street [lot 10]: driveway 63.22 m3 (avg 0.81 m), path 8.95 m3 (avg 0.53 m), sidewalk 34.06 m3 (avg 0.82 m); front yard 0.80 m
+FIXTURES DONE

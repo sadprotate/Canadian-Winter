@@ -1,0 +1,230 @@
+# command: godot --headless --fixed-fps 60 --path . res://tests/test_runner.tscn -- --only=polish4
+# cwd: /c/Users/orsin/OneDrive/Desktop/Canadian Winter/Canadian-Winter (at 1b38f4a, game code = polish6-baseline)
+# exit code: 0   wall time: 198 s   finished: 2026-11-05 09:02
+# Godot: 4.7.2.stable.official.ed1daf0bf
+
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+[notify] Good morning.
+[notify] Game saved.
+[notify] Good morning.
+[notify] Game saved.
+[notify] Good morning.
+[notify] Game saved.
+[notify] Good morning.
+[notify] Game saved.
+[notify] BLIZZARD WARNING in effect. Stay safe and warm.
+[notify] Good morning.
+[notify] Game saved.
+[notify] Good morning.
+[notify] Game saved.
+[notify] Good morning.
+[notify] Game saved.
+[notify] Good morning.
+[notify] Game saved.
+[notify] Good morning.
+[notify] Game saved.
+[notify] Good morning.
+[notify] Game saved.
+[notify] BLIZZARD WARNING in effect. Stay safe and warm.
+[notify] Good morning.
+[notify] Game saved.
+[notify] Good morning.
+[notify] Game saved.
+  PASS  test_polish4.gd::test_polish4_fixtures_load_and_play (52696 ms)
+  PASS  test_polish4.gd::test_chair_on_casters_and_clear (1835 ms)
+  PASS  test_polish4.gd::test_computer_screen_lock_then_desktop (2080 ms)
+  PASS  test_polish4.gd::test_living_room_lamp_lighting_unchanged (1629 ms)
+  PASS  test_polish4.gd::test_photo_on_the_wall_beside_the_door (1661 ms)
+  PASS  test_polish4.gd::test_photo_scene_is_isolated (2790 ms)
+  PASS  test_polish4.gd::test_indicator_at_pickup_then_landing_every_tool (30504 ms)
+  PASS  test_polish4.gd::test_indicator_over_street_like_any_other (2209 ms)
+      Gerry's trail at the opening: 6.88 m3 of snow on 10.5 m2 (pass 3: 7.01 m3 on 9.6 m2)
+  PASS  test_polish4.gd::test_mailboxes_at_walk_corners_facing_the_street (1810 ms)
+  PASS  test_polish4.gd::test_old_saves_and_the_moved_trail (3540 ms)
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Severe weather advisory: heavy snow expected around Dec 12 00:03.
+[notify] Severe weather advisory: blizzard expected around Jan 20 13:56.
+[notify] BLIZZARD WARNING in effect. Stay safe and warm.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Extreme cold warning: -26 °C, wind chill -41.
+[notify] Severe weather advisory: heavy snow expected around Mar 6 11:48.
+[notify] Extreme cold warning: -32 °C, wind chill -47.
+[notify] Severe weather advisory: heavy snow expected around Dec 5 10:02.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Severe weather advisory: heavy snow expected around Dec 20 06:46.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Extreme cold warning: -25 °C, wind chill -38.
+[notify] Severe weather advisory: heavy snow expected around Jan 16 15:49.
+[notify] Severe weather advisory: heavy snow expected around Jan 31 03:26.
+[notify] WEATHER ALERT: an unforecast storm is dumping snow at 20 cm an hour — stay indoors!
+[notify] Extreme cold warning: -32 °C, wind chill -47.
+[notify] Extreme cold warning: -32 °C, wind chill -45.
+[notify] Severe weather advisory: blizzard expected around Dec 9 04:56.
+[notify] Severe weather advisory: blizzard expected around Dec 9 10:41.
+[notify] BLIZZARD WARNING in effect. Stay safe and warm.
+[notify] BLIZZARD WARNING in effect. Stay safe and warm.
+[notify] Extreme cold warning: -24 °C, wind chill -38.
+[notify] Severe weather advisory: heavy snow expected around Jan 3 16:10.
+[notify] Extreme cold warning: -30 °C, wind chill -46.
+[notify] Extreme cold warning: -28 °C, wind chill -42.
+[notify] Severe weather advisory: heavy snow expected around Jan 16 06:54.
+[notify] Extreme cold warning: -25 °C, wind chill -39.
+[notify] Extreme cold warning: -26 °C, wind chill -41.
+[notify] Severe weather advisory: heavy snow expected around Feb 18 19:44.
+[notify] Severe weather advisory: heavy snow expected around Feb 22 03:41.
+[notify] Severe weather advisory: heavy snow expected around Feb 26 00:56.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Severe weather advisory: heavy snow expected around Dec 14 15:35.
+[notify] WEATHER ALERT: an unforecast storm is dumping snow at 24 cm an hour — stay indoors!
+[notify] Severe weather advisory: heavy snow expected around Dec 20 10:42.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Extreme cold warning: -24 °C, wind chill -37.
+[notify] Extreme cold warning: -29 °C, wind chill -44.
+[notify] Extreme cold warning: -27 °C, wind chill -39.
+[notify] Severe weather advisory: heavy snow expected around Feb 25 17:54.
+[notify] Severe weather advisory: heavy snow expected around Dec 5 01:10.
+[notify] Severe weather advisory: heavy snow expected around Dec 11 13:09.
+[notify] WEATHER ALERT: an unforecast storm is dumping snow at 26 cm an hour — stay indoors!
+[notify] Severe weather advisory: heavy snow expected around Jan 1 23:55.
+[notify] Extreme cold warning: -24 °C, wind chill -37.
+[notify] Severe weather advisory: heavy snow expected around Feb 8 00:50.
+[notify] Severe weather advisory: heavy snow expected around Feb 8 16:53.
+[notify] Extreme cold warning: -24 °C, wind chill -35.
+[notify] Severe weather advisory: heavy snow expected around Dec 6 06:46.
+[notify] WEATHER ALERT: an unforecast storm is dumping snow at 22 cm an hour — stay indoors!
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Extreme cold warning: -30 °C, wind chill -44.
+[notify] Severe weather advisory: heavy snow expected around Jan 15 08:34.
+[notify] Severe weather advisory: heavy snow expected around Jan 17 15:56.
+[notify] WEATHER ALERT: an unforecast storm is dumping snow at 19 cm an hour — stay indoors!
+[notify] Extreme cold warning: -26 °C, wind chill -40.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Severe weather advisory: heavy snow expected around Mar 14 13:48.
+[notify] Severe weather advisory: heavy snow expected around Dec 10 10:48.
+[notify] Severe weather advisory: heavy snow expected around Dec 27 04:06.
+[notify] Extreme cold warning: -25 °C, wind chill -38.
+[notify] Severe weather advisory: heavy snow expected around Feb 1 11:39.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Extreme cold warning: -29 °C, wind chill -44.
+[notify] Extreme cold warning: -24 °C, wind chill -37.
+[notify] Severe weather advisory: blizzard expected around Mar 16 14:04.
+[notify] BLIZZARD WARNING in effect. Stay safe and warm.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Severe weather advisory: heavy snow expected around Dec 8 10:47.
+[notify] Severe weather advisory: heavy snow expected around Dec 13 00:56.
+[notify] Severe weather advisory: heavy snow expected around Dec 24 01:49.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] WEATHER ALERT: an unforecast storm is dumping snow at 20 cm an hour — stay indoors!
+[notify] Extreme cold warning: -28 °C, wind chill -43.
+[notify] Extreme cold warning: -31 °C, wind chill -47.
+[notify] Extreme cold warning: -27 °C, wind chill -41.
+[notify] Severe weather advisory: heavy snow expected around Mar 8 14:47.
+[notify] Severe weather advisory: heavy snow expected around Dec 30 13:16.
+[notify] Severe weather advisory: heavy snow expected around Jan 8 23:25.
+[notify] Severe weather advisory: heavy snow expected around Jan 25 19:14.
+[notify] Severe weather advisory: blizzard expected around Feb 7 13:49.
+[notify] BLIZZARD WARNING in effect. Stay safe and warm.
+[notify] Severe weather advisory: heavy snow expected around Feb 9 07:22.
+[notify] Severe weather advisory: heavy snow expected around Feb 11 12:02.
+[notify] Severe weather advisory: heavy snow expected around Mar 2 00:40.
+[notify] WEATHER ALERT: an unforecast storm is dumping snow at 23 cm an hour — stay indoors!
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Severe weather advisory: heavy snow expected around Dec 10 06:57.
+[notify] WEATHER ALERT: an unforecast storm is dumping snow at 28 cm an hour — stay indoors!
+[notify] Extreme cold warning: -27 °C, wind chill -40.
+[notify] Severe weather advisory: heavy snow expected around Jan 20 08:47.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Extreme cold warning: -29 °C, wind chill -45.
+[notify] Extreme cold warning: -26 °C, wind chill -40.
+[notify] Extreme cold warning: -25 °C, wind chill -37.
+[notify] Extreme cold warning: -32 °C, wind chill -46.
+[notify] Extreme cold warning: -24 °C, wind chill -33.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Severe weather advisory: blizzard expected around Dec 7 20:11.
+[notify] BLIZZARD WARNING in effect. Stay safe and warm.
+[notify] Severe weather advisory: heavy snow expected around Dec 13 10:11.
+[notify] Extreme cold warning: -26 °C, wind chill -39.
+[notify] Severe weather advisory: heavy snow expected around Jan 27 21:26.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Severe weather advisory: heavy snow expected around Mar 15 11:24.
+[notify] Severe weather advisory: heavy snow expected around Dec 5 13:28.
+[notify] Severe weather advisory: blizzard expected around Dec 8 06:24.
+[notify] BLIZZARD WARNING in effect. Stay safe and warm.
+[notify] Severe weather advisory: heavy snow expected around Dec 15 10:43.
+[notify] WEATHER ALERT: an unforecast storm is dumping snow at 24 cm an hour — stay indoors!
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Severe weather advisory: heavy snow expected around Feb 18 20:41.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Extreme cold warning: -32 °C, wind chill -48.
+[notify] Extreme cold warning: -24 °C, wind chill -37.
+[notify] Severe weather advisory: heavy snow expected around Mar 17 00:38.
+  PASS  test_polish4.gd::test_weather_truth_unchanged (2387 ms)
+  PASS  test_polish4.gd::test_storm_onset_lead_in (272 ms)
+  PASS  test_polish4.gd::test_forecast_same_in_real_time_after_sleep_and_reload (12272 ms)
+  PASS  test_polish4.gd::test_displays_dont_read_the_truth_ahead (1800 ms)
+  PASS  test_polish4.gd::test_forecast_accuracy (2724 ms)
+  PASS  test_polish4.gd::test_surprises_and_the_radio_horizon (2044 ms)
+  PASS  test_polish4.gd::test_radio_bulletin_reads_the_next_three_hours (1815 ms)
+  PASS  test_polish4.gd::test_weather_text_fits (2227 ms)
+[notify] You found a small snow shovel! Hold Left Mouse and sweep it through the snow to fill it, release to throw, hold Right Mouse to push.
+[notify] Contract accepted: Gerry's path, 15 Maple Street — $55. Clear the outlined path from his steps down to his mailbox.
+[notify] Payment received: $55 from Gerry (neighbour).
+[notify] 15 Maple Street — all clear.
+[notify] Gerry taught you the business. Your computer's Help app has his advice. Time to head home!
+[notify] Bid of $32 placed on 20 Birch Avenue.
+[notify] Bid of $39 placed on 31 Birch Avenue.
+[notify] Bid of $38 placed on 24 Maple Street.
+[notify] Bid of $37 placed on 24 Birch Avenue.
+[notify] Bid won! Maple Snow Removal wins 20 Birch Avenue — one-time job at $32, due 9 p.m. Wed.
+[notify] Bid won! Maple Snow Removal wins 31 Birch Avenue — one-time job at $39, due 9 p.m. Wed.
+[notify] Bid won! Maple Snow Removal wins 24 Maple Street — one-time job at $38, due 9 p.m. Wed.
+[notify] Bid won! Maple Snow Removal wins 24 Birch Avenue — one-time job at $37, due 9 p.m. Wed.
+[notify] 20 Birch Avenue is due 9 p.m. Wed — 12 h left to clear it.
+[notify] 31 Birch Avenue is due 9 p.m. Wed — 12 h left to clear it.
+[notify] 24 Maple Street is due 9 p.m. Wed — 12 h left to clear it.
+[notify] 24 Birch Avenue is due 9 p.m. Wed — 12 h left to clear it.
+[notify] URGENT: 20 Birch Avenue is due 9 p.m. Wed — 3 h left.
+[notify] URGENT: 31 Birch Avenue is due 9 p.m. Wed — 3 h left.
+[notify] URGENT: 24 Maple Street is due 9 p.m. Wed — 3 h left.
+[notify] URGENT: 24 Birch Avenue is due 9 p.m. Wed — 3 h left.
+[notify] MISSED: 20 Birch Avenue wasn't cleared by 9 p.m. — no pay, -6 reputation. It's back on the board.
+[notify] MISSED: 31 Birch Avenue wasn't cleared by 9 p.m. — no pay, -6 reputation. It's back on the board.
+[notify] MISSED: 24 Maple Street wasn't cleared by 9 p.m. — no pay, -6 reputation. It's back on the board.
+[notify] MISSED: 24 Birch Avenue wasn't cleared by 9 p.m. — no pay, -6 reputation. It's back on the board.
+[notify] Severe weather advisory: heavy snow expected around Dec 17 00:27.
+[notify] Good morning.
+[notify] Game saved.
+[notify] You found a small snow shovel! Hold Left Mouse and sweep it through the snow to fill it, release to throw, hold Right Mouse to push.
+[notify] Contract accepted: Gerry's path, 15 Maple Street — $55. Clear the outlined path from his steps down to his mailbox.
+[notify] Payment received: $55 from Gerry (neighbour).
+[notify] 15 Maple Street — all clear.
+[notify] Gerry taught you the business. Your computer's Help app has his advice. Time to head home!
+[notify] Bid of $32 placed on 20 Birch Avenue.
+[notify] Bid of $39 placed on 31 Birch Avenue.
+[notify] Bid of $38 placed on 24 Maple Street.
+[notify] Bid of $37 placed on 24 Birch Avenue.
+[notify] Bid won! Maple Snow Removal wins 20 Birch Avenue — one-time job at $32, due 9 p.m. Wed.
+[notify] Bid won! Maple Snow Removal wins 31 Birch Avenue — one-time job at $39, due 9 p.m. Wed.
+[notify] Bid won! Maple Snow Removal wins 24 Maple Street — one-time job at $38, due 9 p.m. Wed.
+[notify] Bid won! Maple Snow Removal wins 24 Birch Avenue — one-time job at $37, due 9 p.m. Wed.
+[notify] Hydro bill paid ($85).
+[notify] 20 Birch Avenue is due 9 p.m. Wed — 12 h left to clear it.
+[notify] 31 Birch Avenue is due 9 p.m. Wed — 12 h left to clear it.
+[notify] 24 Maple Street is due 9 p.m. Wed — 12 h left to clear it.
+[notify] 24 Birch Avenue is due 9 p.m. Wed — 12 h left to clear it.
+[notify] URGENT: 20 Birch Avenue is due 9 p.m. Wed — 3 h left.
+[notify] URGENT: 31 Birch Avenue is due 9 p.m. Wed — 3 h left.
+[notify] URGENT: 24 Maple Street is due 9 p.m. Wed — 3 h left.
+[notify] URGENT: 24 Birch Avenue is due 9 p.m. Wed — 3 h left.
+[notify] MISSED: 20 Birch Avenue wasn't cleared by 9 p.m. — no pay, -6 reputation. It's back on the board.
+[notify] MISSED: 31 Birch Avenue wasn't cleared by 9 p.m. — no pay, -6 reputation. It's back on the board.
+[notify] MISSED: 24 Maple Street wasn't cleared by 9 p.m. — no pay, -6 reputation. It's back on the board.
+[notify] MISSED: 24 Birch Avenue wasn't cleared by 9 p.m. — no pay, -6 reputation. It's back on the board.
+[notify] Severe weather advisory: heavy snow expected around Dec 17 00:27.
+[notify] Good morning.
+[notify] Game saved.
+  PASS  test_polish4.gd::test_playthrough_from_the_menu_both_modes (61177 ms)
+
+==== 19 passed, 0 failed (191.8 s) ====
