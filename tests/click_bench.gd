@@ -8,7 +8,8 @@ extends "res://tests/grind_bench.gd"
 ##   --rows=sweep,place,rhythm,click,machine,push --recovery=<s> --hold=<s> (grind_bench's overrides)
 ##   --cap=<presses per second; 0 = no cap> --fps=<frame rate the events are batched at, default 60:
 ##   20 hands the engine three frames' presses at once> --trace=<rate>
-##   --rows=shallow --depths=0.06,0.12,0.25,0.6 (only when named in --rows)]
+##   --rows=shallow --depths=0.06,0.12,0.25,0.6 (only when named in --rows)
+##   --rows=strokes --stroke_depths=0.2,0.4,0.8 --strokes=15 (only when named in --rows)]
 ## Prints per tool and scenario: the snow removed from the box per second (after everything thrown
 ## has landed), the snow scooped / pushed per second, presses sent and registered, throws (per
 ## second and the shortest gap between two), m³ per registered press, what the frame a press
@@ -17,7 +18,9 @@ extends "res://tests/grind_bench.gd"
 ## rhythm (hold and sweep a set time, turn, release, turn back), LMB clicked in place and clicked
 ## while sweeping, RMB held or clicked walking up the path. The electric shovel strafes along the
 ## path facing the lawn and the walk-behind blowers walk up it, LMB held or clicked. `shallow`: one
-## held sweep of a hand or shovel-type tool in flat snow of each depth (run_shallow).
+## held sweep of a hand or shovel-type tool in flat snow of each depth (run_shallow). `strokes`
+## (polish 6 §8.2): the grind_bench bot's strokes in flat snow of each depth, what each throw
+## carries, how many a minute, and what limited the fill (run_strokes).
 ## tests/test_polish5.gd (§2) and tests/test_polish6.gd (§8.1) use the same bots: instantiated as a
 ## child of another scene this node does nothing on its own.
 
@@ -44,6 +47,9 @@ var _m_moved := 0.0
 var _m_reg := 0
 var _m_bite := 0.0
 var _m_throw_frames: Array = []
+## The stroke monitor (polish 6 §8.2, run_strokes): each throw's volume and each fill frame's limit.
+var _s82_on := false
+var _s82: Dictionary = {}
 
 
 func _ready() -> void:
@@ -109,6 +115,9 @@ func _ready() -> void:
 						var mk: Dictionary = s["marks"]
 						print("LMB held sweep, flat snow %.2f m, sweep %.2f rad/frame: load L @15 %.1f @30 %.1f @45 %.1f @60 %.1f, cells cut %d" % [s["depth"], w,
 							mk[15] * 1000.0, mk[30] * 1000.0, mk[45] * 1000.0, mk[60] * 1000.0, s["cells"]])
+			if args.has("rows") and _rows(["strokes"]):
+				for dp in String(args.get("stroke_depths", "0.2,0.4,0.8")).split(","):
+					_strokes_row(await run_strokes(float(dp), int(args.get("strokes", "15"))))
 		elif _rows(["machine"]):
 			var how := "strafing along the path" if d.kind == ToolData.Kind.ELECTRIC_SHOVEL else "walking up the path"
 			_row("LMB hold, %s" % how, await run_machine(0.0, secs * 0.6))
@@ -191,6 +200,8 @@ func _on_child(n: Node) -> void:
 		throws += 1
 		if _mon:
 			_m_throw_frames.append(Engine.get_physics_frames())
+		if _s82_on:
+			(_s82["vols"] as Array).append((n as ThrownSnow).volume)
 
 
 ## Back to the starting snow, the bench's tool in hand (bare hands by default), nothing in flight,
@@ -316,6 +327,8 @@ func _mon_begin() -> void:
 
 
 func _physics_process(_delta: float) -> void:
+	if _s82_on:
+		_s82_frame()
 	if not _mon:
 		return
 	var on := _scoop_on()
@@ -631,6 +644,142 @@ func run_shallow(depth: float, w: float, frames := 60, spend_foot := false) -> D
 	await _frames(2)
 	await _settle()
 	return {"depth": depth, "marks": marks, "cells": cut.size(), "cut": cut, "foot": foot, "foot_left": foot_left}
+
+
+## Polish 6 §8.2: what a stroke carries with the real controls. The grind_bench bot (run_sweep: walk
+## to the nearest snow in the path box, hold LMB and sweep until the tool is full or for 40 frames,
+## turn to the lawn, release) with the walkway, the sidewalk in front of it and the lawn 2.5 m to
+## either side set flat to `depth`, until it has thrown `count` times (or `max_secs`). Returns each
+## throw's volume, the strokes and frames, and what limited each frame of filling (_s82_frame).
+func run_strokes(depth: float, count: int, max_secs := 60.0) -> Dictionary:
+	await reset()
+	var pl: Player = world.player
+	var tc = pl.tools
+	var sb: float = lot["setback"]
+	Snow.set_rect(Layout.lot_rect_world(lot, Layout.gu(lot, -4.6), Layout.gu(lot, 1.6), -1.5, sb - 2.4), depth)
+	pl.teleport(Vector3(start_p.x, Snow.ground_at(start_p.x, start_p.y) + 0.05, start_p.y), atan2(-into_d.x, -into_d.y))
+	await _frames(3)
+	tc._cut_time.clear()
+	if "recovery" in tc:
+		tc.set("recovery", 0.0)
+	var frames := 0
+	var side := 1.0
+	var strokes := 0
+	var loads := []
+	_walked_last = false
+	_s82 = {"prev": tc.load, "was": false, "fill": 0, "cut": 0, "none": 0, "topped": 0, "full": 0, "vols": [], "seq": "", "seqs": [], "relax": [], "chunks": []}
+	_s82_on = true
+	while (_s82["vols"] as Array).size() < count and frames < int(max_secs * 60.0):
+		var p0 := Vector2(pl.global_position.x, pl.global_position.z)
+		var ns := _nearest_snow(pl, into_d)
+		var to := Vector2(ns.x - p0.x, ns.z - p0.y)
+		var stuck := p0.distance_to(_last_walk_pos) < 0.01 and _walked_last
+		_walked_last = false
+		if (to.length() > 1.1 and not stuck) or to.length() < 0.12:
+			if to.length() < 0.12:
+				to = -into_d if (p0 - start_p).dot(into_d) > walk_r.size.y else into_d
+			elif Snow.ground_at(ns.x, ns.z) > pl.global_position.y + 0.25:
+				var sc: Vector2 = stairs_r.get_center()
+				to = Vector2(sc.x, sc.y + into_d.y * stairs_r.size.y) - p0
+			pl.set_yaw(atan2(-to.x, -to.y))
+			pl.pitch = 0.0
+			pl.head.rotation.x = 0.0
+			_last_walk_pos = p0
+			_walked_last = true
+			Input.action_press("move_forward")
+			await _frames(6)
+			Input.action_release("move_forward")
+			frames += 6
+		else:
+			frames += await _stroke_new(pl, into_d, side)
+			loads.append(last_load)
+			side = -side
+			strokes += 1
+	_s82_on = false
+	await _settle()
+	var out := _s82.duplicate()
+	out["depth"] = depth
+	out["frames"] = frames
+	out["strokes"] = strokes
+	out["loads"] = loads
+	out["cap"] = tc._capacity()
+	out["fill_rate"] = tc._fill_rate()
+	return out
+
+
+## run_strokes' per-frame monitor (before the world in each physics frame, so it sees what the frame
+## before did): a frame that was filling took the whole fill_rate × dt ("fill"), less ("cut": the
+## strip the sweep crossed, bite × width × sweep length, came up short), nothing ("none"), or topped
+## the tool up ("topped"); "full" counts frames held with the tool already full.
+func _s82_frame() -> void:
+	var tc = world.player.tools
+	# The game's own per-frame counters: relaxation µs (budget relax_usec) and chunk mesh updates
+	# (budget chunk_budget).
+	var sr: Node = world.get("snow_renderer")
+	if sr:
+		(_s82["relax"] as Array).append(int(sr.get("relax_us_last")))
+		(_s82["chunks"] as Array).append(int(sr.get("updates_last_frame")))
+	var ld: float = tc.load
+	var prev: float = _s82["prev"]
+	if bool(_s82["was"]) and ld >= prev - 1e-9:
+		var cap: float = tc._capacity()
+		var want: float = tc._fill_rate() / float(Engine.physics_ticks_per_second)
+		var dl := ld - prev
+		var key := "none"
+		if prev >= cap - 1e-6:
+			key = "full"
+		elif ld >= cap - 1e-6 and dl > 1e-9:
+			key = "topped"
+		elif dl >= want * 0.98:
+			key = "fill"
+		elif dl > 1e-9:
+			key = "cut"
+		_s82[key] = int(_s82[key]) + 1
+		_s82["seq"] = str(_s82["seq"]) + {"fill": "F", "cut": "c", "none": ".", "topped": "T", "full": "="}[key]
+		if args.has("trace_strokes") and (_s82["seqs"] as Array).size() == int(args["trace_strokes"]):
+			var ap: Vector2 = tc._aim_point()
+			var pp: Vector3 = world.player.global_position
+			print("  TRACE %s dl %.1f L load %.1f L aim (%.2f, %.2f) depth %.3f, %.2f m from the feet; feet (%.2f, %.2f) depth %.2f" % [key, dl * 1000.0, ld * 1000.0,
+				ap.x, ap.y, Snow.depth_at(ap.x, ap.y), ap.distance_to(Vector2(pp.x, pp.z)), pp.x, pp.z, Snow.depth_at(pp.x, pp.z)])
+	if not bool(tc.filling) and str(_s82["seq"]) != "":
+		(_s82["seqs"] as Array).append(str(_s82["seq"]))
+		_s82["seq"] = ""
+	_s82["prev"] = ld
+	_s82["was"] = bool(tc.filling)
+
+
+func _strokes_row(s: Dictionary) -> void:
+	var vols: Array = s["vols"]
+	var n := vols.size()
+	if n == 0:
+		print("strokes, flat snow %.2f m: no throws in %.1f s" % [s["depth"], s["frames"] / 60.0])
+		return
+	var sorted := vols.duplicate()
+	sorted.sort()
+	var total := 0.0
+	var full := 0
+	for v in vols:
+		total += float(v)
+		if float(v) >= float(s["cap"]) * 0.98:
+			full += 1
+	var fr := int(s["fill"]) + int(s["cut"]) + int(s["none"]) + int(s["topped"])
+	var pct := func(k: String) -> float: return 100.0 * float(s[k]) / maxf(float(fr), 1.0)
+	var mins := float(s["frames"]) / 3600.0
+	print("strokes, flat snow %.2f m: %d throws in %.1f s (%.1f a minute), %d bot strokes; per throw %.1f L mean, median %.1f, %.1f–%.1f; %d of %d full (capacity %.0f L); %.4f m3/s thrown; fill frames %d: fill rate %.0f %%, cut %.0f %%, nothing %.0f %%, topped up %.0f %%; held full %d frames" % [
+		s["depth"], n, s["frames"] / 60.0, n / maxf(mins, 1e-6), s["strokes"], total / n * 1000.0, float(sorted[n >> 1]) * 1000.0,
+		float(sorted[0]) * 1000.0, float(sorted[n - 1]) * 1000.0, full, n, float(s["cap"]) * 1000.0, total / maxf(float(s["frames"]) / 60.0, 1e-6),
+		fr, pct.call("fill"), pct.call("cut"), pct.call("none"), pct.call("topped"), s["full"]])
+	var rl: Array = (s["relax"] as Array).duplicate()
+	var ch: Array = (s["chunks"] as Array).duplicate()
+	if not rl.is_empty():
+		rl.sort()
+		ch.sort()
+		var qt := func(a: Array, f: float) -> int: return int(a[mini(int(f * a.size()), a.size() - 1)])
+		print("  counters: relaxation µs p50 %d / p95 %d / max %d (budget %d); chunk updates a frame p95 %d / max %d (budget %d)" % [qt.call(rl, 0.5), qt.call(rl, 0.95), rl[rl.size() - 1],
+			int(world.snow_renderer.relax_usec), qt.call(ch, 0.95), ch[ch.size() - 1], int(world.snow_renderer.chunk_budget)])
+	if args.get("log_strokes", "0") == "1":
+		for q in s["seqs"]:
+			print("  frames: " + str(q))
 
 
 ## An auto-clicker on LMB at `rate` presses per second, the bot in the clicking stance (it stops

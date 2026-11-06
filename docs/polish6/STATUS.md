@@ -23,8 +23,8 @@ resume from here.
 | §1 | What round 5 never pushed | done | `7abcd57` | `report/s1.md` |
 | §2 | The Godot errors after pulling | done | `c17cbe5` | `report/s2.md` |
 | §3 | Round 5's open items | done | `5287dfe` | `report/s3.md` |
-| §8.1 | Hold to fill, not spam-click | **needs a decision:** done except two Done-when items that Decision 10's recoveries rule out (grind_bench within 5 %; a human rhythm loses nothing), plus two things for the coordinator to accept: tests whose inputs changed, and shallow-snow sweeps taking more than before (see open items). Amended after two reviews | this commit (`polish6 §8.1: Hold to fill, not spam-click`) | `report/s8_1.md` |
-| §8.2 | Loads twice as big | not started | | |
+| §8.1 | Hold to fill, not spam-click | **needs a decision:** done except two Done-when items that Decision 10's recoveries rule out (grind_bench within 5 %; a human rhythm loses nothing), plus two things for the coordinator to accept: tests whose inputs changed, and shallow-snow sweeps taking more than before (see open items). Amended after two reviews | `f10a4cf` | `report/s8_1.md` |
+| §8.2 | Loads twice as big | **needs a decision:** done except one Done-when item (the standard shovel carries ×1.6 a stroke in 40 cm with the bot, not ×2; ×1.85 in 80 cm), plus two things for the coordinator to accept: bare hands' capacity levels +75 % each, and the base large scraper passing the electric shovel by 5 % (see open items). Amended after review (the load visual) | this commit (`polish6 §8.2: Loads twice as big`) | `report/s8_2.md` |
 | §9 | Smooth piles | not started | | |
 | §10 | The plow truck from the start | not started | | |
 | §11 | Blade up/down, push and pull | not started | | |
@@ -150,6 +150,39 @@ resume from here.
     hook didn't fire within `_menu_start`'s fixed 30-frame wait.
   - It passes alone (15 s), and it passed in the amended §8.1 run (11.3 s, 21/21).
   - A fix would wait for the start (or the stepped settle) to finish rather than 30 frames.
+
+- **§8.2, decision needed (coordinator): the standard shovel in 40 cm carries ×1.6 a stroke** with
+  the grind_bench bot, not ×2 (×1.85 in 80 cm; every other tool ×1.7–×2.1 in 40 cm, ×1.8–×1.9 in
+  80 cm), so the Done-when "about 2× per stroke in snow ≥ 40 cm" is partly met. The bot's sweep
+  crosses only about 90 L of 40 cm snow, its bite (0.50) is already the whole depth there, and
+  widths are frozen, so nothing within §8.2's rules raises it. A player sweeping until the load bar
+  is full gets the 130 L. `test_s82_twice_per_stroke` holds it to ×1.5 in 40 cm
+  (`S82_SWEEP_BOUND`), the other tools to ×1.6 (report/s8_2.md *Bites*).
+- **§8.2, to accept (coordinator): bare hands' capacity levels are +75 % each** (round 5: +25 %;
+  `upgrade_hands_capacity_step` 1.75) so the ladder's hands → small shovel step holds against the
+  doubled small shovel. A balance change: a save that owns both levels carries ×3.06 instead of
+  ×1.56, for the same $2 and $5 (report/s8_2.md *What changed*, *The ladder*).
+- **§8.2, to accept (coordinator): the hand tools against the machines** (the path box's
+  removal rate; no ladder row compares them). At base the large scraper (0.055 m³/s) passes the
+  electric shovel (0.053) by 5 % and the standard shovel matches it. Fully upgraded, the standard
+  shovel (0.075) passes the small blower (0.065), and the large scraper and the sleigh pass the
+  electric shovel. Round 5 already had the large scraper at 0.099 and the standard shovel at 0.069
+  at base. The upgrade steps weren't tuned for it (report/s8_2.md *The ladder*).
+- **§8.2:** `contract_bench`'s "human pace" column (1.1 s a stroke) is optimistic since §8.1 (a
+  stroke takes at least a recovery and a hold). Not changed.
+- **§8.2:** looking straight down (−85°) in deep snow, the body-anchored pose lifts the tool to eye
+  level, and two full loads pass the camera's near plane there, above the top of the view: the
+  sleigh's (0.006 m behind the camera's plane; round 5 0.003 m in front) and the large scraper's
+  (0.013 m in front; round 5 0.021 m). Both cut it outside the view: the test checks no cut
+  reaches the view (up to a 100° field of view; none found up to 135°), and the shots show no
+  clipping. Pre-existing pose, not changed.
+- **§8.2, for the coordinator:** the load's mound mesh (round 5's) is turned half a segment so a
+  flat side faces the blade's edges: at its widest it is the blade's width, no longer 8 % wider
+  (round 5's corner poked 3.2 cm through the sleigh tub's walls, visible from the third-person
+  camera looking down). Same volume, every tool's mound 8 % narrower at its widest
+  (report/s8_2.md *What changed*).
+- **HANDOFF §7's tool table** shows round 5's capacities, fill rates and bites (§8.2 changed
+  them); Part 4 updates HANDOFF.
 
 ## Binding notes
 
@@ -355,3 +388,62 @@ actions, function names, gotchas.
   release; S frames after it, switch to bare hands).
 - Suite times here: polish6 ~335–700 s depending on the PC's load (§8.1's bench tests ~95–250 s;
   §3's settling test 150–390 s).
+
+**From §8.2 (loads twice as big):**
+- **The six shovel-type tools that throw** (small and standard shovel, wide pusher, both scrapers,
+  sleigh) have twice round 5's capacity and fill rate. Bites were raised only where the measured
+  sweep fell short, and widths are unchanged. In `data/tools/*.tres` and the generator:
+  - small shovel 100 L, 260 L/s, bite 0.40;
+  - standard shovel 130 L, 320 L/s, bite 0.50;
+  - pusher 90 L, 180 L/s, bite 0.15;
+  - snow scraper 100 L, 200 L/s, bite 0.21;
+  - large scraper 160 L, 320 L/s, bite 0.23;
+  - sleigh 800 L, 640 L/s, bite 0.90.
+  Bare hands, the electric shovel and the blowers are unchanged. `test_s82_twice_the_load` holds
+  the table (`S82_ROUND5`, `S82_BITE`, `S82_SAME`); a later change to these values updates it.
+- **New balance key `upgrade_hands_capacity_step` = 1.75**: each of bare hands' two capacity levels.
+  `ItemUpgrades.level_value(cat, item, track, old_value)` gives a level's effect (the old global
+  upgrade's, except this one). Every other level keeps its old upgrade's +25 %. A test that checks
+  a level's effect reads `level_value` (as `test_s13_upgrades_belong_to_an_item` now does).
+- **The load visual** (`ToolController._update_load_visual`): twice round 5's mound for twice its
+  load. The height is `sqrt(capacity ÷ tray)` clamped to `HEAP_MIN` 1.131 – `HEAP_MAX` 1.98 (round
+  5 0.8–1.4, both ×√2); the length along the blade `LOAD_LENGTH` 1.414 × round 5's, growing forward
+  from where round 5's began on a blade (`_load_at`, the shift `ahead`) and both ways in the
+  sleigh's tub; the width scale is round 5's. The mesh's big sphere is turned half a segment
+  (`setup`), so at its widest the mound is the blade's width (inside the sleigh tub's walls);
+  `LOAD_HALF_LEN` 0.1663 is its half-length (0.18 × cos 22.5°).
+  `test_s82_full_load_heaps_bigger_clear_of_the_camera` checks the full load: ×1.9 or more round
+  5's mound, ×1.35 or more higher and longer, scaled as wide, no wider than the blade, first and
+  third person; and at base and fully upgraded, held, scooping and pushing (against round 5's
+  own mesh, `_s82_round5_mound`):
+  - from −60° up, its vertices stay beyond 1.5 × the camera's near plane;
+  - looking straight down (−85°), it comes no more than 1 cm nearer than round 5's load did.
+    There the body-anchored pose lifts the tool to eye level in deep snow, and the sleigh's load
+    passed the near plane already in round 5, hidden in its tub. The fully upgraded shovels are
+    0.4 mm inside this rule (the others 1.4–3.7 mm), so a pose change that lifts loads at −85°
+    will trip it;
+  - at every angle, where it passes the near plane the cut lies outside the view
+    (`_s82_cuts_view`, against the widest view a player can set: `S82_FOV_MAX` 100°,
+    `S82_ASPECT_MAX` 2.4). A new field-of-view maximum in the settings must be copied there.
+  A later change to the poses or the viewmodel must keep it passing.
+- **Benches:**
+  - `click_bench -- --rows=strokes [--stroke_depths= --strokes= --log_strokes=1 --trace_strokes=N]`
+    (`run_strokes`, `_s82_frame`): the grind bot's strokes in flat snow. It reports the load per
+    throw, throws a minute, what limited each frame of filling, and the game's relaxation and
+    chunk counters.
+  - `--tool_set=<id>.<key>=<value>;…` (grind_bench's `_overrides`, so click_bench too) sets one
+    tool value, for "before" profiles in the same build.
+  - **`contract_bench`'s bot now holds through §8.1's recovery and the minimum hold.** Its numbers
+    before this commit and after aren't comparable for §8.1's build.
+- **`shot.gd --load`**: a number is the `--pose` load fraction, anything else a save to load (§3).
+- **§8.2's tests** in test_polish6:
+  - `test_s82_twice_the_load` (data, upgrades, the ladder for bare hands);
+  - `test_s82_twice_per_stroke` (the stroke bench, round 5's profile against §8.2's in the same
+    build, 30 strokes: ≥ ×1.7 in 80 cm; in 40 cm ≥ ×1.6, the standard shovel ≥ ×1.5,
+    `S82_SWEEP_BOUND`; ~100–150 s);
+  - `test_s82_full_load_heaps_bigger_clear_of_the_camera`.
+  Updated through lookups: `test_s6_blades_match_the_profiles` (`S6_LOAD_X`) and
+  `test_s13_upgrades_belong_to_an_item` and `test_s13_old_global_levels_carry_over`
+  (`ItemUpgrades.level_value`).
+- **Shots:** `docs/polish6/shots/08-loads-twice-as-big/` (`--setup=cleared_drive --player=6,5,0
+  --pitch=0 --pose=hold --load=1`; `_down` at `--pitch=-30`, every tool).

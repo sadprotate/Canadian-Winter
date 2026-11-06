@@ -194,7 +194,7 @@ func _ready() -> void:
 			await _capture_seq()
 		_capture()
 		return
-	if args.has("load"):
+	if _load_is_save():
 		_load_save(str(args["load"]))
 	else:
 		Game.new_game(str(args.get("mode", "fun")), int(args.get("seed", "-1")))
@@ -435,6 +435,12 @@ func _setup_world_state() -> void:
 		_tv_tier_clock()
 	if Game.is_survival():
 		Survival.activate()
+
+
+## Polish 6 §8.2: --load is a save to load (§3) unless it is a number, the --pose load fraction (both
+## options are named --load; a number used to be taken for a save's path).
+func _load_is_save() -> bool:
+	return args.has("load") and not str(args["load"]).is_valid_float()
 
 
 ## --load: the save copied over its mode's save and loaded as the menu's Continue does.
@@ -761,12 +767,12 @@ func _pickup_bank(w) -> void:
 
 ## --pose=hold|scoop|push|toss [--load=0.5] [--toss=0.5]: freeze the hands / tool in a pose.
 func _apply_pose() -> void:
-	if not args.has("pose") and not args.has("load"):
+	if not args.has("pose") and (not args.has("load") or _load_is_save()):
 		return
 	var tc: ToolController = game.player.tools
 	tc.pose_override = str(args.get("pose", "hold"))
 	tc.toss_override = float(args.get("toss", "0.5"))
-	tc.load = tc._capacity() * float(args.get("load", "0"))
+	tc.load = 0.0 if _load_is_save() else tc._capacity() * float(args.get("load", "0"))
 	if args.has("work"):
 		# Polish 2 §3: pretend the player just scooped from this box so its outline shows.
 		var bid := Boxes.lot_box(Layout.player_lot, str(args["work"]))

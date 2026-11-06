@@ -2513,6 +2513,10 @@ const S6_PROFILES := {
 	"small_blower": [0.56, 0.4, 0.03, 0.05, 8.0, 0.1, 0.065],
 	"large_blower": [0.78, 0.4, 0.03, 0.05, 12.5, 0.1, 0.14],
 }
+## Polish 6 §8.2 (Decision 1): the six shovel-type tools that pick up and throw carry twice as much:
+## their base capacity and fill rate (values 2 and 3 above) are these times the profiles' above.
+const S6_LOAD_X := {"small_shovel": 2.0, "standard_shovel": 2.0, "wide_pusher": 2.0, "snow_scraper": 2.0,
+	"large_scraper": 2.0, "snow_sleigh": 2.0}
 
 
 ## The triangles of a mesh (every surface), as a flat array of vertices (three per triangle).
@@ -2588,9 +2592,10 @@ func test_s6_blades_match_the_profiles() -> void:
 		var p: Array = S6_PROFILES[id]
 		var now := [t.width, t.push_width, t.capacity, t.fill_rate, t.throw_distance, t.push_strength, t.rate]
 		for k in range(p.size()):
-			if not is_equal_approx(float(p[k]), float(now[k])):
-				bad.append("%s value %d: %s -> %s" % [id, k, p[k], now[k]])
-	runner.check(bad.is_empty(), "§6 the tool profiles are unchanged (width, push width, capacity, fill, throw, push strength, intake) %s" % str(bad))
+			var want := float(p[k]) * (float(S6_LOAD_X.get(id, 1.0)) if k == 2 or k == 3 else 1.0)
+			if not is_equal_approx(want, float(now[k])):
+				bad.append("%s value %d: %s -> %s" % [id, k, want, now[k]])
+	runner.check(bad.is_empty(), "§6 the tool profiles are unchanged (width, push width, capacity, fill, throw, push strength, intake; polish 6 §8.2: the shovel-type tools' capacity and fill ×2) %s" % str(bad))
 	var widths := []
 	for id in S6_TOOLS:
 		var t: ToolData = Catalog.tool(StringName(id))
@@ -6360,7 +6365,8 @@ func test_s13_upgrades_belong_to_an_item() -> void:
 			for k in range(ItemUpgrades.ids(item, t).size()):
 				var u: UpgradeData = Catalog.upgrade(StringName(ItemUpgrades.ids(item, t)[k]))
 				n_levels += 1
-				var want_v := 1.0 if t == &"cab" else (Catalog.upgrade(lv[k]) as UpgradeData).value
+				# Polish 6 §8.2: bare hands' capacity levels have their own step (ItemUpgrades.level_value).
+				var want_v := 1.0 if t == &"cab" else ItemUpgrades.level_value(Catalog, item, t, (Catalog.upgrade(lv[k]) as UpgradeData).value)
 				var old_p: float = b.upgrade_cab_price if t == &"cab" else float((Catalog.upgrade(lv[k]) as UpgradeData).price)
 				var want_p := int(old_p) if t == &"front_plow" else ItemUpgrades.nice_price(old_p * ip / ref)
 				if not is_equal_approx(u.value, want_v) or u.stat != ItemUpgrades.TRACKS[t]["stat"] or u.item != item or u.level != k + 1:
@@ -6516,7 +6522,8 @@ func test_s13_old_global_levels_carry_over() -> void:
 				var want := 1.0
 				for lid in ItemUpgrades.TRACKS[t]["levels"]:
 					if old_ups.has(String(lid)):
-						want *= (Catalog.upgrade(lid) as UpgradeData).value
+						# Polish 6 §8.2: bare hands' capacity levels have their own step (ItemUpgrades.level_value).
+						want *= ItemUpgrades.level_value(Catalog, item, t, (Catalog.upgrade(lid) as UpgradeData).value)
 				var n_old: int = (ItemUpgrades.TRACKS[t]["levels"] as Array).filter(func(l): return old_ups.has(String(l))).size()
 				if t != &"cab" and (ItemUpgrades.level(item, t) != n_old or not is_equal_approx(ItemUpgrades.mult(item, stat), want)):
 					bad.append("%s:%s level %d (want %d)" % [item, t, ItemUpgrades.level(item, t), n_old])

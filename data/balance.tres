@@ -51,6 +51,7 @@ upgrade_price_ref_tool = 400.0
 upgrade_price_ref_machine = 790.0
 upgrade_price_ref_vehicle = 14000.0
 upgrade_hands_price = 12.0
+upgrade_hands_capacity_step = 1.75
 upgrade_cab_price = 1500.0
 upgrade_ladder_slack = 0.15
 coat_price = 480

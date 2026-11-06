@@ -1491,3 +1491,378 @@ func _s81_total(tc: ToolController) -> float:
 	for k in Snow.roof_extra.keys():
 		v += float(Snow.roof_extra[k]) * 160.0
 	return v
+
+
+# =============================================================================
+# §8.2 Loads twice as big
+# =============================================================================
+
+## The six tools that pick up and throw (Decision 1): their base capacity and fill rate double.
+const S82_TOOLS := ["small_shovel", "standard_shovel", "wide_pusher", "snow_scraper", "large_scraper", "snow_sleigh"]
+## Their round-5 profile, before §8.2 (HANDOFF §7): [capacity m³, fill rate m³/s, bite m].
+const S82_ROUND5 := {
+	"small_shovel": [0.05, 0.13, 0.26], "standard_shovel": [0.065, 0.16, 0.28], "wide_pusher": [0.045, 0.09, 0.15],
+	"snow_scraper": [0.05, 0.1, 0.15], "large_scraper": [0.08, 0.16, 0.2], "snow_sleigh": [0.4, 0.32, 0.36]}
+## §8.2's bites: raised only where the measured sweep couldn't carry about twice as much per stroke
+## in snow 40 cm deep or more (report/s8_2.md); the others keep round 5's.
+const S82_BITE := {
+	"small_shovel": 0.4, "standard_shovel": 0.5, "wide_pusher": 0.15,
+	"snow_scraper": 0.21, "large_scraper": 0.23, "snow_sleigh": 0.9}
+## The tools that don't change: [capacity, fill rate, bite, intake rate] as in round 5.
+const S82_SAME := {"hands": [0.03, 0.085, 0.26, 0.0], "electric_shovel": [0.03, 0.05, 0.15, 0.05],
+	"small_blower": [0.03, 0.05, 0.15, 0.065], "large_blower": [0.03, 0.05, 0.15, 0.14]}
+## In 40 cm of snow the grind_bench bot's sweep crosses about 90 L with the standard shovel, its bite
+## (0.50) already the whole depth, so its stroke carries ×1.6 round 5's there, not ×2 (report/s8_2.md
+## *Bites*): test_s82_twice_per_stroke's floor for it in 40 cm.
+const S82_SWEEP_BOUND := {"standard_shovel": 1.5}
+## The capacity levels for sale in round 5 (the ladder; test_s13_the_ladder's table).
+const S82_LEVELS := {"hands": 2, "small_shovel": 1, "standard_shovel": 2, "wide_pusher": 1, "snow_scraper": 2,
+	"large_scraper": 2, "snow_sleigh": 2}
+
+
+## Decision 1 in the data: the six tools carry and fill twice as fast as in round 5 (so a full load
+## fills in the same time at the fill rate), their bites are §8.2's, and bare hands, the electric
+## shovel and the blowers are unchanged. Upgrades stay multiplicative on the new base, the levels for
+## sale are round 5's, and fully upgraded bare hands reach about the small shovel's new base
+## (their own capacity step, balance.upgrade_hands_capacity_step).
+func test_s82_twice_the_load() -> void:
+	var bad := []
+	for id in S82_TOOLS:
+		var t: ToolData = Catalog.tool(StringName(id))
+		var r: Array = S82_ROUND5[id]
+		if not (is_equal_approx(t.capacity, 2.0 * float(r[0])) and is_equal_approx(t.fill_rate, 2.0 * float(r[1])) and is_equal_approx(t.bite, float(S82_BITE[id]))):
+			bad.append("%s %.3f m3 %.3f m3/s bite %.2f" % [id, t.capacity, t.fill_rate, t.bite])
+		elif not is_equal_approx(t.capacity / t.fill_rate, float(r[0]) / float(r[1])) or t.bite < float(r[2]) - 1e-6:
+			bad.append("%s fill time or bite" % id)
+	runner.check(bad.is_empty(), "§8.2 the six shovel-type tools: twice round 5's capacity and fill rate (a full load fills in the same time), §8.2's bites %s" % str(bad))
+	var same := []
+	for id in S82_SAME.keys():
+		var t: ToolData = Catalog.tool(StringName(id))
+		var r: Array = S82_SAME[id]
+		if not (is_equal_approx(t.capacity, float(r[0])) and is_equal_approx(t.fill_rate, float(r[1])) and is_equal_approx(t.bite, float(r[2])) and is_equal_approx(t.rate, float(r[3]))):
+			same.append(id)
+	runner.check(same.is_empty(), "§8.2 bare hands, the electric shovel and the blowers are unchanged %s" % str(same))
+	# Upgrades: multiplicative on the new base, the same levels for sale as in round 5.
+	var ups := []
+	var saved := Game.upgrades.duplicate()
+	var full := {}
+	for id in S82_LEVELS.keys():
+		var item := StringName(id)
+		var n := ItemUpgrades.max_level(item, &"capacity")
+		Game.upgrades = {}
+		var m := 1.0
+		for k in range(n):
+			var lid := ItemUpgrades.level_id(item, &"capacity", k + 1)
+			Game.upgrades[lid] = true
+			m *= (Catalog.upgrade(StringName(lid)) as UpgradeData).value
+		var got := ItemUpgrades.mult(item, &"shovel_capacity")
+		full[id] = got
+		if n != int(S82_LEVELS[id]) or not is_equal_approx(got, m):
+			ups.append("%s %d levels ×%.3f" % [id, n, got])
+		var t: ToolData = Catalog.tool(item)
+		runner.info("§8.2 %s: base %.0f L, %.0f L/s; fully upgraded (%d levels) %.0f L, %.0f L/s" % [id, t.capacity * 1000.0, t.fill_rate * 1000.0, n, t.capacity * got * 1000.0, t.fill_rate * got * 1000.0])
+	Game.upgrades = saved
+	runner.check(ups.is_empty(), "§8.2 upgrades stay multiplicative on the new base, with round 5's levels for sale %s" % str(ups))
+	var b: BalanceData = Catalog.balance
+	var hands: ToolData = Catalog.tool(&"hands")
+	var small: ToolData = Catalog.tool(&"small_shovel")
+	var hm: float = full["hands"]
+	var rc := hands.capacity * hm / small.capacity
+	var rf := hands.fill_rate * hm / small.fill_rate
+	runner.check(is_equal_approx(hm, b.upgrade_hands_capacity_step * b.upgrade_hands_capacity_step) and b.upgrade_hands_capacity_step > 1.25,
+		"§8.2 bare hands' two capacity levels are +%d %% each (balance.upgrade_hands_capacity_step; the hand tools' levels +25 %%)" % roundi((b.upgrade_hands_capacity_step - 1.0) * 100.0))
+	runner.check(rc >= 0.85 and rc <= 1.0 + b.upgrade_ladder_slack and rf >= 0.85 and rf <= 1.0 + b.upgrade_ladder_slack,
+		"§8.2 …so fully upgraded bare hands carry %.0f L and fill %.0f L/s: about the small shovel's new base (%.2f and %.2f of it)" % [hands.capacity * hm * 1000.0, hands.fill_rate * hm * 1000.0, rc, rf])
+	runner.check(is_equal_approx(b.upgrade_hands_capacity_step, BalanceData.new().upgrade_hands_capacity_step), "§8.2 upgrade_hands_capacity_step is the same in balance.tres and the defaults (%.2f)" % b.upgrade_hands_capacity_step)
+
+
+## Set a tool's capacity, fill rate and bite (a profile: [capacity, fill rate, bite]).
+static func _s82_profile(id: String, p: Array) -> void:
+	var t: ToolData = Catalog.tool(StringName(id))
+	t.capacity = float(p[0])
+	t.fill_rate = float(p[1])
+	t.bite = float(p[2])
+
+
+## The widest view a player can set: the settings' largest field of view (settings_menu.gd, vertical)
+## on a screen wider than 21:9. test_s82_full_load_heaps_bigger_clear_of_the_camera checks the load
+## against it.
+const S82_FOV_MAX := 100.0
+const S82_ASPECT_MAX := 2.4
+
+
+## Round 5's mound mesh: ToolController's two spheres before §8.2 turned the big one half a segment.
+static func _s82_round5_mound() -> ArrayMesh:
+	var kit := MeshKit.new()
+	kit.sphere(Mats.snow_soft(), Transform3D(Basis().scaled(Vector3(1.2, 0.62, 1.0)), Vector3.ZERO), 0.18, 4, 8)
+	kit.sphere(Mats.snow_soft(), Transform3D(Basis().scaled(Vector3(0.8, 0.5, 0.7)), Vector3(0.06, 0.06, -0.03)), 0.12, 4, 7)
+	return kit.commit()
+
+
+## A mesh's vertices (its own space).
+static func _s82_vertices(mesh: ArrayMesh) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	for si in range(mesh.get_surface_count()):
+		out.append_array(mesh.surface_get_arrays(si)[Mesh.ARRAY_VERTEX])
+	return out
+
+
+## A mesh's triangles, three vertices each (its own space).
+static func _s82_triangles(mesh: ArrayMesh) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	for si in range(mesh.get_surface_count()):
+		var arr := mesh.surface_get_arrays(si)
+		var vs: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX] if arr[Mesh.ARRAY_INDEX] != null else PackedInt32Array()
+		if idx.is_empty():
+			out.append_array(vs)
+		else:
+			for i in idx:
+				out.append(vs[i])
+	return out
+
+
+## Whether a mesh (its triangles, placed by xf in camera space) shows a near-plane clip on screen:
+## where it passes the camera's near plane, the cut lies inside the view. The plane cuts each
+## triangle that crosses it along a segment, and none may cross the near rectangle (half extents
+## `half`); nor may the rectangle lie wholly inside the mesh (a ray from its centre hits it every way).
+static func _s82_cuts_view(tris: PackedVector3Array, xf: Transform3D, near: float, half: Vector2) -> bool:
+	var cs := PackedVector3Array()
+	cs.resize(tris.size())
+	for i in range(tris.size()):
+		cs[i] = xf * tris[i]
+	for i in range(0, cs.size(), 3):
+		var cut := PackedVector2Array()
+		for e in range(3):
+			var a: Vector3 = cs[i + e]
+			var b: Vector3 = cs[i + (e + 1) % 3]
+			var da := -a.z - near
+			var db := -b.z - near
+			if (da < 0.0) != (db < 0.0):
+				var p := a.lerp(b, da / (da - db))
+				cut.append(Vector2(p.x, p.y))
+		if cut.size() == 2 and _s82_segment_meets_rect(cut[0], cut[1], half):
+			return true
+	var o := Vector3(0.0, 0.0, -near)
+	for d in [Vector3(1, 0.013, 0.007), Vector3(-1, 0.011, -0.005), Vector3(0.009, 1, 0.013), Vector3(-0.007, -1, 0.011), Vector3(0.012, -0.006, 1), Vector3(-0.01, 0.008, -1)]:
+		var hit := false
+		for i in range(0, cs.size(), 3):
+			if Geometry3D.ray_intersects_triangle(o, d, cs[i], cs[i + 1], cs[i + 2]) != null:
+				hit = true
+				break
+		if not hit:
+			return false
+	return true
+
+
+## Whether the segment p–q meets the rectangle |x| <= half.x, |y| <= half.y (Liang–Barsky).
+static func _s82_segment_meets_rect(p: Vector2, q: Vector2, half: Vector2) -> bool:
+	var d := q - p
+	var t0 := 0.0
+	var t1 := 1.0
+	var ps := [-d.x, d.x, -d.y, d.y]
+	var qs := [p.x + half.x, half.x - p.x, p.y + half.y, half.y - p.y]
+	for k in range(4):
+		var pk: float = ps[k]
+		var qk: float = qs[k]
+		if absf(pk) < 1e-12:
+			if qk < 0.0:
+				return false
+			continue
+		var r := qk / pk
+		if pk < 0.0:
+			t0 = maxf(t0, r)
+		else:
+			t1 = minf(t1, r)
+		if t0 > t1:
+			return false
+	return true
+
+
+## The Done-when: each tool removes about twice as much per stroke in deep snow, with the real
+## controls. click_bench's run_strokes (the grind_bench bot's strokes on the path box, the walkway
+## and the lawn beside it flat at the depth), each tool with round 5's profile and with §8.2's, the
+## same build and bot: the mean load thrown per stroke, about twice in 80 cm (×1.7 or more; 1.8–2.0
+## measured) and in 40 cm ×1.6 or more (1.7–2.1 measured), except the standard shovel's ×1.5 or
+## more (1.57–1.65 measured: there the bot's sweep crosses too little snow for its doubled load, its
+## bite already the whole depth; S82_SWEEP_BOUND, a reading for the coordinator, report/s8_2.md).
+func test_s82_twice_per_stroke() -> void:
+	var bench: Node = await _s81_bench()
+	var lines := []
+	for id in S82_TOOLS:
+		bench.set("tool", id)
+		var t: ToolData = Catalog.tool(StringName(id))
+		var now := [t.capacity, t.fill_rate, t.bite]
+		for depth in [0.4, 0.8]:
+			var per := {}
+			for which in ["round 5", "§8.2"]:
+				_s82_profile(id, S82_ROUND5[id] if which == "round 5" else now)
+				var s: Dictionary = await bench.run_strokes(depth, 30)
+				var vols: Array = s["vols"]
+				var tot := 0.0
+				for v in vols:
+					tot += float(v)
+				per[which] = {"mean": tot / maxf(vols.size(), 1.0), "n": vols.size(), "per_min": vols.size() / maxf(float(s["frames"]) / 3600.0, 1e-6)}
+			_s82_profile(id, now)
+			var a: Dictionary = per["round 5"]
+			var c: Dictionary = per["§8.2"]
+			var x: float = c["mean"] / maxf(a["mean"], 1e-6)
+			lines.append("%s %.0f cm: %.0f → %.0f L a stroke (×%.2f), %.1f → %.1f strokes a minute" % [id, depth * 100.0, a["mean"] * 1000.0, c["mean"] * 1000.0, x, a["per_min"], c["per_min"]])
+			# In 40 cm the standard shovel's sweep crosses only ~90 L of snow (its bite is already the
+			# whole depth there): the report's reading. In 80 cm every tool carries about twice as much.
+			# Relaxation runs to a per-frame time budget, so runs vary by a few per cent.
+			var need: float = 1.7 if depth >= 0.8 else float(S82_SWEEP_BOUND.get(id, 1.6))
+			var bound := " (the bot's sweep bounds it: S82_SWEEP_BOUND)" if depth < 0.8 and S82_SWEEP_BOUND.has(id) else ""
+			runner.check(int(c["n"]) >= 25 and x >= need, "§8.2 %s in %.0f cm of snow carries ×%.2f round 5's load a stroke (%.0f → %.0f L; ×%.1f or more%s)" % [id, depth * 100.0, x, a["mean"] * 1000.0, c["mean"] * 1000.0, need, bound])
+	for l in lines:
+		runner.info("§8.2 " + l)
+	bench.set("tool", "hands")
+	await _s81_done(bench)
+
+
+## The load on the blade heaps visibly bigger, and doesn't clip the camera: for each of the six tools,
+## a full load (at base and fully upgraded) held, scooping or pushing, first person, stays beyond
+## the camera's near plane at every look angle from -60° up, and looking straight down comes no
+## more than 1 cm nearer than round 5's load did; where it passes the near plane it does so outside
+## the view (no clip on screen, in the widest view a player can set); its mound is about twice round
+## 5's full load, higher and longer, scaled as wide, and no wider than the blade (inside the sleigh
+## tub's walls; third person too).
+func test_s82_full_load_heaps_bigger_clear_of_the_camera() -> void:
+	await _s3_world("fun", 11.0)
+	var pl: Player = world.player
+	var tc: ToolController = pl.tools
+	var lot := Layout.player_lot
+	var p2 := Layout.lot_to_world(lot, Layout.gu(lot, -6.0), 4.0)
+	Snow.set_rect(Rect2(p2 - Vector2(3, 3), Vector2(6, 6)), 0.5)
+	pl.teleport(Vector3(p2.x, Snow.ground_at(p2.x, p2.y) + 0.05, p2.y))
+	await _s3_frames(3)
+	var cam: Camera3D = pl.fp_cam
+	var nearest := INF
+	var near_at := ""
+	var growth := []
+	var down_bad := []
+	var on_screen := []
+	var on_screen5 := []
+	# The near plane's rectangle in the widest view a player can set, and the mound's triangles. The
+	# check finds a clip where there is one: a big mound all round the near plane's rectangle (none
+	# of its cut crosses the rectangle), and a small one cut by it in the middle of the view; and
+	# none a metre above the view.
+	var hy := cam.near * tan(deg_to_rad(S82_FOV_MAX) * 0.5)
+	var half := Vector2(hy * S82_ASPECT_MAX, hy)
+	var tris := _s82_triangles(tc.load_fp.mesh as ArrayMesh)
+	var verts := _s82_vertices(tc.load_fp.mesh as ArrayMesh)
+	# Round 5's mound (its own mesh) for the comparisons.
+	var mound5 := _s82_round5_mound()
+	var tris5 := _s82_triangles(mound5)
+	var verts5 := _s82_vertices(mound5)
+	var wide := []
+	var wide5 := []
+	var widths := []
+	runner.check(_s82_cuts_view(tris, Transform3D(Basis().scaled(Vector3.ONE * 4.0), Vector3(0, 0, -cam.near)), cam.near, half)
+		and _s82_cuts_view(tris, Transform3D(Basis().scaled(Vector3.ONE * 0.05), Vector3(0, 0, -cam.near - 0.002)), cam.near, half)
+		and not _s82_cuts_view(tris, Transform3D(Basis(), Vector3(0, 1.0, -cam.near)), cam.near, half),
+		"§8.2 the near-plane check sees a clip on screen where there is one (around the camera, in the middle of the view) and none above the view")
+	var saved := Game.upgrades.duplicate()
+	for id in S82_TOOLS:
+		Game.carried = ""
+		Game.slots = [id, "", "", ""]
+		Game.select_slot(0)
+		await _s3_frames(2)
+		var t: ToolData = Catalog.tool(StringName(id))
+		# Bigger: the mound of a full load against round 5's (its capacity, and its mound: as wide as
+		# the blade, heaped sqrt(capacity ÷ tray) high within 0.8–1.4 ×, ToolController.
+		# _update_load_visual before §8.2). Twice the load, about twice the mound, and it grows both
+		# ways first person sees it: higher, and longer along the blade (from above, its footprint).
+		var vols := {}
+		var w := clampf(t.width / 0.4, 0.8, 2.2)
+		var lz5 := 1.6 if t.kind == ToolData.Kind.SLEIGH else 1.0
+		var heap5 := clampf(sqrt(float(S82_ROUND5[id][0]) / maxf(t.width * 0.36 * 0.25, 0.01)), 0.8, 1.4)
+		for tp in [false, true]:
+			pl.set_third_person(tp)
+			await _s3_frames(1)
+			tc.pose_override = "hold"
+			tc.load = tc._capacity()
+			tc._update_load_visual()
+			var m: MeshInstance3D = tc.load_tp if tp else tc.load_fp
+			var r5 := Vector3(w, heap5, lz5 if not tp else 1.0)
+			var g := Vector3(m.scale.x / r5.x, m.scale.y / r5.y, m.scale.z / r5.z)
+			vols[tp] = g
+			if g.x * g.y * g.z < 1.9 or g.y < 1.35 or g.z < 1.35 or absf(g.x - 1.0) > 0.01:
+				growth.append("%s %s ×%.2f (width ×%.2f, height ×%.2f, length ×%.2f)" % [id, "TP" if tp else "FP", g.x * g.y * g.z, g.x, g.y, g.z])
+			# No wider than the blade (inside the sleigh tub's walls): the mound's vertices across the
+			# blade, in the tool's own frame, against half its width; round 5's mound for the report.
+			var to_tool := (tc.held_tp.global_transform if tp else tc.blade_fp.global_transform).affine_inverse() * m.global_transform
+			var hx := 0.0
+			for v in verts:
+				hx = maxf(hx, absf((to_tool * v).x))
+			var hx5 := 0.0
+			for v in verts5:
+				hx5 = maxf(hx5, absf(r5.x * v.x))
+			if not tp:
+				widths.append("%s %.3f m (round 5 %.3f) of %.3f" % [id, hx, hx5, t.width * 0.5])
+			if hx > t.width * 0.5 + 0.0005:
+				wide.append("%s %s %.3f m of %.3f" % [id, "TP" if tp else "FP", hx, t.width * 0.5])
+			if hx5 > t.width * 0.5 + 0.0005:
+				wide5.append("%s %s %.3f" % [id, "TP" if tp else "FP", hx5])
+		pl.set_third_person(false)
+		var gf: Vector3 = vols[false]
+		var gt: Vector3 = vols[true]
+		runner.info("§8.2 %s: a full load's mound ×%.2f first person (width ×%.2f, height ×%.2f, length ×%.2f), ×%.2f third person (round 5's full load = 1)" % [id, gf.x * gf.y * gf.z, gf.x, gf.y, gf.z, gt.x * gt.y * gt.z])
+		# Clear of the camera: at base and fully upgraded, in every pose a load is carried in (held,
+		# scooping, pushing; the toss throws it, so a throw's follow-through never carries one) and
+		# every look angle; the mound's own vertices, and round 5's mound in the same pose beside it.
+		# Looking straight down at your boots (-85°) in deep snow the tool is lifted in front of the
+		# face: there round 5's sleigh load already reached the near plane, hidden by the tub
+		# (report/s8_2.md), so that angle is held to round 5's, the others to the near plane.
+		# Where a load passes the near plane anyway (looking straight down), the cut must lie outside
+		# the widest view a player can set: no clip on screen (_s82_cuts_view).
+		var nr := {"§8.2": INF, "round 5": INF, "§8.2 down": INF, "round 5 down": INF}
+		for up in [false, true]:
+			Game.upgrades = {}
+			if up:
+				for k in range(ItemUpgrades.max_level(StringName(id), &"capacity")):
+					Game.upgrades[ItemUpgrades.level_id(StringName(id), &"capacity", k + 1)] = true
+			var heap5u := clampf(sqrt(float(S82_ROUND5[id][0]) * ItemUpgrades.mult(StringName(id), &"shovel_capacity") / maxf(t.width * 0.36 * 0.25, 0.01)), 0.8, 1.4)
+			for pose in ["hold", "scoop", "push"]:
+				for pitch in [-85.0, -60.0, -35.0, -10.0, 0.0, 25.0, 50.0]:
+					pl.pitch = deg_to_rad(pitch)
+					pl.head.rotation.x = pl.pitch
+					tc.pose_override = pose
+					tc.load = tc._capacity()
+					await _s3_frames(14)
+					for which in ["round 5", "§8.2"]:
+						tc.load = tc._capacity()
+						tc._update_load_visual()
+						if which == "round 5":
+							tc.load_fp.scale = Vector3(w, heap5u, lz5)
+							tc.load_fp.position = tc._load_at
+						var xf := cam.global_transform.affine_inverse() * tc.load_fp.global_transform
+						var d := INF
+						for v in (verts5 if which == "round 5" else verts):
+							d = minf(d, -(xf * v).z)
+						var key: String = which + (" down" if pitch < -80.0 else "")
+						nr[key] = minf(float(nr[key]), d)
+						if d < cam.near * 1.5 and _s82_cuts_view(tris5 if which == "round 5" else tris, xf, cam.near, half):
+							var at := "%s %s%s pitch %d" % [id, pose, " upgraded" if up else "", int(pitch)]
+							if which == "§8.2":
+								on_screen.append(at)
+							else:
+								on_screen5.append(at)
+						if which == "§8.2" and pitch >= -80.0 and d < nearest:
+							nearest = d
+							near_at = "%s %s%s pitch %d" % [id, pose, " upgraded" if up else "", int(pitch)]
+		runner.info("§8.2 %s: a full load's nearest point %.3f m in front of the camera from -60° up (round 5's mound %.3f m), %.4f m looking straight down (round 5's %.4f m); base and fully upgraded, held, scooping and pushing" % [id, nr["§8.2"], nr["round 5"], nr["§8.2 down"], nr["round 5 down"]])
+		if float(nr["§8.2 down"]) < float(nr["round 5 down"]) - 0.01:
+			down_bad.append("%s %.3f against %.3f" % [id, nr["§8.2 down"], nr["round 5 down"]])
+	tc.pose_override = ""
+	tc.load = 0.0
+	Game.upgrades = saved
+	runner.check(growth.is_empty(), "§8.2 a full load heaps visibly bigger than round 5's on every tool, first and third person: about twice the mound (×1.9 or more), ×1.35 or more higher and longer, scaled as wide as round 5's %s" % str(growth))
+	runner.info("§8.2 a full load's half-width across the blade, first person: %s" % ", ".join(PackedStringArray(widths)))
+	runner.info("§8.2 round 5's full load reached past the blade's edges (the sleigh's: through its tub's walls): %s" % str(wide5))
+	runner.check(wide.is_empty(), "§8.2 …and no wider than the blade: inside a shovel's edges and the sleigh tub's walls, first and third person %s" % str(wide))
+	runner.check(nearest > cam.near * 1.5, "§8.2 a full load stays clear of the camera at every look angle from -60° up: its nearest point is %.3f m in front (near plane %.3f m), at %s" % [nearest, cam.near, near_at])
+	runner.check(down_bad.is_empty(), "§8.2 …and looking straight down it comes no more than 1 cm nearer than round 5's load did %s" % str(down_bad))
+	runner.info("§8.2 round 5's load cut the view at the near plane: %s" % (str(on_screen5) if not on_screen5.is_empty() else "nowhere"))
+	runner.check(on_screen.is_empty(), "§8.2 …and where a load passes the near plane (looking straight down, above the view) it never cuts the view: no clip on screen at any look angle, field of view up to %d° and aspect up to %.1f %s" % [int(S82_FOV_MAX), S82_ASPECT_MAX, str(on_screen)])
+	await _s3_unload()

@@ -217,6 +217,11 @@ extends Resource
 @export var upgrade_price_ref_machine: float = 790.0
 @export var upgrade_price_ref_vehicle: float = 14000.0
 @export var upgrade_hands_price: float = 12.0
+## Polish 6 §8.2: each of bare hands' capacity levels multiplies their load and fill speed by this
+## (the hand tools' levels keep the old upgrades' +25 %). The six shovel-type tools' loads doubled
+## and bare hands' didn't, so with +25 % levels fully upgraded hands reached half the small shovel's
+## base; with this they reach about all of it, as the ladder asks.
+@export var upgrade_hands_capacity_step: float = 1.75
 ## The heated cab (vehicles without a cab): its price for a vehicle at the vehicle reference price.
 @export var upgrade_cab_price: float = 1500.0
 ## The ladder: a track's levels stop where the item would pass the next item's base value of what

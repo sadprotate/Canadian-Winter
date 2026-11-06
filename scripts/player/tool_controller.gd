@@ -22,6 +22,14 @@ const _ItemUpgrades := preload("res://scripts/data/item_upgrades.gd")
 const RECUT_S := 0.3              # a cell can be cut again by the same stroke after this long
 const SWEEP_MAX := 4.0            # m/s: fastest the scoop can travel through the snow
 const GRIP_IN_HAND := Vector3(0.0, -0.05, -0.06)   # where a closed mitten's fist holds a bar
+# Polish 6 §8.2: a full load's mound on a blade. Its height follows round 5's rule, sqrt(capacity ÷
+# tray), between HEAP_MIN and HEAP_MAX (round 5: 0.8 and 1.4, both ×√2 with Decision 1's doubled
+# loads), and it runs LOAD_LENGTH (√2) × round 5's length along the blade: twice round 5's mound for
+# twice its load, on every tool.
+const HEAP_MIN := 1.131
+const HEAP_MAX := 1.98
+const LOAD_LENGTH := 1.414
+const LOAD_HALF_LEN := 0.1663     # the mound mesh's half-length along the blade (0.18 × cos 22.5°)
 
 var player: Player
 var tool_id := "__none__"
@@ -41,6 +49,7 @@ var blade_fp: MeshInstance3D       # first-person blade, posed separately so it 
 var _blade_body := Basis()         # blade orientation in body space (set by _tool_body_xform)
 var load_tp: MeshInstance3D
 var load_fp: MeshInstance3D
+var _load_at := Vector3.ZERO      # where round 5's mound sat on the first-person blade
 var arms: FPArms
 var vm_root: Node3D
 var loop_player: AudioStreamPlayer3D
@@ -142,7 +151,10 @@ func setup(p: Player) -> void:
 	for which in [0, 1]:
 		var lm := MeshInstance3D.new()
 		var kit := MeshKit.new()
-		kit.sphere(Mats.snow_soft(), Transform3D(Basis().scaled(Vector3(1.2, 0.62, 1.0)), Vector3.ZERO), 0.18, 4, 8)
+		# Polish 6 §8.2: turned half a segment, so a flat side, not a corner, faces the blade's edges:
+		# at its widest the mound is the blade's width (the corner poked 8 % past it, and through the
+		# sleigh tub's walls). The same volume.
+		kit.sphere(Mats.snow_soft(), Transform3D(Basis().scaled(Vector3(1.2, 0.62, 1.0)) * Basis(Vector3.UP, PI / 8.0), Vector3.ZERO), 0.18, 4, 8)
 		kit.sphere(Mats.snow_soft(), Transform3D(Basis().scaled(Vector3(0.8, 0.5, 0.7)), Vector3(0.06, 0.06, -0.03)), 0.12, 4, 7)
 		lm.mesh = kit.commit()
 		lm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -203,7 +215,8 @@ func refresh_visuals() -> void:
 	blade_fp.visible = held_fp.visible
 	arms.visible = not player.third_person
 	if id != "" and mesh != null and not equip:
-		load_fp.position = ToolModels.blade_offset(id) - ToolModels.tip(id)
+		_load_at = ToolModels.blade_offset(id) - ToolModels.tip(id)
+		load_fp.position = _load_at
 	_update_load_visual()
 
 
@@ -217,12 +230,20 @@ func _update_load_visual() -> void:
 	load_fp.visible = vis and not on_hands and held_fp.visible
 	var s := lerpf(0.22, 1.0, pow(frac, 0.6))
 	# A bigger load for the blade's size heaps higher (polish 2 §2: the full load reads as full).
+	# Polish 6 §8.2: twice round 5's load heaps √2 higher and runs √2 longer (HEAP_MIN, HEAP_MAX,
+	# LOAD_LENGTH), as wide as round 5's (about the blade's width). On a blade it grows forward from
+	# where round 5's began (a shovel's back wall, a pusher's or a scraper's face), away from the
+	# handle and the camera; in the sleigh's long tub, both ways.
 	var heap := 1.0
+	var ahead := 0.0
 	if data:
 		var tray := maxf(data.width * 0.36 * 0.25, 0.01)
-		heap = clampf(sqrt(_capacity() / tray), 0.8, 1.4)
+		heap = clampf(sqrt(_capacity() / tray), HEAP_MIN, HEAP_MAX)
+		ahead = 0.0 if data.kind == ToolData.Kind.SLEIGH else LOAD_HALF_LEN * s * (LOAD_LENGTH - 1.0)
+		var lz := 1.6 if data.kind == ToolData.Kind.SLEIGH else 1.0
 		var w := clampf(data.width / 0.4, 0.8, 2.2)
-		load_fp.scale = Vector3(w * s, s * heap, s * (1.6 if data.kind == ToolData.Kind.SLEIGH else 1.0))
+		load_fp.scale = Vector3(w * s, s * heap, s * lz * LOAD_LENGTH)
+		load_fp.position = _load_at + Vector3(0, 0, -ahead * lz)
 	# Third person: on the blade, or held in front of the chest with bare hands.
 	load_tp.visible = vis and player.third_person and player.state == "foot"
 	if load_tp.visible:
@@ -233,9 +254,9 @@ func _update_load_visual() -> void:
 			load_tp.global_position = mid + f * 0.22 + Vector3(0, -0.12, 0)
 			load_tp.scale = Vector3.ONE * lerpf(0.25, 0.9, pow(frac, 0.6))
 		else:
-			load_tp.global_transform = held_tp.global_transform * Transform3D(Basis(), ToolModels.blade_offset(tool_id))
+			load_tp.global_transform = held_tp.global_transform * Transform3D(Basis(), ToolModels.blade_offset(tool_id) + Vector3(0, 0, -ahead))
 			var w2 := clampf(data.width / 0.4, 0.8, 2.2)
-			load_tp.scale = Vector3(w2 * s, s * heap, s)
+			load_tp.scale = Vector3(w2 * s, s * heap, s * LOAD_LENGTH)
 
 
 # -----------------------------------------------------------------------------

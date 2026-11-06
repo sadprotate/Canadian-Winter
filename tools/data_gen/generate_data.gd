@@ -63,6 +63,7 @@ static func _tool(out: Dictionary, id: String, name: String, kind: int, tier: in
 ## Tool profiles (polish §3). Every shovel-type tool fills while the primary action is held and
 ## swept through the snow, throws on release and pushes with the secondary action:
 ##   capacity (m3) · fill_rate (m3/s) · bite (m cut per pass) · throw_distance (m)
+##   (polish 6 §8.2: the six shovel-type tools' capacity and fill rate doubled, bare hands' not)
 ##   throw_recovery_s (s: the throw rhythm, polish 6 §8.1; the electric shovel's and the blowers'
 ##   chute interval)
 ##   push_width (m) · push_strength (berm m3 at half speed)
@@ -75,34 +76,34 @@ static func _tools(out: Dictionary) -> void:
 		"push_width": 0.5, "push_strength": 0.035, "engaged_speed_mult": 0.75,
 		"primary_color": Color(0.2, 0.2, 0.24), "particle_amount": 6, "action_sound": &"hand_dig"})
 	_tool(out, "small_shovel", "Small Snow Shovel", K.SHOVEL, 1, 25, "A short plastic shovel: the all-rounder. Fills fast, throws well, pushes a little.",
-		{"width": 0.34, "reach": 0.4, "capacity": 0.05, "fill_rate": 0.13, "bite": 0.26, "sweep_reach": 1.6,
+		{"width": 0.34, "reach": 0.4, "capacity": 0.1, "fill_rate": 0.26, "bite": 0.4, "sweep_reach": 1.6,
 		"cycle_time": 0.4, "throw_distance": 4.2, "throw_recovery_s": 0.7, "throw_angle_deg": 42.0, "scrape_floor": 0.004,
 		"push_width": 0.36, "push_strength": 0.09, "engaged_speed_mult": 0.85,
 		"primary_color": Color(0.95, 0.47, 0.1), "particle_amount": 10, "action_sound": &"shovel_scoop"})
 	_tool(out, "standard_shovel", "Standard Snow Shovel", K.SHOVEL, 2, 35, "Full-size shovel with a metal wear strip. Bigger loads, the longest hand throw.",
-		{"width": 0.46, "reach": 0.45, "capacity": 0.065, "fill_rate": 0.16, "bite": 0.28, "sweep_reach": 1.7,
+		{"width": 0.46, "reach": 0.45, "capacity": 0.13, "fill_rate": 0.32, "bite": 0.5, "sweep_reach": 1.7,
 		"cycle_time": 0.42, "throw_distance": 5.2, "throw_recovery_s": 0.7, "throw_angle_deg": 44.0, "scrape_floor": 0.003,
 		"push_width": 0.48, "push_strength": 0.14, "engaged_speed_mult": 0.86,
 		"primary_color": Color(0.2, 0.45, 0.85), "particle_amount": 14, "action_sound": &"shovel_scoop"})
 	_tool(out, "wide_pusher", "Wide Snow Pusher", K.PUSHER, 3, 79, "A 90 cm push blade. A strong pusher: hold {secondary} and walk. It can throw, but only a short, clumsy toss.",
-		{"width": 0.9, "reach": 0.3, "capacity": 0.045, "fill_rate": 0.09, "bite": 0.15, "sweep_reach": 1.8,
+		{"width": 0.9, "reach": 0.3, "capacity": 0.09, "fill_rate": 0.18, "bite": 0.15, "sweep_reach": 1.8,
 		"cycle_time": 0.5, "throw_distance": 2.2, "throw_recovery_s": 0.8, "throw_angle_deg": 32.0, "scrape_floor": 0.003,
 		"push_width": 0.9, "push_strength": 0.5, "engaged_speed_mult": 0.92,
 		"primary_color": Color(0.15, 0.55, 0.3), "particle_amount": 16, "loop_sound": &"push_scrape"})
 	_tool(out, "snow_scraper", "Snow Scraper", K.SCRAPER, 4, 145, "Steel-edged blade that pushes hard and scrapes to bare pavement. {tool_angle} angles the blade left/right to windrow snow aside.",
-		{"width": 0.75, "reach": 0.3, "capacity": 0.05, "fill_rate": 0.1, "bite": 0.15, "sweep_reach": 1.8,
+		{"width": 0.75, "reach": 0.3, "capacity": 0.1, "fill_rate": 0.2, "bite": 0.21, "sweep_reach": 1.8,
 		"cycle_time": 0.5, "throw_distance": 2.8, "throw_recovery_s": 0.8, "throw_angle_deg": 34.0, "scrape_floor": 0.0,
 		"push_width": 0.75, "push_strength": 0.6, "engaged_speed_mult": 0.9,
 		"angle_adjustable": true, "max_angle_deg": 30.0, "primary_color": Color(0.85, 0.15, 0.12),
 		"particle_amount": 18, "loop_sound": &"push_scrape"})
 	_tool(out, "large_scraper", "Large Snow Scraper", K.SCRAPER, 5, 265, "A {width} steel blade on wheels: halfway between a shovel and a pusher. Throws a decent load, pushes very hard. {tool_angle} angles the blade.",
-		{"width": 1.0, "reach": 0.3, "capacity": 0.08, "fill_rate": 0.16, "bite": 0.2, "sweep_reach": 1.9,
+		{"width": 1.0, "reach": 0.3, "capacity": 0.16, "fill_rate": 0.32, "bite": 0.23, "sweep_reach": 1.9,
 		"cycle_time": 0.5, "throw_distance": 3.4, "throw_recovery_s": 0.8, "throw_angle_deg": 38.0, "scrape_floor": 0.0,
 		"push_width": 1.2, "push_strength": 0.95, "engaged_speed_mult": 0.88,
 		"angle_adjustable": true, "max_angle_deg": 30.0, "primary_color": Color(0.9, 0.75, 0.1),
 		"particle_amount": 22, "loop_sound": &"push_scrape"})
 	_tool(out, "snow_sleigh", "Snow Sleigh", K.SLEIGH, 6, 320, "Big scoop on runners. Loads a huge amount but barely throws — it just tips the load out in front of you. The strongest hand pusher.",
-		{"width": 0.8, "reach": 0.45, "capacity": 0.4, "fill_rate": 0.32, "bite": 0.36, "sweep_reach": 1.6,
+		{"width": 0.8, "reach": 0.45, "capacity": 0.8, "fill_rate": 0.64, "bite": 0.9, "sweep_reach": 1.6,
 		"cycle_time": 0.6, "throw_distance": 1.0, "throw_recovery_s": 1.0, "throw_angle_deg": 28.0, "scrape_floor": 0.006,
 		"push_width": 0.8, "push_strength": 1.4, "engaged_speed_mult": 0.8,
 		"primary_color": Color(0.1, 0.35, 0.75), "particle_amount": 16, "loop_sound": &"push_scrape",
@@ -231,4 +232,5 @@ static func _balance(out: Dictionary) -> void:
 	b.radio_surprise_horizon_h = 3.0 # polish 5 §8: was 1.0 (the radio's whole window)
 	b.forecast_skill = 1.0
 	b.min_scoop_hold_s = 0.25        # polish 6 §8.1: a release sooner than this throws nothing
+	b.upgrade_hands_capacity_step = 1.75  # polish 6 §8.2: bare hands' capacity levels (the ladder)
 	out["balance.tres"] = b

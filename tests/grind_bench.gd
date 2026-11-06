@@ -3,7 +3,8 @@ extends Node
 ## their own property with bare hands, using the real controls.
 ##   godot --headless --fixed-fps 60 --path . res://tests/grind_bench.tscn [-- --secs=120 --full=1]
 ##   (--hands=pass1 runs it with the bare-hand values of the first polish pass, for comparison;
-##   --recovery=<s> / --hold=<s> override the throw recovery and the minimum scoop hold, polish 6 §8.1)
+##   --recovery=<s> / --hold=<s> override the throw recovery and the minimum scoop hold, polish 6 §8.1;
+##   --tool_set=<id>.<key>=<value>;… one tool value, polish 6 §8.2)
 ## Prints the snow removed per second of play, the projected time to clear the box (box_completion,
 ## 90 % since polish 3), and —
 ## with --full=1 — the measured time until the box completes, plus walking speed before / after.
@@ -184,6 +185,12 @@ static func _overrides(a: Dictionary) -> void:
 			Catalog.tools[id].fill_rate *= float(a["fill"])
 	if a.has("hold") and Catalog.balance and "min_scoop_hold_s" in Catalog.balance:
 		Catalog.balance.set("min_scoop_hold_s", float(a["hold"]))
+	# Polish 6 §8.2: --tool_set=<id>.<key>=<value>;… sets one tool value (e.g. snow_sleigh.bite=0.5).
+	for kv in String(a.get("tool_set", "")).split(";", false):
+		var p := kv.split("=")
+		var k := p[0].split(".")
+		if p.size() == 2 and k.size() == 2 and Catalog.tools.has(StringName(k[0])) and k[1] in Catalog.tools[StringName(k[0])]:
+			Catalog.tools[StringName(k[0])].set(k[1], float(p[1]))
 
 
 func _vol(rects: Array) -> float:
