@@ -47,6 +47,9 @@ extends Node
 ##   --scoop=mid|loaded|glide a real scoop with the real controls (with --tool, --player, --pitch,
 ##                            --tp): captured mid-sweep, loaded and aimed up (--aim_up=deg), or a
 ##                            glide series (--seq, --every)
+##   --scoop=thrown --after=F (polish 6 §8.1) the same scoop, aimed up and released (thrown), captured
+##                            F frames after the release (default 33: 0.55 s); --switch=S switches
+##                            to bare hands S frames after the release, inside the recovery
 ##   --photo_out=path         also save the framed photograph's texture (full size) to path
 ##   --seq=N --every=F        capture N frames, one every F frames, to <out>_00.png, _01.png …
 ##   --menu_shot=k --menu_at=f   (menu) jump the background camera to shot k (0..2), fraction f
@@ -1289,6 +1292,25 @@ func _scoop_shot() -> void:
 		return
 	pl.set_yaw(base + 0.35)
 	var up := deg_to_rad(float(args.get("aim_up", "8")))
+	if args["scoop"] == "thrown":
+		# Polish 6 §8.1: aimed up and released (the throw), captured --after frames later.
+		pl.pitch = up
+		pl.head.rotation.x = pl.pitch
+		await _wait(4)
+		Input.action_release("primary")
+		var after := int(args.get("after", "33"))
+		if args.has("switch"):
+			# --switch=F: F frames after the release (inside the recovery), switch to bare hands (an
+			# empty slot); still captured --after frames after the release.
+			var f := mini(int(args["switch"]), after)
+			await _wait(f)
+			var e: int = Game.slots.find("")
+			if e >= 0:
+				Game.select_slot(e)
+			after -= f
+		await _wait(after)
+		await _capture_now()
+		return
 	if args["scoop"] == "glide":
 		var out: String = args.get("out", "user://shot.png")
 		var n := int(args.get("seq", "5"))

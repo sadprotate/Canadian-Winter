@@ -33,6 +33,10 @@ enum Kind { HANDS, SHOVEL, PUSHER, SCRAPER, SLEIGH, ELECTRIC_SHOVEL, WALK_BLOWER
 @export var cycle_time: float = 0.5
 ## Maximum throw distance (m). Blowers throw automatically through the chute.
 @export var throw_distance: float = 3.0
+## Polish 6 §8.1: the throw rhythm (s). Hands and shovel-type tools: after a throw, no scoop can
+## start for this long (the follow-through plays out). The electric shovel and the blowers: the
+## chute throws what it took in at most this often.
+@export var throw_recovery_s: float = 0.5
 ## Residual depth (m) left behind by a blade or scoop.
 @export var scrape_floor: float = 0.01
 ## Continuous intake rate (m3/s) for electric shovels and blowers.

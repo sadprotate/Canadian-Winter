@@ -198,6 +198,6 @@ func _physics_process(delta: float) -> void:
 	disc_snd.volume_db = move_toward(disc_snd.volume_db, -4.0 if v > 0.0 else -30.0, delta * 50.0)
 	_tick -= delta
 	if _tick <= 0.0 and _acc > 0.0:
-		_tick = 0.18
+		_tick = data.throw_recovery_s   # polish 6 §8.1: the chute's throw rhythm (was 0.18 s)
 		ThrownSnow.spawn(Game.world, cp, cd, _landing, _acc, data.throw_angle_deg, 0.5 + _acc * 3.0)
 		_acc = 0.0

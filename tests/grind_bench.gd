@@ -2,7 +2,8 @@ extends Node
 ## Hand-digging benchmark (polish §5): an automated player clears the path-to-the-house box of
 ## their own property with bare hands, using the real controls.
 ##   godot --headless --fixed-fps 60 --path . res://tests/grind_bench.tscn [-- --secs=120 --full=1]
-##   (--hands=pass1 runs it with the bare-hand values of the first polish pass, for comparison)
+##   (--hands=pass1 runs it with the bare-hand values of the first polish pass, for comparison;
+##   --recovery=<s> / --hold=<s> override the throw recovery and the minimum scoop hold, polish 6 §8.1)
 ## Prints the snow removed per second of play, the projected time to clear the box (box_completion,
 ## 90 % since polish 3), and —
 ## with --full=1 — the measured time until the box completes, plus walking speed before / after.
@@ -26,6 +27,9 @@ func _ready() -> void:
 		h.fill_rate = 0.035
 		h.bite = 0.15
 		h.width = 0.34
+	# Polish 6 §8.1, for measuring: --recovery=<s> sets every tool's throw recovery, --hold=<s> the
+	# minimum scoop hold (builds that have them).
+	_overrides(args)
 	Game.force_input = true
 	Game.new_game("fun", 2024)
 	Clock.reset(Clock.at(0, 9.0))
@@ -167,6 +171,21 @@ func _ready() -> void:
 	AudioMgr.quit()
 
 
+## Polish 6 §8.1: --recovery=<s> (every tool's throw_recovery_s), --hold=<s> (min_scoop_hold_s) and
+## --fill=<x> (every fill rate times x), to measure the rhythm's cost. Ignored in builds without them.
+static func _overrides(a: Dictionary) -> void:
+	if a.has("recovery"):
+		for id in Catalog.tools.keys():
+			var t: Resource = Catalog.tools[id]
+			if "throw_recovery_s" in t:
+				t.set("throw_recovery_s", float(a["recovery"]))
+	if a.has("fill"):
+		for id in Catalog.tools.keys():
+			Catalog.tools[id].fill_rate *= float(a["fill"])
+	if a.has("hold") and Catalog.balance and "min_scoop_hold_s" in Catalog.balance:
+		Catalog.balance.set("min_scoop_hold_s", float(a["hold"]))
+
+
 func _vol(rects: Array) -> float:
 	var v := 0.0
 	for r in rects:
@@ -211,6 +230,12 @@ func _stroke_new(pl: Player, into: Vector2, side: float) -> int:
 	pl.pitch = pitch0
 	pl.head.rotation.x = pl.pitch
 	Input.action_press("primary")
+	# Polish 6 §8.1: pressed during the last throw's recovery, the button is held through it and the
+	# scoop starts when it ends (builds without a throw recovery don't wait).
+	var w := 0
+	while "recovery" in tc and float(tc.get("recovery")) > 0.0 and w < 120:
+		await get_tree().physics_frame
+		w += 1
 	var n := 0
 	var cap: float = tc._capacity()
 	while n < 40 and tc.load < cap - 1e-6:
@@ -247,9 +272,15 @@ func _stroke_new(pl: Player, into: Vector2, side: float) -> int:
 	pl.pitch = deg_to_rad(4.0)
 	pl.head.rotation.x = pl.pitch
 	await _frames(4)
+	# Polish 6 §8.1: a release before the minimum hold throws nothing, so the bot holds at least that
+	# long (builds without one don't wait).
+	var extra := 0
+	if Catalog.balance and "min_scoop_hold_s" in Catalog.balance:
+		extra = maxi(ceili(float(Catalog.balance.get("min_scoop_hold_s")) * 60.0) + 1 - (w + n + carried + 4), 0)
+		await _frames(extra)
 	Input.action_release("primary")
 	await _frames(4)
-	return n + 8 + carried
+	return w + n + 8 + carried + extra
 
 
 ## How far the toss to one side lands from the box (m); negative inside it.

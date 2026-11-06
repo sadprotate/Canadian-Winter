@@ -19,6 +19,14 @@ func _frames(n: int) -> void:
 		await _tree().physics_frame
 
 
+## Polish 6 §8.1: a scoop can't start until the last throw's recovery (ToolData.throw_recovery_s) is
+## over; a scripted stroke waits it out before pressing, as a player's turn back to the snow does.
+func _s81_recovered() -> void:
+	var tc = world.player.tools
+	while tc.recovery > 0.0:
+		await _tree().physics_frame
+
+
 func _load_world(mode := "fun", seed_val := 2024, hour := 10.0, day := 1) -> void:
 	await _unload()
 	Game.force_input = true
@@ -361,6 +369,7 @@ func test_indicator_at_pickup_then_landing_every_tool() -> void:
 				pl.pitch = deg_to_rad(pitch)
 				pl.head.rotation.x = pl.pitch
 				await _frames(4)
+				await _s81_recovered()
 				var base := pl.yaw
 				var last := Vector3.INF
 				var last_feet := pl.global_position
@@ -1067,6 +1076,7 @@ func _shovel_watching_indicator(h, b: Dictionary, away: Vector2, avoid: Vector2,
 		pl.pitch = deg_to_rad(-50.0)
 		pl.head.rotation.x = pl.pitch
 		await _frames(3)
+		await _s81_recovered()
 		var base := pl.yaw
 		Input.action_press("primary")
 		for s in range(30):

@@ -15,6 +15,7 @@ radio_surprise_horizon_h = 3.0
 forecast_skill = 1.0
 exposure_curve = PackedVector2Array(-2, 1, -8, 3, -17, 9.5, -25, 14, -40, 20.5, -55, 26)
 input_max_presses_per_s = 6.0
+min_scoop_hold_s = 0.25
 contract_history_max = 200
 rep_tier_names = PackedStringArray("Residential", "Commercial", "City")
 rep_tier_thresholds = PackedFloat32Array(0, 68, 85)

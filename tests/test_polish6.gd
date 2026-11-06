@@ -964,3 +964,530 @@ func test_s3_menu_starts_once_while_settling() -> void:
 	await runner.get_tree().process_frame
 	await runner.get_tree().process_frame
 	Saves.delete_save("fun")
+
+
+# =============================================================================
+# §8.1 Hold to fill, not spam-click
+# =============================================================================
+
+## Every tool §8.1 measures: bare hands, the six shovel-type tools, the electric shovel and the two
+## walk-behind blowers.
+const S81_TOOLS := ["hands", "small_shovel", "standard_shovel", "wide_pusher", "snow_scraper",
+	"large_scraper", "snow_sleigh", "electric_shovel", "small_blower", "large_blower"]
+const S81_RATES := [5.0, 10.0, 20.0, 50.0]
+
+
+## The click bench (tests/click_bench.gd) on its own new game: Fun, seed 2024, Dec 1 9:00, the clock
+## stopped, the player's path box.
+func _s81_bench() -> Node:
+	await _s3_unload()
+	var bench: Node = load("res://tests/click_bench.gd").new()
+	runner.add_child(bench)
+	await bench.setup(runner)
+	world = bench.world
+	return bench
+
+
+func _s81_done(bench: Node) -> void:
+	bench._release_inputs()
+	for a in Settings.ACTIONS.keys():
+		Input.action_release(a)
+	await _s3_unload()
+	bench.queue_free()
+
+
+func _s81_flying() -> float:
+	var v := 0.0
+	for c in world.get_children():
+		if c is ThrownSnow and not c.is_queued_for_deletion():   # a queued one has landed
+			v += (c as ThrownSnow).volume
+	return v
+
+
+## Every tool has a throw rhythm (ToolData.throw_recovery_s): the hand tools from bare hands' 0.5 s
+## to the sleigh's 1 s; the machines' chute interval. The minimum hold is a balance value, shorter
+## than any recovery, and the press cap is unchanged.
+func test_s81_throw_rhythm_data() -> void:
+	var lo := INF
+	var hi := 0.0
+	for id in S81_TOOLS:
+		var t: ToolData = Catalog.tool(StringName(id))
+		if not runner.check(t != null and t.throw_recovery_s > 0.0, "§8.1 %s has a throw recovery (%.2f s)" % [id, t.throw_recovery_s if t else 0.0]):
+			continue
+		if t.is_shovel_type():
+			lo = minf(lo, t.throw_recovery_s)
+			hi = maxf(hi, t.throw_recovery_s)
+			runner.check(t.throw_recovery_s >= 0.5 - 1e-6 and t.throw_recovery_s <= 1.0 + 1e-6, "§8.1 %s: recovery %.2f s, between bare hands' 0.5 s and the sleigh's 1 s" % [id, t.throw_recovery_s])
+	runner.check(is_equal_approx(Catalog.tool(&"hands").throw_recovery_s, lo) and is_equal_approx(Catalog.tool(&"snow_sleigh").throw_recovery_s, hi), "§8.1 bare hands recover fastest (%.2f s), the sleigh slowest (%.2f s)" % [lo, hi])
+	var mh: float = Catalog.balance.min_scoop_hold_s
+	runner.check(mh > 0.0 and mh < lo, "§8.1 min_scoop_hold_s %.2f s, shorter than any recovery" % mh)
+	runner.check(is_equal_approx(Catalog.balance.input_max_presses_per_s, 6.0), "§8.1 the press cap stays at 6 per second")
+
+
+## The Done-when table (click_bench): at 5, 10, 20 and 50 clicks per second, clicked in place and
+## clicked while sweeping, every tool removes no more snow per second than holding and sweeping with
+## the same tool, within noise; it never throws more often than once per throw_recovery_s; and a
+## press takes nothing in its first frame beyond one frame's intake (no opening bite, no start-up
+## lump). The machines are held or clicked walking through the snow.
+func test_s81_clicking_never_beats_holding() -> void:
+	var bench: Node = await _s81_bench()
+	var secs := 12.0
+	var lines := []
+	for id in S81_TOOLS:
+		bench.set("tool", id)
+		var t: ToolData = Catalog.tool(StringName(id))
+		var rec := t.throw_recovery_s
+		var hold: Dictionary
+		var runs := []
+		if t.is_shovel_type():
+			hold = await bench.run_sweep(secs)
+			for r in S81_RATES:
+				runs.append(["%d/s" % int(r), await bench.run_click_primary(r, secs)])
+				runs.append(["%d/s sweeping" % int(r), await bench.run_click_primary(r, secs, true)])
+		else:
+			hold = await bench.run_machine(0.0, secs * 0.6)
+			for r in S81_RATES:
+				runs.append(["%d/s" % int(r), await bench.run_machine(r, secs * 0.6)])
+		var r_hold: float = hold["removed"] / hold["secs"]
+		var m_hold: float = hold["moved"] / hold["secs"]
+		var worst := 0.0
+		var line := "%s: hold %.4f m3/s" % [id, r_hold]
+		for e in runs:
+			var d: Dictionary = e[1]
+			# Snow still in the tool at the end was never put anywhere: not counted as removed.
+			var r: float = (d["removed"] - d.get("load_left", 0.0)) / d["secs"]
+			worst = maxf(worst, r)
+			line += ", %s %.4f" % [e[0], r]
+			runner.check(r <= r_hold * 1.05 + 0.002, "§8.1 %s clicked at %s removes no more than holding and sweeping (%.4f vs %.4f m3/s)" % [id, e[0], r, r_hold])
+			runner.check(d["moved"] / d["secs"] <= m_hold * 1.05 + 0.001, "§8.1 %s clicked at %s takes in no more than holding (%.4f vs %.4f m3/s)" % [id, e[0], d["moved"] / d["secs"], m_hold])
+			var gap: float = d["throw_gap"]
+			runner.check(gap < 0.0 or gap >= rec - 1.0 / 60.0 - 1e-4, "§8.1 %s clicked at %s: throws at least %.2f s apart (shortest gap %.3f s, %d throws)" % [id, e[0], rec, gap, d["throws"]])
+			runner.check(float(d["throws_1s"]) <= ceilf(1.0 / rec) + 1e-6, "§8.1 %s clicked at %s: at most %d throws in any second (%d)" % [id, e[0], int(ceilf(1.0 / rec)), d["throws_1s"]])
+			var one_frame := (t.rate if not t.is_shovel_type() else 0.0) / 60.0
+			if int(d["registered"]) > 0:
+				runner.check(float(d["press_bite"]) / int(d["registered"]) <= one_frame * 1.01 + 1e-6, "§8.1 %s clicked at %s: a press's first frame takes %.2f L (one frame's intake: %.2f L)" % [id, e[0], float(d["press_bite"]) / int(d["registered"]) * 1000.0, one_frame * 1000.0])
+		line += " (worst x%.2f)" % (worst / maxf(r_hold, 1e-6))
+		lines.append(line)
+		var hgap: float = hold["throw_gap"]
+		runner.check(hgap < 0.0 or hgap >= rec - 1.0 / 60.0 - 1e-4, "§8.1 %s held: throws at least %.2f s apart (%.3f s)" % [id, rec, hgap])
+	for l in lines:
+		runner.info("§8.1 " + l)
+	bench.set("tool", "hands")
+	await _s81_done(bench)
+
+
+## The scoop's rules with bare hands and a standard shovel, in the clicking bot's stance (on the path,
+## facing the lawn, looking down at the snow by the feet):
+## - a press without movement, released before one cycle_time, removes no snow (no opening bite);
+##   held still, the first bite comes after one full cycle, not on the press;
+## - after a throw, a press and release inside the recovery throws nothing, loses nothing, and isn't
+##   queued;
+## - a release sooner than min_scoop_hold_s after its press throws nothing and the load stays; the
+##   next press goes on filling it and keeps the re-cut memory;
+## - a press held through the end of the recovery starts the scoop then, without a new press.
+func test_s81_scoop_rules() -> void:
+	var bench: Node = await _s81_bench()
+	var mh: float = Catalog.balance.min_scoop_hold_s
+	var mh_f := ceili(mh * 60.0)
+	for id in ["hands", "standard_shovel"]:
+		bench.set("tool", id)
+		await bench.reset()
+		var pl: Player = world.player
+		var tc: ToolController = pl.tools
+		var t: ToolData = Catalog.tool(StringName(id))
+		var cyc_f := roundi(t.cycle_time * 60.0)
+		var rec_f := roundi(t.throw_recovery_s * 60.0)
+		await bench._wade_on(pl, 0.9)
+		bench._face_side(pl, 1.0)
+		await _s3_frames(2)
+		var yaw0 := pl.yaw
+		var total0 := _s81_total(tc)
+		var m0 := Snow.stat_player_moved
+		var th0: int = bench.get("throws")
+		# Held still for one frame less than a cycle: nothing.
+		Input.action_press("primary")
+		await _s3_frames(cyc_f - 1)
+		runner.check(tc.filling and tc.load == 0.0 and Snow.stat_player_moved == m0, "§8.1 %s: held still for %d frames (a cycle is %d), nothing is cut (%.2f L)" % [id, cyc_f - 1, cyc_f, tc.load * 1000.0])
+		Input.action_release("primary")
+		await _s3_frames(3)
+		runner.check(tc.load == 0.0 and Snow.stat_player_moved == m0 and int(bench.get("throws")) == th0, "§8.1 %s: a press without movement, released before one cycle, removes no snow and throws nothing" % id)
+		runner.near(_s81_total(tc), total0, 1e-6, "§8.1 %s: …the snow is untouched" % id)
+		# Held still: the first bite comes after one full cycle; released (past the minimum hold), it
+		# is thrown and the recovery starts.
+		Input.action_press("primary")
+		await _s3_frames(cyc_f - 1)
+		var before_bite := tc.load
+		await _s3_frames(3)
+		runner.check(before_bite == 0.0 and tc.load > 0.0, "§8.1 %s: held still, the first bite comes after one full cycle (%.2f L after %d frames, %.2f L after %d)" % [id, before_bite * 1000.0, cyc_f - 1, tc.load * 1000.0, cyc_f + 2])
+		Input.action_release("primary")
+		await _s3_frames(1)
+		runner.check(tc.load == 0.0 and int(bench.get("throws")) == th0 + 1 and tc.recovery > 0.0, "§8.1 %s: held %d frames (min hold %d), the release throws; recovery %.2f s left" % [id, cyc_f + 2, mh_f, tc.recovery])
+		var th1: int = bench.get("throws")
+		# Inside the recovery: a press and a release (longer than the minimum hold, sweeping) throw
+		# nothing, lose nothing and aren't queued.
+		var v_rec := _s81_total(tc)
+		var hold_in := mini(mh_f + 2, rec_f - 6)
+		Input.action_press("primary")
+		var filled := 0
+		for k in range(hold_in):
+			pl.set_yaw(yaw0 + 0.3 * sin(k * 0.2))
+			await _s3_frames(1)
+			if tc.filling:
+				filled += 1
+		var rec_left := tc.recovery
+		Input.action_release("primary")
+		await _s3_frames(rec_f)
+		pl.set_yaw(yaw0)
+		runner.check(filled == 0 and rec_left > 0.0 and tc.load == 0.0 and int(bench.get("throws")) == th1, "§8.1 %s: pressed and released inside the recovery (%d frames held, %.2f s left): no scoop, no throw" % [id, hold_in, rec_left])
+		runner.check(not tc.filling and not tc.get("_fill_pressed") and tc.recovery == 0.0, "§8.1 %s: …and the press isn't queued: nothing starts when the recovery ends" % id)
+		await _s3_frames(90)
+		runner.near(_s81_total(tc), v_rec, 2e-4, "§8.1 %s: …nothing is lost (the throw has landed)" % id)
+		# A short press while sweeping: the load grows, but its release (before the minimum hold)
+		# throws nothing and the load stays. The next press goes on filling it.
+		var v_load := _s81_total(tc)
+		Input.action_press("primary")
+		for k in range(mh_f - 4):
+			pl.set_yaw(yaw0 + 0.3 * sin(k * 0.2))
+			await _s3_frames(1)
+		var first := tc.load
+		Input.action_release("primary")
+		await _s3_frames(3)
+		runner.check(first > 0.0 and is_equal_approx(tc.load, first) and int(bench.get("throws")) == th1 and _s81_flying() == 0.0, "§8.1 %s: released %d frames after its press (min hold %d), nothing is thrown and the load stays (%.2f L)" % [id, mh_f - 4, mh_f, tc.load * 1000.0])
+		var cut_n := tc._cut_time.size()
+		Input.action_press("primary")
+		for k in range(mh_f - 4):
+			pl.set_yaw(yaw0 - 0.3 * sin(k * 0.2))
+			await _s3_frames(1)
+		runner.check(cut_n > 0 and tc._cut_time.size() >= cut_n, "§8.1 %s: a new press keeps the re-cut memory (%d cells, was %d)" % [id, tc._cut_time.size(), cut_n])
+		var second := tc.load
+		Input.action_release("primary")
+		await _s3_frames(3)
+		pl.set_yaw(yaw0)
+		runner.check(second > first and is_equal_approx(tc.load, second) and int(bench.get("throws")) == th1, "§8.1 %s: …the next short press goes on filling it (%.2f → %.2f L), still nothing thrown" % [id, first * 1000.0, second * 1000.0])
+		runner.near(_s81_total(tc), v_load, 1e-6, "§8.1 %s: …and nothing is lost" % id)
+		# Held through the end of the recovery: the scoop starts then, without a new press.
+		await bench._next_spot(pl, {"side": 1.0})
+		yaw0 = pl.yaw
+		Input.action_press("primary")
+		for k in range(mh_f + 30):
+			pl.set_yaw(yaw0 + 0.3 * sin(k * 0.2))
+			await _s3_frames(1)
+		Input.action_release("primary")
+		await _s3_frames(1)
+		var th2: int = bench.get("throws")
+		Input.action_press("primary")
+		var started := -1
+		var reg := 0
+		var was := false
+		for k in range(rec_f + 30):
+			pl.set_yaw(yaw0 + 0.3 * sin(k * 0.2))
+			await _s3_frames(1)
+			if tc.get("_fill_pressed") and not was:
+				reg += 1
+			was = tc.get("_fill_pressed")
+			if tc.filling and started < 0:
+				started = k + 1
+		var load3 := tc.load
+		Input.action_release("primary")
+		await _s3_frames(2)
+		pl.set_yaw(yaw0)
+		runner.check(th2 > th1 and started >= rec_f - 2 and started <= rec_f + 1 and reg == 1 and load3 > 0.0, "§8.1 %s: pressed right after a throw and held, the scoop starts when the recovery ends (frame %d of a %d-frame recovery), one press, %.1f L" % [id, started, rec_f, load3 * 1000.0])
+		await _s3_frames(rec_f + 60)
+	bench.set("tool", "hands")
+	await _s81_done(bench)
+
+
+## A pause in a sweep adds no in-place lump. The dig cycle runs while the scoop is held, but what the
+## sweep took during the cycle counts toward the cycle's one bite: sweeping for more than a cycle and
+## then holding still (as a mouse does where it turns back) takes nothing extra on the still frame.
+## Held still for a full cycle after that, it digs in place again. The snow sleigh: it doesn't fill
+## in one cycle of sweeping, so its load has room for a lump.
+func test_s81_a_pause_in_a_sweep_adds_no_lump() -> void:
+	var bench: Node = await _s81_bench()
+	bench.set("tool", "snow_sleigh")
+	await bench.reset()
+	var pl: Player = world.player
+	var tc: ToolController = pl.tools
+	var t: ToolData = Catalog.tool(&"snow_sleigh")
+	var cyc_f := roundi(t.cycle_time * 60.0)
+	var one_frame: float = tc._fill_rate() / 60.0
+	await bench._wade_on(pl, 0.9)
+	bench._face_side(pl, 1.0)
+	await _s3_frames(2)
+	var yaw0 := pl.yaw
+	var most_swept := 0.0
+	var most_early := 0.0
+	var bite_at := -1
+	var bites := 0
+	var bite_v := 0.0
+	Input.action_press("primary")
+	# A sweep with no still frame in it (a triangle wave: the aim moves every frame), past one cycle.
+	for k in range(cyc_f + 4):
+		var ph := k % 20
+		pl.set_yaw(yaw0 + 0.02 * float(ph if ph < 10 else 20 - ph) - 0.1)
+		await _s3_frames(1)
+		most_swept = maxf(most_swept, tc.last_fill)
+	var swept := tc.load
+	# The pause: held still, a little short of two cycles (room for one bite).
+	var pause_f := 2 * cyc_f - 6
+	for k in range(pause_f):
+		await _s3_frames(1)
+		if tc.last_fill > 2.0 * one_frame:
+			bites += 1
+			if bite_at < 0:
+				bite_at = k
+				bite_v = tc.last_fill
+		elif bite_at < 0:
+			most_early = maxf(most_early, tc.last_fill)
+	var full := tc.load >= tc._capacity() - 1e-6
+	Input.action_release("primary")
+	await _s3_frames(2)
+	runner.check(swept > t.fill_rate * t.cycle_time * 0.4 and most_swept <= one_frame * 1.01 + 1e-6 and not full, "§8.1 sleigh: swept %d frames (a cycle is %d), %.1f L, at most %.2f L a frame (fill rate %.2f L a frame)" % [cyc_f + 4, cyc_f, swept * 1000.0, most_swept * 1000.0, one_frame * 1000.0])
+	runner.check(bite_at < 0 or bite_at >= cyc_f - 2, "§8.1 sleigh: …then held still, no lump on the pause: nothing above one frame's fill until a full cycle of stillness (first bite on still frame %d of a %d-frame cycle; at most %.2f L a frame before it)" % [bite_at, cyc_f, most_early * 1000.0])
+	runner.check(most_early <= one_frame * 1.01 + 1e-6, "§8.1 sleigh: …the still frames before it take at most one frame's fill (%.2f L)" % (most_early * 1000.0))
+	runner.check(bite_at >= 0 and bites == 1 and bite_v <= t.fill_rate * t.cycle_time * 0.4 + 1e-6, "§8.1 sleigh: …and held still a full cycle, it digs in place again: one bite (%.1f L, at most %.1f L), %d in %d frames" % [bite_v * 1000.0, t.fill_rate * t.cycle_time * 0.4 * 1000.0, bites, pause_f])
+	await _s3_frames(120)
+	bench.set("tool", "hands")
+	await _s81_done(bench)
+
+
+## The throw rhythm across a tool switch. A press held through a recovery, then a switch from the
+## standard shovel to bare hands: the recovery runs on (two tools can't alternate to beat it), the
+## hands show the rest of the follow-through, and when the recovery ends the held button starts the
+## hands' scoop without a new press.
+func test_s81_rhythm_across_a_tool_switch() -> void:
+	var bench: Node = await _s81_bench()
+	bench.set("tool", "standard_shovel")
+	await bench.reset()
+	var pl: Player = world.player
+	var tc: ToolController = pl.tools
+	var mh_f := ceili(Catalog.balance.min_scoop_hold_s * 60.0)
+	await bench._wade_on(pl, 0.9)
+	bench._face_side(pl, 1.0)
+	await _s3_frames(2)
+	var yaw0 := pl.yaw
+	Input.action_press("primary")
+	for k in range(mh_f + 20):
+		pl.set_yaw(yaw0 + 0.3 * sin(k * 0.2))
+		await _s3_frames(1)
+	Input.action_release("primary")
+	await _s3_frames(1)
+	var th0: int = bench.get("throws")
+	var rec0 := tc.recovery
+	runner.check(th0 > 0 and rec0 > 0.0, "§8.1 switch: the standard shovel throws (%d), recovery %.2f s" % [th0, rec0])
+	# Pressed again inside the recovery and held, then switched to bare hands (slot 2 is empty).
+	Input.action_press("primary")
+	await _s3_frames(6)
+	var rec_before := tc.recovery
+	var toss_before := tc.toss_t
+	runner.check(rec_before > 0.0 and not tc.filling, "§8.1 switch: pressed inside the recovery, the press waits (%.2f s left)" % rec_before)
+	Game.select_slot(1)
+	await _s3_frames(1)
+	runner.check(tc.data.kind == ToolData.Kind.HANDS and tc.recovery > 0.0 and tc.recovery < rec_before, "§8.1 switch: on bare hands the recovery runs on (%.2f → %.2f s)" % [rec_before, tc.recovery])
+	runner.check(tc.toss_t > toss_before and tc.toss_t < 1.0, "§8.1 switch: …and the hands show the rest of the follow-through (toss %.2f → %.2f)" % [toss_before, tc.toss_t])
+	var rec_f := roundi(tc.recovery * 60.0)
+	var started := -1
+	var toss_done := -1
+	var reg := 0
+	var was := false
+	for k in range(rec_f + 30):
+		pl.set_yaw(yaw0 + 0.3 * sin(k * 0.2))
+		await _s3_frames(1)
+		if tc.toss_t >= 1.0 and toss_done < 0:
+			toss_done = k + 1
+		if tc.get("_fill_pressed") and not was:
+			reg += 1
+		was = tc.get("_fill_pressed")
+		if tc.filling and started < 0:
+			started = k + 1
+	var load1 := tc.load
+	Input.action_release("primary")
+	await _s3_frames(2)
+	pl.set_yaw(yaw0)
+	runner.check(started >= rec_f - 2 and started <= rec_f + 2 and reg == 1 and load1 > 0.0, "§8.1 switch: held through, the hands' scoop starts when the recovery ends (frame %d of %d), one press, %.1f L" % [started, rec_f, load1 * 1000.0])
+	runner.check(toss_done >= rec_f - 2 and toss_done <= rec_f + 2, "§8.1 switch: …and the follow-through ends with the recovery (frame %d)" % toss_done)
+	runner.check(int(bench.get("throws")) == th0 + 1, "§8.1 switch: …and its release throws (%d throws)" % int(bench.get("throws")))
+	await _s3_frames(90)
+	bench.set("tool", "hands")
+	await _s81_done(bench)
+
+
+## The footprint fallback (second review fix): where a sweep's strip comes up short (shallow snow, a
+## narrow trench, cells already cut) the rest of the frame's fill comes from the scoop's footprint, at
+## most the opening bite's share (fill_rate × cycle_time × 0.4) a load. Each held sweep (click_bench
+## run_shallow: flat snow, the aim level, so both runs sweep the same path) runs twice, once with the
+## share spent after the first frame (the strip alone). Against that, the fallback adds no more than
+## the share at any frame, and cuts no cell but the footprints it cut from. A stroke that goes on
+## filling a kept load gets no share, so clicking can't renew it.
+func test_s81_shallow_sweep_takes_no_more_than_the_opening_bite() -> void:
+	var bench: Node = await _s81_bench()
+	for id in ["hands", "standard_shovel", "large_scraper", "snow_sleigh"]:
+		bench.set("tool", id)
+		var t: ToolData = Catalog.tool(StringName(id))
+		for dw in [[0.06, 0.2], [0.06, 0.07], [0.25, 0.07]]:
+			var depth: float = dw[0]
+			var w: float = dw[1]
+			var a: Dictionary = await bench.run_shallow(depth, w)
+			var b: Dictionary = await bench.run_shallow(depth, w, 60, true)
+			var share: float = world.player.tools._fill_rate() * t.cycle_time * 0.4
+			var most := 0.0
+			var least := INF
+			var ma: Dictionary = a["marks"]
+			var mb: Dictionary = b["marks"]
+			for f in ma.keys():
+				most = maxf(most, float(ma[f]) - float(mb[f]))
+				least = minf(least, float(ma[f]) - float(mb[f]))
+			var outside := 0
+			var foot: PackedInt32Array = a["foot"]
+			for c in a["cut"]:
+				if not (c in b["cut"]) and not foot.has(int(c)):
+					outside += 1
+			var tag := "§8.1 %s, %.2f m of snow, sweep %.2f rad/frame" % [id, depth, w]
+			runner.check(is_equal_approx(float(a["foot_left"]), share), "%s: a fresh load's fallback share is the opening bite's (%.1f L)" % [tag, float(a["foot_left"]) * 1000.0])
+			runner.check(most <= share + 1e-6, "%s: the fallback adds at most that share (most %.1f L over the strip alone, share %.1f L; at 60 frames %.1f vs %.1f L)" % [tag, most * 1000.0, share * 1000.0, float(ma[60]) * 1000.0, float(mb[60]) * 1000.0])
+			runner.check(outside == 0, "%s: …and cuts no cell outside the strips but the scoop's footprint (%d cells cut, %d by the strip alone, %d outside)" % [tag, int(a["cells"]), int(b["cells"]), outside])
+			if depth < 0.1 and w < 0.1:
+				runner.check(most > 0.0, "%s: …and in shallow snow it does make up part of the share (%.1f L, least %.1f L)" % [tag, most * 1000.0, least * 1000.0])
+	# A kept load: the next stroke gets no share.
+	bench.set("tool", "standard_shovel")
+	await bench.reset()
+	var pl: Player = world.player
+	var tc: ToolController = pl.tools
+	await bench._wade_on(pl, 0.9)
+	bench._face_side(pl, 1.0)
+	await _s3_frames(2)
+	var yaw0 := pl.yaw
+	var mh_f := ceili(Catalog.balance.min_scoop_hold_s * 60.0)
+	Input.action_press("primary")
+	for k in range(mh_f - 4):
+		pl.set_yaw(yaw0 + 0.3 * sin(k * 0.2))
+		await _s3_frames(1)
+	Input.action_release("primary")
+	await _s3_frames(3)
+	var kept := tc.load
+	Input.action_press("primary")
+	await _s3_frames(2)
+	runner.check(kept > 0.0 and tc.filling and tc.get("_foot_left") == 0.0, "§8.1 a stroke that goes on filling a kept load (%.1f L) gets no fallback share (%.1f L)" % [kept * 1000.0, float(tc.get("_foot_left")) * 1000.0])
+	Input.action_release("primary")
+	await _s3_frames(90)
+	bench.set("tool", "hands")
+	await _s81_done(bench)
+
+
+## A load kept by a release sooner than min_scoop_hold_s (review fix): the landing ring follows the
+## aim, as while filling (it used to stay where the last fill frame had put it).
+func test_s81_kept_load_ring_follows_the_aim() -> void:
+	var bench: Node = await _s81_bench()
+	bench.set("tool", "standard_shovel")
+	await bench.reset()
+	var pl: Player = world.player
+	var tc: ToolController = pl.tools
+	await bench._wade_on(pl, 0.9)
+	bench._face_side(pl, 1.0)
+	await _s3_frames(2)
+	var yaw0 := pl.yaw
+	var mh_f := ceili(Catalog.balance.min_scoop_hold_s * 60.0)
+	Input.action_press("primary")
+	for k in range(mh_f - 4):
+		pl.set_yaw(yaw0 + 0.3 * sin(k * 0.2))
+		await _s3_frames(1)
+	pl.set_yaw(yaw0)
+	pl.pitch = deg_to_rad(4.0)
+	pl.head.rotation.x = pl.pitch
+	Input.action_release("primary")
+	await _s3_frames(20)
+	var r0 := tc.indicator.global_position
+	runner.check(tc.load > 0.0 and tc.ind_state == "landing" and tc.indicator.visible, "§8.1 kept load (%.1f L): the ring shows the landing" % (tc.load * 1000.0))
+	# Turn a quarter turn back towards the path: the ring goes with the aim.
+	pl.set_yaw(yaw0 - PI * 0.5)
+	await _s3_frames(30)
+	var r1 := tc.indicator.global_position
+	var now: Dictionary = tc._landing(tc._throw_dist() * tc._pitch_factor(), tc.data.throw_angle_deg)
+	var lp: Vector3 = now["pos"]
+	var off := Vector2(r1.x - lp.x, r1.z - lp.z).length()
+	runner.check(tc.ind_state == "landing" and Vector2(r1.x - r0.x, r1.z - r0.z).length() > 0.5 and off < 0.25, "§8.1 …turned a quarter turn, it follows: moved %.2f m, %.2f m from where a release would land now" % [Vector2(r1.x - r0.x, r1.z - r0.z).length(), off])
+	# Back to the lawn: the next press, held past the minimum, throws it.
+	pl.set_yaw(yaw0)
+	await _s3_frames(2)
+	var th0: int = bench.get("throws")
+	Input.action_press("primary")
+	await _s3_frames(mh_f + 4)
+	Input.action_release("primary")
+	await _s3_frames(2)
+	runner.check(int(bench.get("throws")) == th0 + 1 and tc.load == 0.0, "§8.1 …and the next press, held past the minimum, throws it (%d throw)" % (int(bench.get("throws")) - th0))
+	await _s3_frames(90)
+	bench.set("tool", "hands")
+	await _s81_done(bench)
+
+
+## The electric shovel's chute throws on its rhythm (throw_recovery_s), so a little intake can wait in
+## it after a release (review fix): saving lands it with the rest of the snow in flight, and getting
+## into a vehicle throws it out where it was going. Nothing is lost or left in the chute.
+func test_s81_electric_chute_is_never_stranded() -> void:
+	var bench: Node = await _s81_bench()
+	bench.set("tool", "electric_shovel")
+	var pl: Player = world.player
+	var tc: ToolController = pl.tools
+	var truck: Vehicle = null
+	for c in world.objects.get_children():
+		if c is Vehicle:
+			truck = c
+			break
+	for how in ["save", "vehicle"]:
+		await bench.reset()
+		var waiting := await _s81_chute_waiting(bench, pl, tc)
+		var total := _s81_total(tc) + tc._stream_acc
+		runner.check(waiting > 0.0, "§8.1 electric (%s): released, %.1f L waits in the chute for its next beat" % [how, waiting * 1000.0])
+		if how == "save":
+			world.collect_state()
+			runner.check(tc._stream_acc == 0.0 and _s81_flying() == 0.0, "§8.1 electric: saving empties the chute and lands it (%.1f L in the chute, %.1f L in flight)" % [tc._stream_acc * 1000.0, _s81_flying() * 1000.0])
+			runner.near(_s81_total(tc), total, 1e-6, "§8.1 electric: …on the ground before the save is written")
+		else:
+			if not runner.check(truck != null, "§8.1 electric: a vehicle to get into"):
+				continue
+			truck.enter_vehicle(pl)
+			await _s3_frames(1)
+			runner.check(pl.state == "vehicle" and tc._stream_acc == 0.0, "§8.1 electric: getting into the %s throws what the chute held (%.1f L left in it)" % [truck.data.id, tc._stream_acc * 1000.0])
+			runner.near(_s81_total(tc), total, 1e-6, "§8.1 electric: …nothing lost (%.1f L in flight)" % (_s81_flying() * 1000.0))
+			await _s3_frames(120)
+			truck.exit_vehicle()
+			await _s3_frames(2)
+			runner.near(_s81_total(tc), total, 1e-6, "§8.1 electric: …and it has landed")
+	bench.set("tool", "hands")
+	await _s81_done(bench)
+
+
+## Hold the electric shovel strafing along the path facing the lawn (click_bench's machine bot), and
+## release it a few frames after a beat of its chute, so some intake waits in it for the next one:
+## returns how much (m3).
+func _s81_chute_waiting(bench: Node, pl: Player, tc: ToolController) -> float:
+	var into: Vector2 = bench.get("into_d")
+	var walk: Rect2 = bench.get("walk_r")
+	var r := Vector2(-into.y, into.x)
+	var w := absf(walk.size.x * r.x) + absf(walk.size.y * r.y)
+	var p: Vector2 = bench.get("start_p") + into * 0.6 - r * (w * 0.5 - 0.15)
+	pl.teleport(Vector3(p.x, 0.05, p.y), atan2(-r.x, -r.y))
+	pl.pitch = deg_to_rad(-30.0)
+	pl.head.rotation.x = pl.pitch
+	await _s3_frames(3)
+	var f := pl.forward2()
+	var walk_key := "move_right" if Vector2(-f.y, f.x).dot(into) > 0.0 else "move_left"
+	Input.action_press(walk_key)
+	Input.action_press("primary")
+	for k in range(180):
+		await _s3_frames(1)
+		var t: float = tc.get("_stream_timer")
+		if k > 30 and tc._stream_acc > 0.0 and t > 0.06 and t < 0.11:
+			break
+	Input.action_release("primary")
+	Input.action_release(walk_key)
+	await _s3_frames(1)
+	return tc._stream_acc
+
+
+## All the snow: on the ground, on the roofs, in flight and in the tool.
+func _s81_total(tc: ToolController) -> float:
+	var v := Snow.total_volume() + _s81_flying() + tc.load
+	for k in Snow.roof_extra.keys():
+		v += float(Snow.roof_extra[k]) * 160.0
+	return v

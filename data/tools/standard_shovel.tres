@@ -16,6 +16,7 @@ bite = 0.28
 sweep_reach = 1.7
 cycle_time = 0.42
 throw_distance = 5.2
+throw_recovery_s = 0.7
 scrape_floor = 0.003
 push_width = 0.48
 push_strength = 0.14

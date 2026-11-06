@@ -16,6 +16,7 @@ capacity = 0.05
 fill_rate = 0.1
 sweep_reach = 1.8
 throw_distance = 2.8
+throw_recovery_s = 0.8
 scrape_floor = 0.0
 push_width = 0.75
 push_strength = 0.6

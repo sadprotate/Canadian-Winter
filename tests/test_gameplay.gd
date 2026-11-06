@@ -17,6 +17,14 @@ func _frames(n: int) -> void:
 		await _tree().physics_frame
 
 
+## Polish 6 §8.1: a scoop can't start until the last throw's recovery (ToolData.throw_recovery_s) is
+## over; a scripted stroke waits it out before pressing, as a player's turn back to the snow does.
+func _s81_recovered() -> void:
+	var tc = world.player.tools
+	while tc.recovery > 0.0:
+		await _tree().physics_frame
+
+
 func _load_world(mode := "fun", seed_val := 2024, hour := 10.0, day := 1) -> void:
 	await _unload()
 	Game.force_input = true
@@ -68,6 +76,7 @@ func _tap(action: String) -> void:
 ## Hold the primary action and sweep the aim point side to side through the snow in front.
 func _sweep_fill(frames: int, amp := 0.5) -> void:
 	var pl: Player = world.player
+	await _s81_recovered()
 	var base := pl.yaw
 	Input.action_press("primary")
 	for k in range(frames):
@@ -292,11 +301,16 @@ func test_hands_sweep_fill_full_and_partial_throws() -> void:
 	await _frames(90)
 	Snow.relax_until_stable()
 	runner.near(Snow.volume_in_rect(region), before, 0.002, "Thrown snow lands; volume conserved")
-	# Partial load: a short sweep, then release early.
+	# Partial load: a short sweep, then release early. Polish 6 §8.1: a press cuts nothing by itself
+	# and a release sooner than min_scoop_hold_s throws nothing, so the short sweep sweeps and lasts
+	# that long (it used to be a 3-frame press that took the press's opening bite in place).
 	pl.set_yaw(PI)
 	await _frames(2)
+	await _s81_recovered()
 	Input.action_press("primary")
-	await _frames(3)
+	for k in range(ceili(Catalog.balance.min_scoop_hold_s * 60.0)):
+		pl.set_yaw(PI + 0.5 * sin(k * 0.12))
+		await _tree().physics_frame
 	var part := tc.load
 	runner.check(part > 0.0 and part < cap * 0.95, "A short sweep gives a partial load (%.1f L)" % (part * 1000.0))
 	pl.set_yaw(0.4)

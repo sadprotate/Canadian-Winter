@@ -22,8 +22,8 @@ resume from here.
 | §0 | Agent setup, the round-6 brief, baseline | done | `aabe73c` | `report/s0.md` |
 | §1 | What round 5 never pushed | done | `7abcd57` | `report/s1.md` |
 | §2 | The Godot errors after pulling | done | `c17cbe5` | `report/s2.md` |
-| §3 | Round 5's open items | done | this commit (`polish6 §3: Round 5's open items`) | `report/s3.md` |
-| §8.1 | Hold to fill, not spam-click | not started | | |
+| §3 | Round 5's open items | done | `5287dfe` | `report/s3.md` |
+| §8.1 | Hold to fill, not spam-click | **needs a decision:** done except two Done-when items that Decision 10's recoveries rule out (grind_bench within 5 %; a human rhythm loses nothing), plus two things for the coordinator to accept: tests whose inputs changed, and shallow-snow sweeps taking more than before (see open items). Amended after two reviews | this commit (`polish6 §8.1: Hold to fill, not spam-click`) | `report/s8_1.md` |
 | §8.2 | Loads twice as big | not started | | |
 | §9 | Smooth piles | not started | | |
 | §10 | The plow truck from the start | not started | | |
@@ -79,6 +79,77 @@ resume from here.
   16:9 (seen in §3's shots; pre-existing, not changed). On a 4:3 screen (1920 × 1440 canvas) the
   clock panel, and the fast-forward control under it, overlap the map's frame: pre-existing for
   the clock. §3 checked the four resolutions round 5 uses (16:9 and 21:9).
+- **§8.1, decision needed (coordinator / owner): Decision 10's recoveries rule out two Done-when
+  items, and no change within §8.1's rules meets them** (report/s8_1.md, *Decision needed*, with
+  the tables). After a throw no scoop can start for `throw_recovery_s` (0.5–1.0 s), and a press
+  made in that time waits.
+  - *grind_bench within 5 %:* bot 0.0376 → 0.0171 m³/s, path box 3.2 → 6.7 min, 349 → 368
+    strokes; at the bench's human pace 6.4 → 6.8 min (+6 %). (The first commit, `065a487`: 6.8 min,
+    373 strokes, +8 %. The second review measured 6.7 min too.) The bot turns back in 8 frames, so each stroke waits out the
+    rest of the recovery. No recovery value meets it: at 0.4 s the bot takes 6.1 min, and at
+    0.3 s or below it stalls on the kept re-cut memory (`RECUT_S`), which Decision 10 also asks
+    for.
+  - *"A human rhythm (hold and sweep 0.6–1.2 s, release, repeat) loses nothing":* not met. The
+    committed report's "from 0.9 s holds on, nothing is lost" was wrong. With 0.3 s between
+    strokes:
+    - at 0.6 s holds, bare hands lose 22 %, and the shovels, the pusher and the scrapers 51–76 %;
+    - at 0.9 s holds, the pusher, the scrapers and the sleigh lose 42–48 %;
+    - at 1.2 s holds, the sleigh loses 35 %.
+    With 0.7 s between strokes (about a recovery), every tool is within 5 % or better from 0.9 s
+    holds on, but the pusher, the scrapers and the sleigh lose 23–33 % at 0.6 s holds. Brisk
+    shovelling with the 0.7–1.0 s tools feels sluggish: a press made during the follow-through
+    silently waits.
+  - Options:
+    - A: keep the recoveries and amend the two items (the human-pace figure; a rhythm that waits
+      out the follow-through).
+    - B: shorter recoveries. At 0.4 s for every tool, with 0.3 s between strokes, hands and the
+      shovels lose ≤ 5 % at 0.6 s holds, the pusher and the scrapers 25–29 %, and grind_bench
+      takes 6.1 min.
+    - C: let the recovery space throws instead of blocking the next scoop. Not measured; it
+      needs a brief change.
+    - D (the second review's data point): count `min_scoop_hold_s` from the scoop's start (when
+      the cap registers the press) rather than the physical press. A one-line change in
+      `_shovel_type()` (`_hold_t = 0.0` where `_press_wait` ends), measured, not taken. With 0.3 s
+      between strokes: the small shovel at 0.6 s holds −76 → −48 %, the standard shovel −71 → −57 %,
+      the sleigh at 0.9 s −45 → −15 %; nothing else changes, grind_bench included. It can't help
+      clicking. It meets neither item on its own and combines with A or B.
+- **§8.1, for the coordinator to accept: nine tests had their inputs changed, with their
+  assertions untouched.** The Done-when says they "pass unchanged".
+  - Directly: `test_indicator_at_pickup_then_landing_every_tool` (polish4) waits out the recovery
+    (`_s81_recovered()`) before each press, and the partial-load block of
+    `test_hands_sweep_fill_full_and_partial_throws` (gameplay) sweeps for `min_scoop_hold_s`
+    (15 frames) instead of a 3-frame press. Their old inputs can't pass under Decision 10: the
+    first relied on throws 35 frames apart, the second on the press's opening bite.
+  - Through the shared stroke helpers that wait out the recovery: `_sweep_fill` (gameplay:
+    `test_shovel_throws_onto_road`, `test_bigger_scoops_and_tool_ladder`,
+    `test_box_outline_follows_work`, `test_snow_refinements`,
+    `test_dig_out_by_hand_after_a_major_event`), `_shovel_to_snap` (polish3's play-through) and
+    `_shovel_watching_indicator` (polish4's play-through). The first, third and fourth never
+    actually wait (0 frames); the others wait at most 27 frames a stroke (report/s8_1.md *Tests*).
+- **§8.1, for the coordinator to accept: shallow snow.** The footprint fallback is capped at the
+  opening bite's share a load (the second review's suggested fix), but the cap rarely binds: in
+  snow too shallow for the tool to fill up within a second, a held sweep takes up to about a
+  quarter more than before §8.1 (the standard shovel and the sleigh at 6 cm: +25 %), from up to
+  four more cells. Deep snow is unchanged or less. Narrowing the fallback to the press point's
+  cells matches before §8.1 but stalls `grind_bench` by the steps; that was tried and dropped
+  (report/s8_1.md *Shallow snow*). `click_bench -- --rows=shallow` measures it; rerun it in §8.2.
+- **§8.1: RMB clicking can push more than holding in deep snow** (round 5 found no gain; that
+  holds for bare hands only).
+  - In the opening's ~0.6 m path a held push stalls against its berm (speed × 0.01), while
+    clicking lets the player wade on between pushes.
+  - It varies from run to run, before and after §8.1 alike. The committed run's largest case was
+    the small shovel at 5/s: 0.32 against 0.0066 m³/s pushed, 0.057 m³/s out of the box. The
+    amended run's was the snow scraper at 5/s: 0.021 against 0.0011 m³/s out of the box.
+  - Decision 10 says spam-clicking never beats holding "with any tool", but §8.1 protects push
+    behaviour. A later section needs to own it, with the owner's OK to change push, for example
+    so that a push starts only from a held press.
+- **polish3's `test_menu_fixture_load_is_the_same_as_direct` is load-dependent** (not §8.1; from
+  §3's settling or the menu).
+  - The §8.1 review saw it fail in the full polish3 suite twice at the §8.1 commit and once at
+    `5287dfe` (20/21; the test took 23–26 s). For `survival_4_midwinter`, the menu Continue's start
+    hook didn't fire within `_menu_start`'s fixed 30-frame wait.
+  - It passes alone (15 s), and it passed in the amended §8.1 run (11.3 s, 21/21).
+  - A fix would wait for the start (or the stepped settle) to finish rather than 30 frames.
 
 ## Binding notes
 
@@ -227,3 +298,60 @@ actions, function names, gotchas.
   - A later change to where the player or the opening's shovel stands updates these the same way.
 - **Suite times after §3:** polish5 ~1,050 s (was ~840 s); polish6 ~160–180 s, of which §3's
   settling test is ~140–175 s and the menu's one-start test ~5 s.
+
+**From §8.1 (hold to fill, not spam-click):**
+- **`ToolData.throw_recovery_s`** (s), in every `data/tools/*.tres` and the generator's `_tools()`:
+  bare hands 0.5, small and standard shovel 0.7, pusher and both scrapers 0.8, sleigh 1.0; the
+  electric shovel 0.15 and both blowers 0.18 (their chute's throw interval, which was a constant).
+  §8.2 doubles capacities and fill rates but leaves these alone.
+- **Balance `min_scoop_hold_s` = 0.25** (`balance.tres`, `BalanceData` default, generator record).
+- **ToolController (hands, shovel-type tools):** no opening bite (`_dig_timer = cycle_time` at a
+  stroke's start; `_cut_time` is no longer cleared per stroke). The dig cycle runs while held,
+  sweeping or not, but what the sweep took during the cycle (`_cycle_swept`) counts toward the
+  cycle's one in-place bite: a still frame after sweeping takes no lump. A sweep cuts the strip it
+  crossed; only when the strip comes up short does the rest of the frame's fill come from the
+  scoop's footprint where it is now (the in-place cells, `_foot_cells`), **at most the opening
+  bite's size `fill_rate × cycle_time × 0.4` in all for a load** (`_foot_left`), and only for a
+  load's first stroke (a stroke that goes on filling a kept load gets none, so a click can't renew
+  it). `_cut_cells()` does each cut. Don't narrow it to the press point's cells or to the snow the
+  press point held: both were tried in the second review. The grind bot then stalls at the top of
+  the walkway (`grind_bench --full=1`: not completed, stuck with 0.9 m³ left by the steps), and the
+  second also fails the bare-hands dig-out (0.6 m of 3.2 m). A release
+  throws only `min_scoop_hold_s` after the physical press (`_hold_t`); a throw sets `recovery`
+  (public, seconds left) and the follow-through (`toss_t`) lasts `max(0.42, throw_recovery_s)`. A
+  press during `recovery` sets `_press_wait`: held through its end, `_scoop_press()` runs then (the
+  cap's `accept_press` is asked then). The recovery runs on across tool switches; a held press
+  keeps waiting through a switch, and a hand or shovel-type tool switched to mid-recovery shows the
+  rest of the follow-through (`toss_t = 1 − recovery / _toss_len`). A load kept by a release
+  sooner than the minimum (`_kept_short`) shows its landing ring where the aim is now, recomputed
+  as while filling; after a refused throw the ring stays where it was, as before §8.1.
+- **Electric shovel:** `_stream_beat()` throws what the chute holds at most once per
+  `throw_recovery_s`, held or not (a release no longer throws at once; a tool switch flushes it).
+  So up to one interval's intake can wait in `_stream_acc` after a release. It is thrown on the
+  first frame off foot (a vehicle, a blower), and `game_root.collect_state()` calls
+  `ToolController.flush_chute()` before `_flush_projectiles()`, so a save lands it. **New code that
+  saves, or takes the player off foot, by another path** must do the same.
+- **Scripted strokes in tests and bots** wait out `world.player.tools.recovery` before pressing
+  (`_s81_recovered()` in test_gameplay / polish3 / polish4; the grind and click bench bots hold
+  through it) and hold at least `min_scoop_hold_s` before releasing. New tests that throw twice in
+  a row must do the same.
+- **Keep shovel-type recoveries above `ToolController.RECUT_S` (0.3 s):** the re-cut memory now
+  survives a new press, so a bot (or a test) that presses again sooner over the same cells finds
+  their bite used up (grind_bench stalls at `--recovery=0` and `0.3`).
+- **click_bench** (`--tools=all`, `--rows=`, `--rhythm=`, `--gap=`; grind_bench's `--recovery=`,
+  `--hold=`, `--fill=` overrides for measuring) and `test_s81_clicking_never_beats_holding` (every
+  tool, 5/10/20/50 per second, in place and sweeping, 12 s runs, ~90 s) are §8.2's rerun.
+  `--rows=shallow [--depths=0.06,0.12,0.25,0.6]` (only when named) runs one held sweep per depth in
+  flat snow with the aim level (`run_shallow`), so two builds sweep the same path: how much a stroke
+  cuts and where. §8.2's doubled loads and fill rates make the strip come up short more often;
+  rerun it there.
+- **§8.1's tests** in test_polish6: `test_s81_throw_rhythm_data`, `…_clicking_never_beats_holding`,
+  `…_scoop_rules`, `…_a_pause_in_a_sweep_adds_no_lump`, `…_rhythm_across_a_tool_switch`,
+  `…_shallow_sweep_takes_no_more_than_the_opening_bite`, `…_kept_load_ring_follows_the_aim`,
+  `…_electric_chute_is_never_stranded`. A change to the dig cycle, the footprint fallback or
+  `_sync_tool()` must keep them passing. `_s81_flying()` counts only ThrownSnow not yet queued for
+  deletion (a flushed one has landed but stays in the tree until the frame ends).
+- `shot.gd`: `--scoop=thrown --after=F [--switch=S]` (a real throw, captured F frames after the
+  release; S frames after it, switch to bare hands).
+- Suite times here: polish6 ~335–700 s depending on the PC's load (§8.1's bench tests ~95–250 s;
+  §3's settling test 150–390 s).

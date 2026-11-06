@@ -540,36 +540,43 @@ func test_s2_no_conflict_in_any_context() -> void:
 
 ## The auto-clicker against the cap (polish 5 §2), with the real controls and bare hands on the
 ## player's path box (tests/click_bench.gd): at 20 and 50 presses/s no more presses register than
-## the cap allows and no more snow comes off the box than clicking at the cap rate; without the cap
-## 20/s would be far ahead. The hold-and-sweep bot's rate is measured alongside and reported: each
-## press still opens with an in-place bite (how a scoop starts its cut, left as it is), so clicking
-## at the cap rate stays ahead of sweeping (see docs/polish5/report/s2.md).
+## the cap allows, and no more snow comes off the box than clicking at the cap rate (both kept from
+## round 5). Polish 6 §8.1 replaced the click behaviour this test asserted: a press no longer
+## opens with an in-place bite, a release sooner than min_scoop_hold_s throws nothing and every
+## throw is followed by the tool's throw_recovery_s. So clicking at the cap rate, at 20 and 50/s,
+## and at 20/s with the cap off, removes no more snow per second than holding and sweeping, and
+## throws no more often than the recovery allows (see docs/polish6/report/s8_1.md).
 func test_s2_autoclick_capped() -> void:
 	var bench: Node = load("res://tests/click_bench.gd").new()
 	runner.add_child(bench)
 	await bench.setup(runner)
 	world = bench.world
 	var cap: float = Catalog.balance.input_max_presses_per_s
+	var rec: float = Catalog.tool(&"hands").throw_recovery_s
 	var secs := 20.0
 	var sw: Dictionary = await bench.run_sweep(secs)
 	var at_cap: Dictionary = await bench.run_click_primary(cap, secs)
 	var r_sw: float = sw["removed"] / sw["secs"]
 	var r_cap: float = at_cap["removed"] / at_cap["secs"]
-	runner.info("hold + sweep: %.4f m3/s; clicking at the cap (%.0f/s): %.4f m3/s, %.1f registered/s, %.1f L per press" % [r_sw, cap, r_cap, at_cap["registered"] / at_cap["secs"], at_cap["moved"] / maxf(at_cap["registered"], 1) * 1000.0])
+	runner.info("hold + sweep: %.4f m3/s; clicking at the cap (%.0f/s): %.4f m3/s, %.1f registered/s, %d throws, %.1f L per press" % [r_sw, cap, r_cap, at_cap["registered"] / at_cap["secs"], at_cap["throws"], at_cap["moved"] / maxf(at_cap["registered"], 1) * 1000.0])
+	runner.check(r_cap <= r_sw * 1.05 + 0.002, "§2 clicking LMB at the cap rate (%.0f/s) removes no more snow per second than holding and sweeping (%.4f vs %.4f m3/s)" % [cap, r_cap, r_sw])
 	for rate in [20.0, 50.0]:
 		var d: Dictionary = await bench.run_click_primary(rate, secs)
 		var r: float = d["removed"] / d["secs"]
-		runner.info("clicking at %.0f/s: %.4f m3/s (x%.2f the cap rate, x%.2f hold + sweep), %d sent, %d registered" % [rate, r, r / maxf(r_cap, 1e-6), r / maxf(r_sw, 1e-6), d["sent"], d["registered"]])
+		runner.info("clicking at %.0f/s: %.4f m3/s (x%.2f hold + sweep), %d sent, %d registered, %d throws" % [rate, r, r / maxf(r_sw, 1e-6), d["sent"], d["registered"], d["throws"]])
 		runner.check(float(d["registered"]) <= cap * d["secs"] + 1.0, "§2 clicking LMB at %.0f/s: at most %.0f presses register per second (%d in %.1f s)" % [rate, cap, d["registered"], d["secs"]])
 		runner.check(r <= r_cap * 1.12 + 0.002, "§2 clicking LMB at %.0f/s removes no more snow per second than clicking at the cap rate (%.4f vs %.4f m3/s)" % [rate, r, r_cap])
-		runner.check(d["throws"] == d["registered"], "§2 …one throw per registered press, none per ignored one (%d / %d)" % [d["throws"], d["registered"]])
-	# The cap is what holds it: without it, 20/s registers and removes far more.
+		runner.check(r <= r_sw * 1.05 + 0.002, "§2 clicking LMB at %.0f/s removes no more snow per second than holding and sweeping (%.4f vs %.4f m3/s)" % [rate, r, r_sw])
+		runner.check(d["throws"] <= d["registered"] and float(d["throws"]) <= d["secs"] / rec + 1.0, "§2 …and throws no more than once per registered press and once per %.2f s recovery (%d throws, %d registered)" % [rec, d["throws"], d["registered"]])
+	# The cap still limits the presses; the scoop's rule is what holds the snow now: without the cap,
+	# 20/s registers far more presses and still removes no more than holding and sweeping.
 	Catalog.balance.input_max_presses_per_s = 0.0
 	var free20: Dictionary = await bench.run_click_primary(20.0, secs)
 	Catalog.balance.input_max_presses_per_s = cap
 	var r_free: float = free20["removed"] / free20["secs"]
-	runner.info("without the cap, clicking at 20/s: %.4f m3/s, %d registered" % [r_free, free20["registered"]])
-	runner.check(r_free > r_cap * 1.4 and float(free20["registered"]) > cap * free20["secs"] * 1.3, "§2 without the cap, 20/s would remove %.1fx as much" % (r_free / maxf(r_cap, 1e-6)))
+	runner.info("without the cap, clicking at 20/s: %.4f m3/s, %d registered, %d throws" % [r_free, free20["registered"], free20["throws"]])
+	runner.check(float(free20["registered"]) > cap * free20["secs"] * 1.3, "§2 without the cap, 20/s registers %d presses in %.1f s" % [free20["registered"], free20["secs"]])
+	runner.check(r_free <= r_sw * 1.05 + 0.002 and float(free20["throws"]) <= free20["secs"] / rec + 1.0, "§2 …and still removes no more than holding and sweeping (%.4f vs %.4f m3/s, %d throws)" % [r_free, r_sw, free20["throws"]])
 	# RMB: pushing gives no per-press gain; capped presses don't push more than holding.
 	var hold_push: Dictionary = await bench.run_push(0.0, 8.0)
 	var tap_push: Dictionary = await bench.run_push(50.0, 8.0)
@@ -642,16 +649,24 @@ func test_s2_drop_presses_lose_and_duplicate_nothing() -> void:
 	bench.queue_free()
 
 
-## A human tapping at 5 a second: every press registers (LMB scoops and throws on each tap, RMB
-## pushes, E and G alternate), and holding is never cut short by the cap.
+## A human tapping at 5 a second: every press registers (RMB pushes, E and G alternate), and holding
+## is never cut short by the cap. Polish 6 §8.1: an LMB tap that short (held half of a 5/s period)
+## comes before min_scoop_hold_s and, standing still, before one cycle_time: it scoops and throws
+## nothing (round 5 asserted a scoop and a throw on every tap).
 func test_s2_tapping_5_per_s_works() -> void:
 	var bench: Node = load("res://tests/click_bench.gd").new()
 	runner.add_child(bench)
 	await bench.setup(runner)
 	world = bench.world
 	var d: Dictionary = await bench.run_click_primary(5.0, 8.0)
-	runner.check(d["sent"] >= 25 and d["registered"] == d["sent"] and d["throws"] == d["registered"], "§2 LMB tapped at 5/s: every tap registers and throws (%d sent, %d registered, %d throws)" % [d["sent"], d["registered"], d["throws"]])
-	runner.check(d["moved"] / maxf(d["registered"], 1) > 0.004, "§2 …and every tap scoops (%.1f L per tap)" % (d["moved"] / maxf(d["registered"], 1) * 1000.0))
+	var tap := 0.5 / 5.0
+	var hands: ToolData = Catalog.tool(&"hands")
+	var short_hold := tap < Catalog.balance.min_scoop_hold_s
+	var short_dig := tap < hands.cycle_time
+	runner.check(d["sent"] >= 25 and d["registered"] == d["sent"], "§2 LMB tapped at 5/s: every tap registers (%d sent, %d registered)" % [d["sent"], d["registered"]])
+	runner.check(d["throws"] == (0 if short_hold else d["registered"]), "§2 …a %.2f s tap throws %s (min hold %.2f s): %d throws" % [tap, "nothing" if short_hold else "once", Catalog.balance.min_scoop_hold_s, d["throws"]])
+	if short_dig:
+		runner.check(d["moved"] < 1e-6, "§2 …and a %.2f s tap without a sweep scoops nothing (cycle %.2f s): %.2f L" % [tap, hands.cycle_time, d["moved"] * 1000.0])
 	var p: Dictionary = await bench.run_push(5.0, 4.0)
 	runner.check(p["registered"] == p["sent"] and p["sent"] >= 19, "§2 RMB tapped at 5/s: every tap pushes (%d / %d)" % [p["registered"], p["sent"]])
 	var eg: Dictionary = await bench.run_tool_presses("both", 5.0, 20)

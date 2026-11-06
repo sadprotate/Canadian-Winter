@@ -1146,6 +1146,8 @@ func _flush_projectiles() -> void:
 
 ## Copy live object state back into the Game registry (before saving).
 func collect_state() -> void:
+	if player:
+		player.tools.flush_chute()   # polish 6 §8.1: the electric shovel's chute throws on a rhythm
 	_flush_projectiles()
 	if player:
 		Game.player_pos = player.global_position

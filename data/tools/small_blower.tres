@@ -13,6 +13,7 @@ description = "Single-stage blower. Grab it with {interact}, hold {primary} to r
 width = 0.56
 reach = 0.35
 throw_distance = 8.0
+throw_recovery_s = 0.18
 scrape_floor = 0.008
 rate = 0.065
 engaged_speed_mult = 0.42

@@ -179,6 +179,9 @@ extends Resource
 ## vehicle tool key) are capped at this many per second per action; presses beyond it are ignored,
 ## not queued. Holding a button, UI clicks and F1 aren't limited. 0 = no cap.
 @export var input_max_presses_per_s: float = 6.0
+## Polish 6 §8.1: hands and shovel-type tools: a release sooner than this after its press throws
+## nothing (the load stays in the tool), so a click never throws.
+@export var min_scoop_hold_s: float = 0.25
 
 @export_group("Pickup truck")
 ## Polish 5 §12: the pickup in snow (the plain pickup only; every other vehicle keeps its own

@@ -17,6 +17,7 @@ fill_rate = 0.16
 bite = 0.2
 sweep_reach = 1.9
 throw_distance = 3.4
+throw_recovery_s = 0.8
 scrape_floor = 0.0
 push_width = 1.2
 push_strength = 0.95
