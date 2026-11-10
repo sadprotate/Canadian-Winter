@@ -63,7 +63,8 @@ static func _tool(out: Dictionary, id: String, name: String, kind: int, tier: in
 ## Tool profiles (polish §3). Every shovel-type tool fills while the primary action is held and
 ## swept through the snow, throws on release and pushes with the secondary action:
 ##   capacity (m3) · fill_rate (m3/s) · bite (m cut per pass) · throw_distance (m)
-##   (polish 6 §8.2: the six shovel-type tools' capacity and fill rate doubled, bare hands' not)
+##   (polish 6 §8.2: the six shovel-type tools' capacity and fill rate doubled, bare hands' not;
+##   §8.1b, the owner's decision: bare hands' fill rate ×1.3, 0.085 → 0.1105)
 ##   throw_recovery_s (s: the throw rhythm, polish 6 §8.1; the electric shovel's and the blowers'
 ##   chute interval)
 ##   push_width (m) · push_strength (berm m3 at half speed)
@@ -71,7 +72,7 @@ static func _tool(out: Dictionary, id: String, name: String, kind: int, tier: in
 static func _tools(out: Dictionary) -> void:
 	var K := ToolData.Kind
 	_tool(out, "hands", "Bare Hands", K.HANDS, 0, 0, "Cup your hands and sweep them through the snow, then toss it a metre or two. A weak, short push with flat palms. Slow — but every scoop leaves a dent.",
-		{"width": 0.4, "reach": 0.3, "capacity": 0.03, "fill_rate": 0.085, "bite": 0.26, "sweep_reach": 1.15,
+		{"width": 0.4, "reach": 0.3, "capacity": 0.03, "fill_rate": 0.1105, "bite": 0.26, "sweep_reach": 1.15,
 		"cycle_time": 0.5, "throw_distance": 1.8, "throw_recovery_s": 0.5, "throw_angle_deg": 38.0, "scrape_floor": 0.006,
 		"push_width": 0.5, "push_strength": 0.035, "engaged_speed_mult": 0.75,
 		"primary_color": Color(0.2, 0.2, 0.24), "particle_amount": 6, "action_sound": &"hand_dig"})

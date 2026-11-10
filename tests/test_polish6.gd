@@ -1080,11 +1080,12 @@ func test_s81_clicking_never_beats_holding() -> void:
 ## facing the lawn, looking down at the snow by the feet):
 ## - a press without movement, released before one cycle_time, removes no snow (no opening bite);
 ##   held still, the first bite comes after one full cycle, not on the press;
-## - after a throw, a press and release inside the recovery throws nothing, loses nothing, and isn't
-##   queued;
+## - after a throw, a press inside the recovery scoops at once (§8.1b, the owner's decision: the
+##   recovery spaces throws, it no longer blocks the scoop); its release, past the minimum hold,
+##   throws nothing until the recovery ends, then throws the whole load; nothing is lost;
 ## - a release sooner than min_scoop_hold_s after its press throws nothing and the load stays; the
 ##   next press goes on filling it and keeps the re-cut memory;
-## - a press held through the end of the recovery starts the scoop then, without a new press.
+## - a press held through the recovery scoops all along (§8.1b: from the press), with that one press.
 func test_s81_scoop_rules() -> void:
 	var bench: Node = await _s81_bench()
 	var mh: float = Catalog.balance.min_scoop_hold_s
@@ -1123,8 +1124,10 @@ func test_s81_scoop_rules() -> void:
 		await _s3_frames(1)
 		runner.check(tc.load == 0.0 and int(bench.get("throws")) == th0 + 1 and tc.recovery > 0.0, "§8.1 %s: held %d frames (min hold %d), the release throws; recovery %.2f s left" % [id, cyc_f + 2, mh_f, tc.recovery])
 		var th1: int = bench.get("throws")
-		# Inside the recovery: a press and a release (longer than the minimum hold, sweeping) throw
-		# nothing, lose nothing and aren't queued.
+		var f_th1 := Engine.get_physics_frames()
+		# Inside the recovery (§8.1b): a press scoops at once, and its release (longer than the minimum
+		# hold, sweeping) throws nothing until the recovery ends; then the whole load goes. Nothing is
+		# lost, and nothing more follows.
 		var v_rec := _s81_total(tc)
 		var hold_in := mini(mh_f + 2, rec_f - 6)
 		Input.action_press("primary")
@@ -1134,14 +1137,26 @@ func test_s81_scoop_rules() -> void:
 			await _s3_frames(1)
 			if tc.filling:
 				filled += 1
-		var rec_left := tc.recovery
+		var load_in := tc.load
 		Input.action_release("primary")
-		await _s3_frames(rec_f)
+		await _s3_frames(1)
+		var rec_left := tc.recovery
+		runner.check(filled == hold_in and load_in > 0.0 and rec_left > 0.0 and tc.throw_waiting and is_equal_approx(tc.load, load_in) and int(bench.get("throws")) == th1, "§8.1b %s: pressed inside the recovery, it scoops at once (%d of %d frames, %.1f L); released past the minimum hold with %.2f s of it left, nothing is thrown yet and the load stays" % [id, filled, hold_in, load_in * 1000.0, rec_left])
+		var went := -1
+		var flew := 0.0
+		for k in range(rec_f + 2):
+			await _s3_frames(1)
+			if went < 0 and int(bench.get("throws")) > th1:
+				went = k + 1
+				var ts := world.find_children("*", "ThrownSnow", true, false)
+				flew = (ts[ts.size() - 1] as ThrownSnow).volume
+		var gap := Engine.get_physics_frames() - f_th1 - (rec_f + 2 - went)
 		pl.set_yaw(yaw0)
-		runner.check(filled == 0 and rec_left > 0.0 and tc.load == 0.0 and int(bench.get("throws")) == th1, "§8.1 %s: pressed and released inside the recovery (%d frames held, %.2f s left): no scoop, no throw" % [id, hold_in, rec_left])
-		runner.check(not tc.filling and not tc.get("_fill_pressed") and tc.recovery == 0.0, "§8.1 %s: …and the press isn't queued: nothing starts when the recovery ends" % id)
+		runner.check(went > 0 and absi(went - roundi(rec_left * 60.0)) <= 1 and gap >= rec_f - 1 and is_equal_approx(flew, load_in) and tc.load == 0.0, "§8.1b %s: …the throw goes when the recovery ends (%d frames after the release, %.2f s were left; %d frames after the last throw, the recovery is %d), the whole load (%.1f of %.1f L)" % [id, went, rec_left, gap, rec_f, flew * 1000.0, load_in * 1000.0])
+		runner.check(int(bench.get("throws")) == th1 + 1 and not tc.filling and not tc.get("_fill_pressed") and not tc.throw_waiting, "§8.1b %s: …and nothing more starts or is thrown (%d throws)" % [id, int(bench.get("throws")) - th1])
 		await _s3_frames(90)
 		runner.near(_s81_total(tc), v_rec, 2e-4, "§8.1 %s: …nothing is lost (the throw has landed)" % id)
+		th1 = int(bench.get("throws"))   # §8.1b: counted from after the waiting throw
 		# A short press while sweeping: the load grows, but its release (before the minimum hold)
 		# throws nothing and the load stays. The next press goes on filling it.
 		var v_load := _s81_total(tc)
@@ -1165,7 +1180,7 @@ func test_s81_scoop_rules() -> void:
 		pl.set_yaw(yaw0)
 		runner.check(second > first and is_equal_approx(tc.load, second) and int(bench.get("throws")) == th1, "§8.1 %s: …the next short press goes on filling it (%.2f → %.2f L), still nothing thrown" % [id, first * 1000.0, second * 1000.0])
 		runner.near(_s81_total(tc), v_load, 1e-6, "§8.1 %s: …and nothing is lost" % id)
-		# Held through the end of the recovery: the scoop starts then, without a new press.
+		# Held through the recovery (§8.1b): the scoop starts at the press, and the one press lasts.
 		await bench._next_spot(pl, {"side": 1.0})
 		yaw0 = pl.yaw
 		Input.action_press("primary")
@@ -1191,7 +1206,9 @@ func test_s81_scoop_rules() -> void:
 		Input.action_release("primary")
 		await _s3_frames(2)
 		pl.set_yaw(yaw0)
-		runner.check(th2 > th1 and started >= rec_f - 2 and started <= rec_f + 1 and reg == 1 and load3 > 0.0, "§8.1 %s: pressed right after a throw and held, the scoop starts when the recovery ends (frame %d of a %d-frame recovery), one press, %.1f L" % [id, started, rec_f, load3 * 1000.0])
+		var th3: int = bench.get("throws")
+		runner.check(th2 > th1 and started == 1 and reg == 1 and load3 > 0.0, "§8.1b %s: pressed right after a throw and held through the %d-frame recovery, the scoop starts at once (frame %d), one press, %.1f L" % [id, rec_f, started, load3 * 1000.0])
+		runner.check(th3 == th2 + 1 and tc.load == 0.0, "§8.1b %s: …and its release, after the recovery, throws at once (%d throw)" % [id, th3 - th2])
 		await _s3_frames(rec_f + 60)
 	bench.set("tool", "hands")
 	await _s81_done(bench)
@@ -1251,10 +1268,12 @@ func test_s81_a_pause_in_a_sweep_adds_no_lump() -> void:
 	await _s81_done(bench)
 
 
-## The throw rhythm across a tool switch. A press held through a recovery, then a switch from the
+## The throw rhythm across a tool switch. A press inside a recovery, held, then a switch from the
 ## standard shovel to bare hands: the recovery runs on (two tools can't alternate to beat it), the
-## hands show the rest of the follow-through, and when the recovery ends the held button starts the
-## hands' scoop without a new press.
+## hands show the rest of the follow-through, and the held button goes on scooping with the hands
+## without a new press. §8.1b (the owner's decision): the press scoops at once, the scoop takes over
+## from the follow-through once round 5's toss (ToolController.TOSS_MIN_S) has played, and the
+## hands' release inside the recovery throws when it ends.
 func test_s81_rhythm_across_a_tool_switch() -> void:
 	var bench: Node = await _s81_bench()
 	bench.set("tool", "standard_shovel")
@@ -1280,17 +1299,20 @@ func test_s81_rhythm_across_a_tool_switch() -> void:
 	await _s3_frames(6)
 	var rec_before := tc.recovery
 	var toss_before := tc.toss_t
-	runner.check(rec_before > 0.0 and not tc.filling, "§8.1 switch: pressed inside the recovery, the press waits (%.2f s left)" % rec_before)
+	runner.check(rec_before > 0.0 and tc.filling, "§8.1b switch: pressed inside the recovery, the shovel scoops at once (%.2f s of it left)" % rec_before)
 	Game.select_slot(1)
 	await _s3_frames(1)
 	runner.check(tc.data.kind == ToolData.Kind.HANDS and tc.recovery > 0.0 and tc.recovery < rec_before, "§8.1 switch: on bare hands the recovery runs on (%.2f → %.2f s)" % [rec_before, tc.recovery])
 	runner.check(tc.toss_t > toss_before and tc.toss_t < 1.0, "§8.1 switch: …and the hands show the rest of the follow-through (toss %.2f → %.2f)" % [toss_before, tc.toss_t])
 	var rec_f := roundi(tc.recovery * 60.0)
+	# Where the follow-through gives way to the scoop: once round 5's toss has played since the throw.
+	var toss_f := ceili((ToolController.TOSS_MIN_S - tc.toss_t * float(tc.get("_toss_len"))) * 60.0)
+	var hold_f := rec_f - 10
 	var started := -1
 	var toss_done := -1
 	var reg := 0
 	var was := false
-	for k in range(rec_f + 30):
+	for k in range(hold_f):
 		pl.set_yaw(yaw0 + 0.3 * sin(k * 0.2))
 		await _s3_frames(1)
 		if tc.toss_t >= 1.0 and toss_done < 0:
@@ -1302,11 +1324,18 @@ func test_s81_rhythm_across_a_tool_switch() -> void:
 			started = k + 1
 	var load1 := tc.load
 	Input.action_release("primary")
-	await _s3_frames(2)
+	await _s3_frames(1)
+	var waited := tc.throw_waiting and int(bench.get("throws")) == th0 and is_equal_approx(tc.load, load1)
+	var rec_left := tc.recovery
+	var went := -1
+	for k in range(30):
+		await _s3_frames(1)
+		if went < 0 and int(bench.get("throws")) > th0:
+			went = k + 1
 	pl.set_yaw(yaw0)
-	runner.check(started >= rec_f - 2 and started <= rec_f + 2 and reg == 1 and load1 > 0.0, "§8.1 switch: held through, the hands' scoop starts when the recovery ends (frame %d of %d), one press, %.1f L" % [started, rec_f, load1 * 1000.0])
-	runner.check(toss_done >= rec_f - 2 and toss_done <= rec_f + 2, "§8.1 switch: …and the follow-through ends with the recovery (frame %d)" % toss_done)
-	runner.check(int(bench.get("throws")) == th0 + 1, "§8.1 switch: …and its release throws (%d throws)" % int(bench.get("throws")))
+	runner.check(started == 1 and reg == 1 and load1 > 0.0, "§8.1b switch: held through, the hands go on scooping at once (frame %d), with that one press, %.1f L" % [started, load1 * 1000.0])
+	runner.check(toss_done >= toss_f - 1 and toss_done <= toss_f + 1, "§8.1b switch: …the follow-through gives way to the scoop once round 5's toss has played (frame %d, expected %d)" % [toss_done, toss_f])
+	runner.check(waited and absi(went - roundi(rec_left * 60.0)) <= 1 and int(bench.get("throws")) == th0 + 1, "§8.1b switch: …and the hands' release inside the recovery throws when it ends (%d frames later, %.2f s were left)" % [went, rec_left])
 	await _s3_frames(90)
 	bench.set("tool", "hands")
 	await _s81_done(bench)
@@ -1494,6 +1523,456 @@ func _s81_total(tc: ToolController) -> float:
 
 
 # =============================================================================
+# §8.1b Pause spaces throws (the owner's decision)
+# =============================================================================
+# The recovery after a throw only spaces out throws: "you can start scooping again right away, but
+# the next throw waits until the pause is over." A press during the recovery scoops at once; a
+# release during it (past min_scoop_hold_s) throws when it ends (ToolController.throw_waiting), the
+# landing ring showing where; a press before then cancels the waiting throw and the load stays.
+
+## In the clicking bot's stance (click_bench: on the path, facing the lawn, looking down at the snow
+## by the feet), the tool `id` in hand: throw once (a sweep past the minimum hold, released), press
+## again at once and sweep `hold_f` frames, release, and wait one frame. Returns {th0: throws after
+## the first throw, f0: its frame, yaw0, load: what the second stroke holds}.
+func _s81b_throw_then_scoop(bench: Node, id: String, hold_f: int) -> Dictionary:
+	bench.set("tool", id)
+	await bench.reset()
+	var pl: Player = world.player
+	var tc: ToolController = pl.tools
+	var mh_f := ceili(Catalog.balance.min_scoop_hold_s * 60.0)
+	await bench._wade_on(pl, 0.9)
+	bench._face_side(pl, 1.0)
+	await _s3_frames(2)
+	var yaw0 := pl.yaw
+	Input.action_press("primary")
+	for k in range(mh_f + 20):
+		pl.set_yaw(yaw0 + 0.3 * sin(k * 0.2))
+		await _s3_frames(1)
+	Input.action_release("primary")
+	await _s3_frames(1)
+	var out := {"th0": int(bench.get("throws")), "f0": Engine.get_physics_frames(), "yaw0": yaw0}
+	Input.action_press("primary")
+	for k in range(hold_f):
+		pl.set_yaw(yaw0 - 0.3 * sin(k * 0.2))
+		await _s3_frames(1)
+	pl.set_yaw(yaw0)
+	out["load"] = tc.load
+	Input.action_release("primary")
+	await _s3_frames(1)
+	return out
+
+
+## A release inside the recovery (past the minimum hold) throws nothing at once: the load stays and
+## the landing ring shows where it will land; the throw goes when the recovery ends, the whole load,
+## no sooner than throw_recovery_s after the last throw. Review fix: it lands where the release aimed,
+## and the ring stays there, however the player turns and looks meanwhile (turned back to the snow,
+## the load doesn't go back in), and the fill's "Full — release to throw." hint is gone once released.
+## Nothing is lost. Bare hands, the standard shovel and the sleigh (0.5, 0.7 and 1 s).
+func test_s81b_a_waiting_throw_goes_when_the_pause_ends() -> void:
+	var bench: Node = await _s81_bench()
+	var mh_f := ceili(Catalog.balance.min_scoop_hold_s * 60.0)
+	for id in ["hands", "standard_shovel", "snow_sleigh"]:
+		var t: ToolData = Catalog.tool(StringName(id))
+		var rec_f := roundi(t.throw_recovery_s * 60.0)
+		var r: Dictionary = await _s81b_throw_then_scoop(bench, id, mh_f + 2)
+		var pl: Player = world.player
+		var tc: ToolController = pl.tools
+		var th0: int = r["th0"]
+		var held: float = r["load"]
+		var total := _s81_total(tc)
+		var rec_left := tc.recovery
+		runner.check(held > 0.0 and tc.throw_waiting and rec_left > 0.0 and is_equal_approx(tc.load, held) and int(bench.get("throws")) == th0, "§8.1b %s: released past the minimum hold inside the recovery (%.2f s left): nothing thrown yet, the load stays (%.1f L)" % [id, rec_left, held * 1000.0])
+		runner.check(tc.indicator.visible and tc.ind_state == "landing", "§8.1b %s: …and the landing ring shows where it will land" % id)
+		runner.check(tc.hint != tc._full_hint(), "§8.1b %s: …and the fill's hint is gone (\"%s\")" % [id, tc.hint])
+		var spot0 := tc.ind_target
+		# Review fix: turn back to the snow (along the path, looking down at the feet) before it goes.
+		# The ring stays where the release aimed, and the throw lands there.
+		pl.set_yaw(float(r["yaw0"]) + PI * 0.5)
+		pl.pitch = deg_to_rad(-50.0)
+		pl.head.rotation.x = pl.pitch
+		var ring := Vector3.INF
+		var spot := Vector3.INF
+		var aim_now := Vector3.INF
+		var went := -1
+		var lp := Vector3.INF
+		var flew := 0.0
+		var cut_n := tc._cut_time.size()
+		var cut_after := -1
+		for k in range(rec_f + 2):
+			var before := tc.indicator.global_position
+			var vis := tc.indicator.visible
+			var target := tc.ind_target
+			# Where the aim is now would land it (where the throw used to go).
+			var now_l: Dictionary = tc._landing(tc._throw_dist() * tc._pitch_factor(), t.throw_angle_deg)
+			await _s3_frames(1)
+			if went < 0 and int(bench.get("throws")) > th0:
+				went = k + 1
+				ring = before if vis else Vector3.INF
+				spot = target
+				aim_now = now_l.get("pos", Vector3.INF)
+				cut_after = tc._cut_time.size()
+				var ts := world.find_children("*", "ThrownSnow", true, false)
+				var sn: ThrownSnow = ts[ts.size() - 1]
+				lp = sn.landing["pos"]
+				flew = sn.volume
+				runner.near(_s81_total(tc), total, 1e-6, "§8.1b %s: …nothing lost as it goes" % id)
+		# Review fix: the bites renew with the throw (the re-cut memory goes with it), not with a press.
+		runner.check(cut_n > 0 and cut_after == 0, "§8.1b %s: …the throw renews the bites (the re-cut memory, %d cells, goes with it: %d left)" % [id, cut_n, cut_after])
+		var gap := Engine.get_physics_frames() - int(r["f0"]) - (rec_f + 2 - went)
+		var off := Vector2(ring.x - lp.x, ring.z - lp.z).length() if ring.x < INF and lp.x < INF else INF
+		var stayed := Vector2(spot.x - spot0.x, spot.z - spot0.z).length() if spot.x < INF else INF
+		var off0 := Vector2(spot0.x - lp.x, spot0.z - lp.z).length() if lp.x < INF else INF
+		var turned := Vector2(aim_now.x - lp.x, aim_now.z - lp.z).length() if aim_now.x < INF and lp.x < INF else INF
+		runner.check(went > 0 and absi(went - roundi(rec_left * 60.0)) <= 1 and gap >= rec_f - 1, "§8.1b %s: the throw goes when the recovery ends (%d frames after the release, %.2f s were left; %d frames after the last throw, recovery %d)" % [id, went, rec_left, gap, rec_f])
+		runner.check(is_equal_approx(flew, held) and tc.load == 0.0 and not tc.throw_waiting, "§8.1b %s: …the whole load (%.1f of %.1f L)" % [id, flew * 1000.0, held * 1000.0])
+		runner.check(stayed < 0.01 and off0 < 0.01 and turned > 0.5, "§8.1b %s: …where the release aimed: turned back to the snow, the ring's spot stayed (moved %.3f m) and the throw landed on it (%.3f m off), not where the aim was then (%.2f m away)" % [id, stayed, off0, turned])
+		runner.check(off < 0.25, "§8.1b %s: …and the ring sat there as it went (%.2f m from the landing)" % [id, off])
+		await _s3_frames(90)
+		runner.near(_s81_total(tc), total, 2e-4, "§8.1b %s: …and it has landed, nothing lost" % id)
+	bench.set("tool", "hands")
+	await _s81_done(bench)
+
+
+## A press before a waiting throw goes cancels it: the load stays in the tool and goes on filling,
+## nothing is thrown when the recovery ends while the button is held, and the next release throws
+## the whole load, no sooner than the recovery allows (at once with bare hands, whose 0.5 s is over
+## by then; the standard shovel's 0.7 s isn't, so its throw waits again). Nothing is lost. A press the
+## cap refuses is ignored: the throw goes on waiting (review fix).
+func test_s81b_a_press_cancels_the_waiting_throw() -> void:
+	var bench: Node = await _s81_bench()
+	var mh_f := ceili(Catalog.balance.min_scoop_hold_s * 60.0)
+	for id in ["hands", "standard_shovel"]:
+		var t: ToolData = Catalog.tool(StringName(id))
+		var rec_f := roundi(t.throw_recovery_s * 60.0)
+		var r: Dictionary = await _s81b_throw_then_scoop(bench, id, mh_f + 2)
+		var pl: Player = world.player
+		var tc: ToolController = pl.tools
+		var th0: int = r["th0"]
+		var held: float = r["load"]
+		var total := _s81_total(tc)
+		await _s3_frames(1)
+		runner.check(tc.throw_waiting, "§8.1b %s: a throw waits (%.1f L, %.2f s of the recovery left)" % [id, held * 1000.0, tc.recovery])
+		Input.action_press("primary")
+		await _s3_frames(1)
+		runner.check(not tc.throw_waiting and tc.filling and is_equal_approx(tc.load, held) and int(bench.get("throws")) == th0, "§8.1b %s: pressed again before it goes, the waiting throw is cancelled and the load stays (%.1f L), scooping" % [id, tc.load * 1000.0])
+		# Sweep on, the button held across the end of the recovery (bare hands) or not (the shovel).
+		var thrown_held := false
+		for k in range(mh_f + 1):
+			pl.set_yaw(float(r["yaw0"]) + 0.3 * sin(k * 0.2))
+			await _s3_frames(1)
+			if int(bench.get("throws")) > th0:
+				thrown_held = true
+		pl.set_yaw(float(r["yaw0"]))
+		var more := tc.load
+		var crossed := tc.recovery <= 0.0
+		Input.action_release("primary")
+		var went := -1
+		var flew := 0.0
+		for k in range(rec_f + 2):
+			await _s3_frames(1)
+			if went < 0 and int(bench.get("throws")) > th0:
+				went = k + 1
+				var ts := world.find_children("*", "ThrownSnow", true, false)
+				flew = (ts[ts.size() - 1] as ThrownSnow).volume
+		var gap := Engine.get_physics_frames() - int(r["f0"]) - (rec_f + 2 - went)
+		runner.check(more > held and not thrown_held, "§8.1b %s: …it goes on filling (%.1f → %.1f L), nothing thrown while held%s" % [id, held * 1000.0, more * 1000.0, " across the end of the recovery" if crossed else ""])
+		runner.check(went > 0 and gap >= rec_f - 1 and is_equal_approx(flew, more) and tc.load == 0.0, "§8.1b %s: …the next release throws the whole load (%.1f of %.1f L) %s, %d frames after the last throw (recovery %d)" % [id, flew * 1000.0, more * 1000.0, "at once" if went == 1 else "when the recovery ends", gap, rec_f])
+		runner.check(int(bench.get("throws")) == th0 + 1, "§8.1b %s: …one throw for both strokes" % id)
+		await _s3_frames(90)
+		runner.near(_s81_total(tc), total, 2e-4, "§8.1b %s: …and nothing is lost" % id)
+	# Review fix: a press the cap refuses (polish 5 §2: input_max_presses_per_s already accepted in the
+	# last second) is ignored. It doesn't scoop and doesn't cancel the waiting throw, which goes when
+	# the recovery ends, the button still held; its release throws nothing more. The standard shovel.
+	var t2: ToolData = Catalog.tool(&"standard_shovel")
+	var rec_f2 := roundi(t2.throw_recovery_s * 60.0)
+	var r2: Dictionary = await _s81b_throw_then_scoop(bench, "standard_shovel", mh_f + 2)
+	var tc2: ToolController = world.player.tools
+	var th2: int = r2["th0"]
+	var held2: float = r2["load"]
+	var total2 := _s81_total(tc2)
+	var cap := int(Catalog.balance.input_max_presses_per_s)
+	var f_now := Engine.get_physics_frames()
+	var recent := []
+	for k in range(cap):
+		recent.append(f_now - cap + k)
+	(Settings.get("_presses") as Dictionary)["primary"] = recent
+	Input.action_press("primary")
+	await _s3_frames(1)
+	var refused: bool = not tc2.get("_fill_pressed") and not tc2.filling and tc2.throw_waiting and is_equal_approx(tc2.load, held2)
+	runner.check(refused and int(bench.get("throws")) == th2, "§8.1b standard_shovel: a press the cap refuses (%d accepted in the last second) doesn't scoop and doesn't cancel the waiting throw (%.1f L, %.2f s of the recovery left)" % [cap, tc2.load * 1000.0, tc2.recovery])
+	var went2 := -1
+	for k in range(rec_f2 + 2):
+		await _s3_frames(1)
+		if went2 < 0 and int(bench.get("throws")) > th2:
+			went2 = k + 1
+	var gap2 := Engine.get_physics_frames() - int(r2["f0"]) - (rec_f2 + 2 - went2)
+	runner.check(went2 > 0 and gap2 >= rec_f2 - 1 and tc2.load == 0.0 and not tc2.throw_waiting and not tc2.filling, "§8.1b standard_shovel: …the throw goes when the recovery ends (%d frames after the refused press; %d after the last throw, recovery %d), the button still held" % [went2, gap2, rec_f2])
+	Input.action_release("primary")
+	await _s3_frames(2)
+	runner.check(int(bench.get("throws")) == th2 + 1 and tc2.load == 0.0, "§8.1b standard_shovel: …and its release throws nothing more (%d throw)" % (int(bench.get("throws")) - th2))
+	await _s3_frames(90)
+	runner.near(_s81_total(tc2), total2, 2e-4, "§8.1b standard_shovel: …and nothing is lost")
+	bench.set("tool", "hands")
+	await _s81_done(bench)
+
+
+## Nothing is lost when a waiting throw is interrupted (the load stays, as with a kept load): a tool
+## switch drops it at your feet, as it drops any load; getting into a vehicle keeps it in the tool,
+## and the next release on foot throws it; saving lands it at your feet, as it lands any load; a
+## screen (the computer) keeps it in the tool, and the next release throws it; walking indoors keeps
+## it in the tool without a word (review fix: no error sound or hint, nothing was pressed since), and
+## the next release outside throws it. Nothing is thrown when the recovery ends meanwhile. A load
+## dropped at your feet keeps the re-cut memory (only a throw renews the bites). The standard shovel.
+func test_s81b_an_interrupted_waiting_throw_loses_nothing() -> void:
+	var bench: Node = await _s81_bench()
+	var mh_f := ceili(Catalog.balance.min_scoop_hold_s * 60.0)
+	var rec_f := roundi(Catalog.tool(&"standard_shovel").throw_recovery_s * 60.0)
+	var truck: Vehicle = null
+	for c in world.objects.get_children():
+		if c is Vehicle:
+			truck = c
+			break
+	for how in ["switch", "vehicle", "save", "screen", "indoors"]:
+		var r: Dictionary = await _s81b_throw_then_scoop(bench, "standard_shovel", mh_f + 2)
+		var pl: Player = world.player
+		var tc: ToolController = pl.tools
+		var th0: int = r["th0"]
+		var held: float = r["load"]
+		var total := _s81_total(tc)
+		var tag := "§8.1b a waiting throw (%.1f L), %s" % [held * 1000.0, how]
+		if not runner.check(tc.throw_waiting and held > 0.0, "%s: it waits" % tag):
+			continue
+		var keeps: bool = how == "vehicle" or how == "screen" or how == "indoors"
+		var cut_n := tc._cut_time.size()
+		var out_at := pl.global_position
+		match how:
+			"switch":
+				Game.select_slot(1)
+			"vehicle":
+				if not runner.check(truck != null, "%s: a vehicle to get into" % tag):
+					continue
+				truck.enter_vehicle(pl)
+			"save":
+				world.collect_state()
+			"screen":
+				world.open_modal(Control.new(), "computer")
+			"indoors":
+				# The player's hall, inside the front door.
+				var lot := Layout.player_lot
+				pl.teleport(HouseBuilder.lot_transform(lot) * Vector3(-1.5, Layout.PORCH_H, float(lot["setback"]) + 1.6) + Vector3(0, 0.05, 0))
+				await _s3_frames(1)
+				runner.check(not tc.work_ok, "%s: the player is indoors" % tag)
+		await _s3_frames(rec_f + 10)
+		runner.check(not tc.throw_waiting and int(bench.get("throws")) == th0, "%s: nothing is thrown, the recovery over (%d throws)" % [tag, int(bench.get("throws")) - th0])
+		runner.check(is_equal_approx(tc.load, held) if keeps else tc.load == 0.0, "%s: the load %s (%.1f L)" % [tag, "stays in the tool" if keeps else "is at your feet", tc.load * 1000.0])
+		runner.near(_s81_total(tc), total, 1e-6, "%s: …nothing lost" % tag)
+		if how == "switch" or how == "save":
+			runner.check(cut_n > 0 and tc._cut_time.size() == cut_n, "%s: …the load dropped at your feet, the re-cut memory is kept (%d cells, was %d)" % [tag, tc._cut_time.size(), cut_n])
+		if how == "indoors":
+			runner.check(not tc.hint.contains("from inside"), "%s: …without an error or a hint (\"%s\")" % [tag, tc.hint])
+		if keeps:
+			if how == "vehicle":
+				truck.exit_vehicle()
+			elif how == "indoors":
+				pl.teleport(out_at)
+				pl.set_yaw(float(r["yaw0"]))
+			else:
+				world.close_modal()
+			await _s3_frames(3)
+			pl.pitch = deg_to_rad(4.0)
+			pl.head.rotation.x = pl.pitch
+			runner.check(is_equal_approx(tc.load, held) and int(bench.get("throws")) == th0, "%s: …back on foot the load is still in the tool (%.1f L)" % [tag, tc.load * 1000.0])
+			Input.action_press("primary")
+			await _s3_frames(mh_f + 2)
+			var thrown := tc.load
+			Input.action_release("primary")
+			await _s3_frames(2)
+			runner.check(int(bench.get("throws")) == th0 + 1 and tc.load == 0.0 and thrown >= held - 1e-9, "%s: …and the next release throws it (%.1f L)" % [tag, thrown * 1000.0])
+		await _s3_frames(120)
+		runner.near(_s81_total(tc), total, 2e-4, "%s: …landed, nothing lost" % tag)
+	# Review fix: a release inside the recovery whose throw can't go where it aims (here: indoors) is
+	# refused at once, as any release there is: no throw waits, the load stays, the usual hint.
+	var r2: Dictionary = await _s81b_throw_then_scoop(bench, "standard_shovel", mh_f + 2)
+	var pl2: Player = world.player
+	var tc2: ToolController = pl2.tools
+	var th2: int = r2["th0"]
+	var total2 := _s81_total(tc2)
+	var out2 := pl2.global_position
+	Input.action_press("primary")
+	await _s3_frames(1)
+	var lot2 := Layout.player_lot
+	pl2.teleport(HouseBuilder.lot_transform(lot2) * Vector3(-1.5, Layout.PORCH_H, float(lot2["setback"]) + 1.6) + Vector3(0, 0.05, 0))
+	await _s3_frames(mh_f + 1)
+	var held2 := tc2.load
+	var rec2 := tc2.recovery
+	Input.action_release("primary")
+	await _s3_frames(1)
+	runner.check(not tc2.work_ok and rec2 > 0.0 and not tc2.throw_waiting and is_equal_approx(tc2.load, held2) and held2 > 0.0 and tc2.hint.contains("throw snow from inside") and int(bench.get("throws")) == th2,
+		"§8.1b released indoors inside the recovery (%.2f s left): refused at once, no throw waits, the load stays (%.1f L), \"%s\"" % [rec2, tc2.load * 1000.0, tc2.hint])
+	await _s3_frames(rec_f + 2)
+	runner.check(int(bench.get("throws")) == th2 and is_equal_approx(tc2.load, held2), "§8.1b …and nothing is thrown when the recovery ends (%.1f L kept)" % (tc2.load * 1000.0))
+	pl2.teleport(out2)
+	pl2.set_yaw(float(r2["yaw0"]))
+	pl2.pitch = deg_to_rad(4.0)
+	pl2.head.rotation.x = pl2.pitch
+	await _s3_frames(3)
+	Input.action_press("primary")
+	await _s3_frames(mh_f + 2)
+	Input.action_release("primary")
+	await _s3_frames(2)
+	runner.check(int(bench.get("throws")) == th2 + 1 and tc2.load == 0.0, "§8.1b …back outside, the next release throws it")
+	await _s3_frames(120)
+	runner.near(_s81_total(tc2), total2, 2e-4, "§8.1b …landed, nothing lost")
+	bench.set("tool", "hands")
+	await _s81_done(bench)
+
+
+## The owner's second decision on §8.1b (grind_bench within 5 % of the baseline): bare hands fill
+## ×1.3 faster than in round 5 (0.085 → 0.1105 m³/s), making up the opening bite in the sweep fill.
+## With it §8.2's ladder sells one of bare hands' two capacity levels.
+const S81B_HANDS_FILL_X := 1.3
+
+
+## Bare hands' capacity levels the ladder can sell, worked out from the data: the most levels (of the
+## track's) after which fully upgraded bare hands still carry and fill no more than the ladder's slack
+## past the small shovel's base (balance.upgrade_hands_capacity_step a level, §8.2).
+static func _s81b_hands_levels() -> int:
+	var b: BalanceData = Catalog.balance
+	var hands: ToolData = Catalog.tool(&"hands")
+	var small: ToolData = Catalog.tool(&"small_shovel")
+	var n := 0
+	var m := 1.0
+	for k in range(ItemUpgrades.ids(&"hands", &"capacity").size()):
+		m *= b.upgrade_hands_capacity_step
+		if hands.capacity * m > small.capacity * (1.0 + b.upgrade_ladder_slack) + 1e-9 or hands.fill_rate * m > small.fill_rate * (1.0 + b.upgrade_ladder_slack) + 1e-9:
+			break
+		n += 1
+	return n
+
+
+## An item's track row in the open Upgrades app: its five cells (name, level, the next level or
+## "Fully upgraded", the price, Buy), [] if not shown.
+static func _s81b_upgrade_row(comp: ComputerUI, item: String, track: StringName) -> Array:
+	for n in comp.content.get_children():
+		if not (n.has_meta("upgrade_item") and str(n.get_meta("upgrade_item")) == item and not n.is_queued_for_deletion()):
+			continue
+		var grid: GridContainer = n.find_children("*", "GridContainer", true, false)[0]
+		for k in range(0, grid.get_child_count() - 4, 5):
+			if (grid.get_child(k) as Label).text == ItemUpgrades.TRACKS[track]["name"]:
+				return [grid.get_child(k), grid.get_child(k + 1), grid.get_child(k + 2), grid.get_child(k + 3), grid.get_child(k + 4)]
+	return []
+
+
+## A row's texts and its Buy button (null if none).
+static func _s81b_row_state(row: Array) -> Dictionary:
+	if row.is_empty():
+		return {"level": "", "next": "", "price": "", "buy": null, "text": "(no row)"}
+	var texts := []
+	var buy: Button = null
+	for c in row:
+		if c is Label:
+			texts.append((c as Label).text)
+		for b in (c as Node).find_children("*", "Button", true, false):
+			buy = b
+	return {"level": (row[1] as Label).text, "next": (row[2] as Label).text, "price": (row[3] as Label).text, "buy": buy, "text": " | ".join(texts)}
+
+
+## Open the computer's Upgrades app (again) and wait for it.
+func _s81b_upgrades_app() -> ComputerUI:
+	if world.modal is ComputerUI:
+		world.close_modal()
+		await _s3_frames(1)
+	world.open_computer()
+	await _s3_frames(2)
+	var comp: ComputerUI = world.modal
+	comp._open_app(ComputerUI.app_index("upgrades"))
+	await _s3_frames(2)
+	return comp
+
+
+## The owner's second decision: bare hands fill ×1.3 faster, so the ladder sells one of their two
+## capacity levels (a second would take their fill speed past the small shovel's base by more than
+## the slack). The store shows a one-level track at its old price, then "Fully upgraded"; bare hands'
+## other tracks keep their levels. An old save that owns both levels keeps both, and both keep working
+## (load and fill speed × the step twice), as round 5's levels past the ladder do: nothing the player
+## paid for is taken away. A round-5 save's global capacity levels carry over to both, as before.
+func test_s81b_bare_hands_one_capacity_level_old_saves_keep_two() -> void:
+	var b: BalanceData = Catalog.balance
+	var hands: ToolData = Catalog.tool(&"hands")
+	var ids := ItemUpgrades.ids(&"hands", &"capacity")
+	var n := ItemUpgrades.max_level(&"hands", &"capacity")
+	var step := b.upgrade_hands_capacity_step
+	runner.check(is_equal_approx(hands.fill_rate, float(S82_SAME["hands"][1]) * S81B_HANDS_FILL_X) and ids.size() == 2 and n == _s81b_hands_levels() and n == ids.size() - 1,
+		"§8.1b bare hands fill %.1f L/s (round 5's ×%.1f): the ladder sells %d of their %d capacity levels" % [hands.fill_rate * 1000.0, S81B_HANDS_FILL_X, n, ids.size()])
+	var others := []
+	for t in ItemUpgrades.tracks(&"hands"):
+		if t != &"capacity":
+			others.append("%s %d of %d" % [t, ItemUpgrades.max_level(&"hands", t), ItemUpgrades.ids(&"hands", t).size()])
+	runner.info("§8.1b bare hands' other tracks for sale (the fill rate isn't what they improve): %s" % ", ".join(others))
+	# The price of what is offered: the old global level's, scaled to bare hands (polish 5 §13).
+	var u1: UpgradeData = Catalog.upgrade(StringName(ids[0]))
+	var want_price := ItemUpgrades.nice_price((Catalog.upgrade(&"shovel_capacity_1") as UpgradeData).price * b.upgrade_hands_price / b.upgrade_price_ref_tool)
+	# A new game: the store.
+	await _s3_world("fun")
+	Game.money = 99999
+	var tc: ToolController = world.player.tools
+	var comp := await _s81b_upgrades_app()
+	var row := _s81b_row_state(_s81b_upgrade_row(comp, "hands", &"capacity"))
+	runner.check(row["level"] == "Level 0 / %d" % n and row["next"] == u1.description and u1.price == want_price and row["price"] == UIKit.money(want_price) and row["buy"] != null and not (row["buy"] as Button).disabled,
+		"§8.1b a new game's Upgrades app, bare hands' capacity: \"%s\"; level 1 for sale at its old price (%s), Buy enabled" % [row["text"], UIKit.money(want_price)])
+	var shown := []
+	var bad := []
+	for t in ItemUpgrades.tracks(&"hands"):
+		var r := _s81b_row_state(_s81b_upgrade_row(comp, "hands", t))
+		shown.append(r["text"])
+		if r["level"] != "Level 0 / %d" % ItemUpgrades.max_level(&"hands", t) or r["buy"] == null:
+			bad.append(String(t))
+	runner.check(bad.is_empty(), "§8.1b …bare hands' card, a row per track, each with its levels for sale and Buy %s: %s" % [str(bad), str(shown)])
+	runner.check(Economy.can_buy(ids[1]) == "Fully upgraded.", "§8.1b …level 2 can't be bought: \"%s\"" % Economy.can_buy(ids[1]))
+	runner.check(tc.data.id == &"hands" and is_equal_approx(tc._capacity(), hands.capacity) and is_equal_approx(tc._fill_rate(), hands.fill_rate), "§8.1b …bare hands at base: %.1f L, %.1f L/s" % [tc._capacity() * 1000.0, tc._fill_rate() * 1000.0])
+	# Level 1 owned: the track is complete.
+	Game.grant_upgrade(StringName(ids[0]))
+	comp = await _s81b_upgrades_app()
+	row = _s81b_row_state(_s81b_upgrade_row(comp, "hands", &"capacity"))
+	runner.check(row["level"] == "Level %d / %d" % [n, n] and row["next"] == "Fully upgraded" and row["buy"] == null and Economy.can_buy(ids[1]) == "Fully upgraded.",
+		"§8.1b …with level 1: \"%s\", no Buy" % row["text"])
+	runner.check(is_equal_approx(tc._capacity(), hands.capacity * step) and is_equal_approx(tc._fill_rate(), hands.fill_rate * step),
+		"§8.1b …bare hands with level 1: %.1f L, %.1f L/s" % [tc._capacity() * 1000.0, tc._fill_rate() * 1000.0])
+	world.close_modal()
+	await _s3_unload()
+	# A round-5 save's global capacity levels carry over to both of bare hands' levels, as before.
+	var note := ItemUpgrades.pending_note
+	var legacy := {"shovel_capacity_1": true, "shovel_capacity_2": true}
+	ItemUpgrades.migrate(legacy)
+	ItemUpgrades.pending_note = note
+	runner.check(legacy.has(ids[0]) and legacy.has(ids[1]), "§8.1b an older save's global capacity levels 1 and 2 go to both of bare hands' levels, as before")
+	# An old save that owns both (the polish5_v3 fixture): both kept, both working, the track full.
+	var path := "res://tests/fixtures/polish5_v3/fun_2_upgrades.json"
+	var src: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	runner.check((src["game"]["upgrades"] as Dictionary).has(ids[0]) and (src["game"]["upgrades"] as Dictionary).has(ids[1]), "§8.1b %s owns both of bare hands' capacity levels" % path.get_file())
+	if not runner.check(await _s3_load(path), "§8.1b …it loads"):
+		return
+	runner.check(Game.upgrades.has(ids[0]) and Game.upgrades.has(ids[1]) and ItemUpgrades.level(&"hands", &"capacity") == 2 and is_equal_approx(ItemUpgrades.mult(&"hands", &"shovel_capacity"), step * step),
+		"§8.1b …both levels kept (level %d, ×%.2f)" % [ItemUpgrades.level(&"hands", &"capacity"), ItemUpgrades.mult(&"hands", &"shovel_capacity")])
+	await _s3_spawn()
+	Game.slots[Game.selected] = ""
+	Game.inventory_changed.emit()
+	await _s3_frames(2)
+	tc = world.player.tools
+	runner.check(tc.data.id == &"hands" and is_equal_approx(tc._capacity(), hands.capacity * step * step) and is_equal_approx(tc._fill_rate(), hands.fill_rate * step * step),
+		"§8.1b …and working: bare hands carry %.1f L and fill %.1f L/s" % [tc._capacity() * 1000.0, tc._fill_rate() * 1000.0])
+	comp = await _s81b_upgrades_app()
+	row = _s81b_row_state(_s81b_upgrade_row(comp, "hands", &"capacity"))
+	runner.check(row["level"] == "Level 2 / 2" and row["next"] == "Fully upgraded" and row["buy"] == null and Economy.can_buy(ids[1]) == "Already owned.",
+		"§8.1b …the Upgrades app: \"%s\", no Buy" % row["text"])
+	world.close_modal()
+	await _s3_frames(1)
+	runner.check(Saves.save_game() and Saves.load_game("fun") and Game.upgrades.has(ids[0]) and Game.upgrades.has(ids[1]), "§8.1b …saved and loaded again, both levels still owned")
+	await _s3_unload()
+	Saves.delete_save("fun")
+
+
+# =============================================================================
 # §8.2 Loads twice as big
 # =============================================================================
 
@@ -1508,14 +1987,16 @@ const S82_ROUND5 := {
 const S82_BITE := {
 	"small_shovel": 0.4, "standard_shovel": 0.5, "wide_pusher": 0.15,
 	"snow_scraper": 0.21, "large_scraper": 0.23, "snow_sleigh": 0.9}
-## The tools that don't change: [capacity, fill rate, bite, intake rate] as in round 5.
+## The tools that don't change: [capacity, fill rate, bite, intake rate] as in round 5 (§8.1b, the
+## owner's decision: bare hands' fill rate × S81B_HANDS_FILL_X).
 const S82_SAME := {"hands": [0.03, 0.085, 0.26, 0.0], "electric_shovel": [0.03, 0.05, 0.15, 0.05],
 	"small_blower": [0.03, 0.05, 0.15, 0.065], "large_blower": [0.03, 0.05, 0.15, 0.14]}
 ## In 40 cm of snow the grind_bench bot's sweep crosses about 90 L with the standard shovel, its bite
 ## (0.50) already the whole depth, so its stroke carries ×1.6 round 5's there, not ×2 (report/s8_2.md
 ## *Bites*): test_s82_twice_per_stroke's floor for it in 40 cm.
 const S82_SWEEP_BOUND := {"standard_shovel": 1.5}
-## The capacity levels for sale in round 5 (the ladder; test_s13_the_ladder's table).
+## The capacity levels for sale in round 5 (the ladder; test_s13_the_ladder's table). §8.1b: bare
+## hands' are the ladder's on the data (_s81b_hands_levels(): one, the owner's decision).
 const S82_LEVELS := {"hands": 2, "small_shovel": 1, "standard_shovel": 2, "wide_pusher": 1, "snow_scraper": 2,
 	"large_scraper": 2, "snow_sleigh": 2}
 
@@ -1524,7 +2005,9 @@ const S82_LEVELS := {"hands": 2, "small_shovel": 1, "standard_shovel": 2, "wide_
 ## fills in the same time at the fill rate), their bites are §8.2's, and bare hands, the electric
 ## shovel and the blowers are unchanged. Upgrades stay multiplicative on the new base, the levels for
 ## sale are round 5's, and fully upgraded bare hands reach about the small shovel's new base
-## (their own capacity step, balance.upgrade_hands_capacity_step).
+## (their own capacity step, balance.upgrade_hands_capacity_step). §8.1b (the owner's decision): bare
+## hands fill ×1.3 faster, so the ladder sells one of their two capacity levels: fully upgraded they
+## come as near the small shovel's base as the ladder allows (a second level would pass it).
 func test_s82_twice_the_load() -> void:
 	var bad := []
 	for id in S82_TOOLS:
@@ -1539,16 +2022,19 @@ func test_s82_twice_the_load() -> void:
 	for id in S82_SAME.keys():
 		var t: ToolData = Catalog.tool(StringName(id))
 		var r: Array = S82_SAME[id]
-		if not (is_equal_approx(t.capacity, float(r[0])) and is_equal_approx(t.fill_rate, float(r[1])) and is_equal_approx(t.bite, float(r[2])) and is_equal_approx(t.rate, float(r[3]))):
+		var fx := S81B_HANDS_FILL_X if id == "hands" else 1.0
+		if not (is_equal_approx(t.capacity, float(r[0])) and is_equal_approx(t.fill_rate, float(r[1]) * fx) and is_equal_approx(t.bite, float(r[2])) and is_equal_approx(t.rate, float(r[3]))):
 			same.append(id)
-	runner.check(same.is_empty(), "§8.2 bare hands, the electric shovel and the blowers are unchanged %s" % str(same))
-	# Upgrades: multiplicative on the new base, the same levels for sale as in round 5.
+	runner.check(same.is_empty(), "§8.2 bare hands, the electric shovel and the blowers are unchanged (§8.1b: bare hands' fill rate ×%.1f, %.1f L/s) %s" % [S81B_HANDS_FILL_X, Catalog.tool(&"hands").fill_rate * 1000.0, str(same)])
+	# Upgrades: multiplicative on the new base, the same levels for sale as in round 5 (§8.1b: bare
+	# hands' the ladder's on the data).
 	var ups := []
 	var saved := Game.upgrades.duplicate()
 	var full := {}
 	for id in S82_LEVELS.keys():
 		var item := StringName(id)
 		var n := ItemUpgrades.max_level(item, &"capacity")
+		var want := _s81b_hands_levels() if id == "hands" else int(S82_LEVELS[id])
 		Game.upgrades = {}
 		var m := 1.0
 		for k in range(n):
@@ -1557,22 +2043,28 @@ func test_s82_twice_the_load() -> void:
 			m *= (Catalog.upgrade(StringName(lid)) as UpgradeData).value
 		var got := ItemUpgrades.mult(item, &"shovel_capacity")
 		full[id] = got
-		if n != int(S82_LEVELS[id]) or not is_equal_approx(got, m):
+		if n != want or not is_equal_approx(got, m):
 			ups.append("%s %d levels ×%.3f" % [id, n, got])
 		var t: ToolData = Catalog.tool(item)
 		runner.info("§8.2 %s: base %.0f L, %.0f L/s; fully upgraded (%d levels) %.0f L, %.0f L/s" % [id, t.capacity * 1000.0, t.fill_rate * 1000.0, n, t.capacity * got * 1000.0, t.fill_rate * got * 1000.0])
 	Game.upgrades = saved
-	runner.check(ups.is_empty(), "§8.2 upgrades stay multiplicative on the new base, with round 5's levels for sale %s" % str(ups))
+	runner.check(ups.is_empty(), "§8.2 upgrades stay multiplicative on the new base, with round 5's levels for sale (§8.1b: bare hands %d, the ladder's) %s" % [_s81b_hands_levels(), str(ups)])
 	var b: BalanceData = Catalog.balance
 	var hands: ToolData = Catalog.tool(&"hands")
 	var small: ToolData = Catalog.tool(&"small_shovel")
 	var hm: float = full["hands"]
+	var hn := ItemUpgrades.max_level(&"hands", &"capacity")
+	var slack := b.upgrade_ladder_slack
 	var rc := hands.capacity * hm / small.capacity
 	var rf := hands.fill_rate * hm / small.fill_rate
-	runner.check(is_equal_approx(hm, b.upgrade_hands_capacity_step * b.upgrade_hands_capacity_step) and b.upgrade_hands_capacity_step > 1.25,
-		"§8.2 bare hands' two capacity levels are +%d %% each (balance.upgrade_hands_capacity_step; the hand tools' levels +25 %%)" % roundi((b.upgrade_hands_capacity_step - 1.0) * 100.0))
-	runner.check(rc >= 0.85 and rc <= 1.0 + b.upgrade_ladder_slack and rf >= 0.85 and rf <= 1.0 + b.upgrade_ladder_slack,
-		"§8.2 …so fully upgraded bare hands carry %.0f L and fill %.0f L/s: about the small shovel's new base (%.2f and %.2f of it)" % [hands.capacity * hm * 1000.0, hands.fill_rate * hm * 1000.0, rc, rf])
+	runner.check(hn >= 1 and is_equal_approx(hm, pow(b.upgrade_hands_capacity_step, hn)) and b.upgrade_hands_capacity_step > 1.25,
+		"§8.2 bare hands' capacity levels are +%d %% each (balance.upgrade_hands_capacity_step; the hand tools' levels +25 %%); §8.1b: %d of the %d for sale" % [roundi((b.upgrade_hands_capacity_step - 1.0) * 100.0), hn, ItemUpgrades.ids(&"hands", &"capacity").size()])
+	# §8.1b: the levels for sale stop where one more would take bare hands past the small shovel's base
+	# by more than the slack, on what the track improves (load or fill speed).
+	var one_more := b.upgrade_hands_capacity_step
+	var stops := hn < ItemUpgrades.ids(&"hands", &"capacity").size() and (rc * one_more > 1.0 + slack + 1e-9 or rf * one_more > 1.0 + slack + 1e-9)
+	runner.check(rc <= 1.0 + slack and rf <= 1.0 + slack and stops,
+		"§8.2 …so fully upgraded bare hands carry %.0f L and fill %.0f L/s (%.2f and %.2f of the small shovel's new base); §8.1b: as near it as the ladder allows, one more level would make it %.2f and %.2f" % [hands.capacity * hm * 1000.0, hands.fill_rate * hm * 1000.0, rc, rf, rc * one_more, rf * one_more])
 	runner.check(is_equal_approx(b.upgrade_hands_capacity_step, BalanceData.new().upgrade_hands_capacity_step), "§8.2 upgrade_hands_capacity_step is the same in balance.tres and the defaults (%.2f)" % b.upgrade_hands_capacity_step)
 
 

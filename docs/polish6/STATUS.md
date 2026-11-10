@@ -23,9 +23,10 @@ resume from here.
 | §1 | What round 5 never pushed | done | `7abcd57` | `report/s1.md` |
 | §2 | The Godot errors after pulling | done | `c17cbe5` | `report/s2.md` |
 | §3 | Round 5's open items | done | `5287dfe` | `report/s3.md` |
-| §8.1 | Hold to fill, not spam-click | **needs a decision:** done except two Done-when items that Decision 10's recoveries rule out (grind_bench within 5 %; a human rhythm loses nothing), plus two things for the coordinator to accept: tests whose inputs changed, and shallow-snow sweeps taking more than before (see open items). Amended after two reviews | `f10a4cf` | `report/s8_1.md` |
+| §8.1 | Hold to fill, not spam-click | done; its decision (the recoveries against holding) was taken by the owner (option C) and carried out in §8.1b. Two things still for the coordinator to accept: tests whose inputs changed, and shallow-snow sweeps taking more than before (see open items). Amended after two reviews | `f10a4cf` | `report/s8_1.md` |
 | §8.2 | Loads twice as big | **needs a decision:** done except one Done-when item (the standard shovel carries ×1.6 a stroke in 40 cm with the bot, not ×2; ×1.85 in 80 cm), plus two things for the coordinator to accept: bare hands' capacity levels +75 % each, and the base large scraper passing the electric shovel by 5 % (see open items). Amended after review (the load visual) | this commit (`polish6 §8.2: Loads twice as big`) | `report/s8_2.md` |
 | §9 | Smooth piles | done; the coordinator accepted its readings (see open items). Amended after review: emptied cells lose their marks, the band test, the perf reading corrected (the plow truck pushing a berm +13 %) | this commit (`polish6 §9: Smooth piles`) | `report/s9.md` |
+| §8.1b | Pause spaces throws (the owner's decision on §8.1) | **done.** The owner's second decision ("Bare hands 30% faster", open items) closed the last Done-when item: bare hands' fill rate ×1.3 (0.1105), grind_bench 0.0374–0.0378 m³/s in 120 s (within 0.5 %) and the path box in 199.1–204.9 s over five runs (mean +4.1 %; **two of five over 5 %, +5.3 % and +5.7 %: for the coordinator**, open items); the ladder now sells one of bare hands' two capacity levels, old saves keep both. The coordinator accepted the third review's readings (open items). Amended after two reviews: a throw (not a fresh load) renews the bites; a press the cap refuses no longer cancels a waiting throw; one due indoors is kept without an error; a waiting throw lands where the release aimed (the ring stays there); a release inside the recovery with nowhere to land or indoors is refused at once; the stale "Full — release to throw." clears | this commit (`polish6 §8.1b: Pause spaces throws`) | `report/s8_1b.md` |
 | §10 | The plow truck from the start | not started | | |
 | §11 | Blade up/down, push and pull | not started | | |
 | §7 | Weather you can see and hear | not started | | |
@@ -79,40 +80,80 @@ resume from here.
   16:9 (seen in §3's shots; pre-existing, not changed). On a 4:3 screen (1920 × 1440 canvas) the
   clock panel, and the fast-forward control under it, overlap the map's frame: pre-existing for
   the clock. §3 checked the four resolutions round 5 uses (16:9 and 21:9).
-- **§8.1, decision needed (coordinator / owner): Decision 10's recoveries rule out two Done-when
-  items, and no change within §8.1's rules meets them** (report/s8_1.md, *Decision needed*, with
-  the tables). After a throw no scoop can start for `throw_recovery_s` (0.5–1.0 s), and a press
-  made in that time waits.
-  - *grind_bench within 5 %:* bot 0.0376 → 0.0171 m³/s, path box 3.2 → 6.7 min, 349 → 368
-    strokes; at the bench's human pace 6.4 → 6.8 min (+6 %). (The first commit, `065a487`: 6.8 min,
-    373 strokes, +8 %. The second review measured 6.7 min too.) The bot turns back in 8 frames, so each stroke waits out the
-    rest of the recovery. No recovery value meets it: at 0.4 s the bot takes 6.1 min, and at
-    0.3 s or below it stalls on the kept re-cut memory (`RECUT_S`), which Decision 10 also asks
-    for.
-  - *"A human rhythm (hold and sweep 0.6–1.2 s, release, repeat) loses nothing":* not met. The
-    committed report's "from 0.9 s holds on, nothing is lost" was wrong. With 0.3 s between
-    strokes:
-    - at 0.6 s holds, bare hands lose 22 %, and the shovels, the pusher and the scrapers 51–76 %;
-    - at 0.9 s holds, the pusher, the scrapers and the sleigh lose 42–48 %;
-    - at 1.2 s holds, the sleigh loses 35 %.
-    With 0.7 s between strokes (about a recovery), every tool is within 5 % or better from 0.9 s
-    holds on, but the pusher, the scrapers and the sleigh lose 23–33 % at 0.6 s holds. Brisk
-    shovelling with the 0.7–1.0 s tools feels sluggish: a press made during the follow-through
-    silently waits.
-  - Options:
-    - A: keep the recoveries and amend the two items (the human-pace figure; a rhythm that waits
-      out the follow-through).
-    - B: shorter recoveries. At 0.4 s for every tool, with 0.3 s between strokes, hands and the
-      shovels lose ≤ 5 % at 0.6 s holds, the pusher and the scrapers 25–29 %, and grind_bench
-      takes 6.1 min.
-    - C: let the recovery space throws instead of blocking the next scoop. Not measured; it
-      needs a brief change.
-    - D (the second review's data point): count `min_scoop_hold_s` from the scoop's start (when
-      the cap registers the press) rather than the physical press. A one-line change in
-      `_shovel_type()` (`_hold_t = 0.0` where `_press_wait` ends), measured, not taken. With 0.3 s
-      between strokes: the small shovel at 0.6 s holds −76 → −48 %, the standard shovel −71 → −57 %,
-      the sleigh at 0.9 s −45 → −15 %; nothing else changes, grind_bench included. It can't help
-      clicking. It meets neither item on its own and combines with A or B.
+- **§8.1's decision: resolved by §8.1b** (`report/s8_1b.md`; §8.1's measurements and options A–D
+  are in `report/s8_1.md`, *Decision needed*).
+  - **The owner's decision (option C)**, as the coordinator relayed it. It amends Decision 10's
+    "after a throw it needs a recovery time before it can scoop again" and §8.1's "No scoop can start
+    until it ends" / "Presses during recovery are ignored":
+    the recovery after a throw only spaces out throws. In the owner's words, as agreed, after a
+    throw:
+    > "you can start scooping again right away, but the next throw waits until the pause is over.
+    > Spam-clicking still can't beat holding, and a fast shoveller loses nothing."
+  - **A human rhythm loses nothing** (§8.1's second unmet item). Snow taken in and thrown per second,
+    hold 0.6 / 0.9 / 1.2 s with 0.3 s and 0.7 s between strokes, round 5's loads: −1 % to +15 %
+    against the baseline, every tool and row (§8.1: down to −63 %). With §8.2's loads +50 % to
+    +108 %. The claim rests on that intake: the box's "removed" figure scatters ±20 % and more (where
+    thrown snow lands, and the rows run before it in the same command; the sleigh's 1 m throws land
+    back on the walkway, §8.2's matter), so it is compared only within one command (second review).
+    A shoveller who turns straight back to the snow after the release loses nothing either (second
+    review fix: a waiting throw lands where the release aimed).
+  - **Clicking still never beats holding:** no click run throws (5–50/s, every tool), and throws
+    stay at least `throw_recovery_s` apart everywhere.
+  - **grind_bench within 5 % (§8.1's first unmet item): with the owner's second decision (below),
+    met on the 120 s rate; on the box time on average, not in every run.** Bare hands: 0.0376 (baseline) → 0.0171 (§8.1, HEAD) → 0.0331 m³/s (§8.1b, −12 %; the
+    box stalled 8 L short of 90 %) → **0.0374–0.0378 m³/s (within 0.5 %), the path box in
+    199.1–204.9 s against 193.9 s (+2.7 % to +5.7 %, mean 201.9 s, +4.1 %)** with bare hands' fill
+    rate ×1.3, five runs. **For the coordinator:** two of the five are over 5 % on the box time; the
+    bench varies run to run in this build (the baseline: 193.8–193.9 s), most likely because the
+    relaxation runs to a per-frame time budget (`Snow.process_relax(…, max_usec)`) that §9's costlier
+    tiles reach more often. Not changed. The rhythm costs nothing (identical with
+    `--recovery=0 --hold=0`); the gap was Decision 10's lost opening bite.
+  - **A throw renews the bites — accepted by the coordinator (third review).** `_release_throw()`
+    clears the re-cut memory (`_cut_time.clear()`, at most once a recovery; no press clears it). It
+    rewrites §8.1's "Releasing and pressing again over the same cells doesn't renew their bite
+    early" for a release that throws. In §8.1 the recovery (≥ 0.5 s, longer than `RECUT_S` 0.3 s)
+    renewed every bite before the next scoop could start, so this matches §8.1's behaviour. The rule
+    exactly as written stalled the grind bot at 0.004 m³/s. A load dropped at your feet, or any
+    later way of emptying the tool, renews nothing (binding notes, §8.1b).
+- **§8.1b: the owner's second decision — resolved, carried out** (report/s8_1b.md *The owner's
+  second decision*). The question the owner answered, verbatim:
+  > "The test bot that clears the front path with bare hands is now 12% slower than in round 5, and
+  > the brief allows 5%. Your throw pause isn't the cause: it costs the bot nothing. The cause is
+  > §8.1's rule that a click no longer grabs a free half-scoop. The only fix is to make bare hands
+  > fill 30% faster, but then fully upgraded hands match the small shovel, so one of the two hand
+  > upgrades drops out of the store and two tests about the upgrade order must change."
+
+  The answer, verbatim:
+  > "Bare hands 30% faster"
+  - Bare hands' `fill_rate` 0.085 → **0.1105** (`data/tools/hands.tres`, the generator). No balance
+    value changed. grind_bench as above.
+  - **The store:** the ladder that already exists sells **one** of bare hands' two capacity levels
+    (two would fill 338 L/s, 1.30 × the small shovel's base, past the 15 % slack); level 1 at its old
+    price ($2), shown "Level 0 / 1", then "Level 1 / 1 · Fully upgraded". Bare hands' other tracks
+    (throw 2, push width 1, push power 1) and every other item's levels are unchanged. Fully
+    upgraded, bare hands now carry 52.5 L and fill 193 L/s (0.52 and 0.74 of the small shovel).
+  - **Old saves that own both levels keep both, and both work** (as round 5's other levels past the
+    ladder do): such hands carry 92 L and fill 338 L/s, faster than the small (260) and standard
+    (320 L/s) shovels' base with a smaller load. The app shows "Level 2 / 2 · Fully upgraded". A save
+    with level 1 only can't buy level 2 any more.
+  - `test_s82_twice_the_load` and polish5's `test_s13_the_ladder` were updated through lookups, and
+    two more tests the higher rate failed: polish5's `test_s6_blades_match_the_profiles` (bare
+    hands' fill in the profile table) and gameplay's `test_dig_out_by_hand_after_a_major_event`.
+  - **For the coordinator: the dig-out bot is marginal.** At 0.1105 its fixed motion stalled 0.6 m
+    from the porch (what it threw came back into its trench as fast as it dug; the hands now filled
+    near the far end of its one-way sweep). Its input now turns the sweep faster in proportion to
+    bare hands' fill rate (`DIG_SWEEP_TUNED_FILL` 0.085, `_sweep_fill(…, step)`; other callers
+    unchanged): 3.3 m (3.4 m before); the check is untouched. But it was marginal before too: at
+    0.085, tossing at 1.3 rad instead of 1.4 stalls at 0.6 m (1.2, 1.5, 1.6 rad dig out). A bot that throws farther aside, or
+    a less brittle dig-out check, is a later section's call (report/s8_1b.md).
+- **§8.1b, accepted by the coordinator as a cosmetic open item (third review):** a stroke started
+  within about 0.17 s of a throw and released before 0.42 s keeps the raised follow-through pose for
+  the rest of the recovery; and a throw that waits and goes after the player turned spawns from the
+  stored facing. Neither loses snow. Not changed.
+- **§8.1b: where a waiting throw lands — resolved (second review).** It lands where the release
+  aimed, and the ring stays there; a player who turns straight back to the snow no longer throws
+  the load back in (`click_bench --turnback`: the review's −29 % to −77 % rows now within 3 % of the
+  bot that stays turned).
 - **§8.1, for the coordinator to accept: nine tests had their inputs changed, with their
   assertions untouched.** The Done-when says they "pass unchanged".
   - Directly: `test_indicator_at_pickup_then_landing_every_tool` (polish4) waits out the recovery
@@ -126,6 +167,13 @@ resume from here.
     `test_dig_out_by_hand_after_a_major_event`), `_shovel_to_snap` (polish3's play-through) and
     `_shovel_watching_indicator` (polish4's play-through). The first, third and fourth never
     actually wait (0 frames); the others wait at most 27 frames a stroke (report/s8_1.md *Tests*).
+  - **§8.1b: eight of the nine are back to their old inputs.** With the scoop free during the
+    recovery, every one of them passes without the waits, and none of their releases comes inside
+    a recovery (0 waiting throws; measured with the waits removed and counted, report/s8_1b.md
+    *The helpers' waits*). So `_s81_recovered()` is gone: test_polish3 and test_polish4 are as at
+    `9be19a6`, and test_gameplay differs from it only in the partial-load block's
+    `min_scoop_hold_s` sweep, which still can't go back (it needed the press's opening bite), and
+    (the owner's second decision) the dig-out test's sweep rate, scaled to bare hands' fill rate.
 - **§8.1, for the coordinator to accept: shallow snow.** The footprint fallback is capped at the
   opening bite's share a load (the second review's suggested fix), but the cap rarely binds: in
   snow too shallow for the tool to fill up within a second, a held sweep takes up to about a
@@ -161,7 +209,9 @@ resume from here.
 - **§8.2, to accept (coordinator): bare hands' capacity levels are +75 % each** (round 5: +25 %;
   `upgrade_hands_capacity_step` 1.75) so the ladder's hands → small shovel step holds against the
   doubled small shovel. A balance change: a save that owns both levels carries ×3.06 instead of
-  ×1.56, for the same $2 and $5 (report/s8_2.md *What changed*, *The ladder*).
+  ×1.56, for the same $2 and $5 (report/s8_2.md *What changed*, *The ladder*). **§8.1b:** with
+  bare hands' fill rate ×1.3 (the owner's second decision) the ladder sells only the first level;
+  a save that owns both keeps both (92 L, 338 L/s).
 - **§8.2, to accept (coordinator): the hand tools against the machines** (the path box's
   removal rate; no ladder row compares them). At base the large scraper (0.055 m³/s) passes the
   electric shovel (0.053) by 5 % and the standard shovel matches it. Fully upgraded, the standard
@@ -169,7 +219,9 @@ resume from here.
   electric shovel. Round 5 already had the large scraper at 0.099 and the standard shovel at 0.069
   at base. The upgrade steps weren't tuned for it (report/s8_2.md *The ladder*).
 - **§8.2:** `contract_bench`'s "human pace" column (1.1 s a stroke) is optimistic since §8.1 (a
-  stroke takes at least a recovery and a hold). Not changed.
+  stroke takes at least a recovery and a hold). Not changed. **§8.1b: fair again**: a 1.1 s stroke
+  is longer than the shovels' 0.7 s recovery and nothing waits. It reads 1.0 / 0.8 / 7.3 / 5.8 min,
+  above the bot's own 0.7 / 0.6 / 5.4 / 4.3 min (report/s8_1b.md *Contracts*).
 - **§8.2:** looking straight down (−85°) in deep snow, the body-anchored pose lifts the tool to eye
   level, and two full loads pass the camera's near plane there, above the top of the view: the
   sleigh's (0.006 m behind the camera's plane; round 5 0.003 m in front) and the large scraper's
@@ -379,26 +431,27 @@ actions, function names, gotchas.
   the walkway (`grind_bench --full=1`: not completed, stuck with 0.9 m³ left by the steps), and the
   second also fails the bare-hands dig-out (0.6 m of 3.2 m). A release
   throws only `min_scoop_hold_s` after the physical press (`_hold_t`); a throw sets `recovery`
-  (public, seconds left) and the follow-through (`toss_t`) lasts `max(0.42, throw_recovery_s)`. A
-  press during `recovery` sets `_press_wait`: held through its end, `_scoop_press()` runs then (the
-  cap's `accept_press` is asked then). The recovery runs on across tool switches; a held press
-  keeps waiting through a switch, and a hand or shovel-type tool switched to mid-recovery shows the
-  rest of the follow-through (`toss_t = 1 − recovery / _toss_len`). A load kept by a release
-  sooner than the minimum (`_kept_short`) shows its landing ring where the aim is now, recomputed
-  as while filling; after a refused throw the ring stays where it was, as before §8.1.
+  (public, seconds left) and the follow-through (`toss_t`) lasts `max(0.42, throw_recovery_s)`.
+  **§8.1b replaced the blocking:** a press during `recovery` scoops at once (`_press_wait` is gone),
+  and a release inside it waits to throw (*From §8.1b*). The recovery runs on across tool switches
+  (the new tool's next throw waits for it), and a hand or shovel-type tool switched to mid-recovery
+  shows the rest of the follow-through (`toss_t = 1 − recovery / _toss_len`) unless a scoop had
+  already ended it. A load kept by a release sooner than the minimum (`_kept_short`) shows its
+  landing ring where the aim is now, recomputed as while filling; after a refused throw the ring
+  stays where it was, as before §8.1.
 - **Electric shovel:** `_stream_beat()` throws what the chute holds at most once per
   `throw_recovery_s`, held or not (a release no longer throws at once; a tool switch flushes it).
   So up to one interval's intake can wait in `_stream_acc` after a release. It is thrown on the
   first frame off foot (a vehicle, a blower), and `game_root.collect_state()` calls
   `ToolController.flush_chute()` before `_flush_projectiles()`, so a save lands it. **New code that
   saves, or takes the player off foot, by another path** must do the same.
-- **Scripted strokes in tests and bots** wait out `world.player.tools.recovery` before pressing
-  (`_s81_recovered()` in test_gameplay / polish3 / polish4; the grind and click bench bots hold
-  through it) and hold at least `min_scoop_hold_s` before releasing. New tests that throw twice in
-  a row must do the same.
-- **Keep shovel-type recoveries above `ToolController.RECUT_S` (0.3 s):** the re-cut memory now
-  survives a new press, so a bot (or a test) that presses again sooner over the same cells finds
-  their bite used up (grind_bench stalls at `--recovery=0` and `0.3`).
+- **Scripted strokes in tests and bots** hold at least `min_scoop_hold_s` before releasing.
+  (§8.1b: they no longer wait out the recovery before pressing; *From §8.1b* says what a stroke
+  inside the recovery does. A test that needs its release to throw at once waits for
+  `tools.recovery` to reach 0 before the release, or for `tools.throw_waiting` to clear after it.)
+- (§8.1b: the old rule here, "keep shovel-type recoveries above `ToolController.RECUT_S`", no longer
+  applies. A throw clears the re-cut memory (`_release_throw()`; no press does), so a press right
+  after a throw finds fresh bites; grind_bench is identical with `--recovery=0 --hold=0`.)
 - **click_bench** (`--tools=all`, `--rows=`, `--rhythm=`, `--gap=`; grind_bench's `--recovery=`,
   `--hold=`, `--fill=` overrides for measuring) and `test_s81_clicking_never_beats_holding` (every
   tool, 5/10/20/50 per second, in place and sweeping, 12 s runs, ~90 s) are §8.2's rerun.
@@ -417,6 +470,84 @@ actions, function names, gotchas.
 - Suite times here: polish6 ~335–700 s depending on the PC's load (§8.1's bench tests ~95–250 s;
   §3's settling test 150–390 s).
 
+**From §8.1b (pause spaces throws: the owner's decision):**
+- **The rule** (it amends Decision 10 and §8.1; the owner's words are in *Open items*): the recovery
+  after a throw only spaces out throws. A press scoops at once, during the recovery too. A release
+  after `min_scoop_hold_s` (counted from the press) throws at once outside the recovery; inside it,
+  it sets **`ToolController.throw_waiting`** (public) and the throw goes, through
+  `_release_throw(true)`, on the first frame the recovery has run out, **where the release aimed**
+  (second review fix; it used to go where the aim was when it went): the release stores its facing,
+  aim and distance (`_wait_fwd`, `_wait_aim`, `_wait_dist` = `_throw_dist() × _pitch_factor()`), and
+  `_waiting_landing()` throws from where the player stands with them. The landing ring stays on that
+  spot meanwhile (recomputed every 0.06 s only for where the player stands), whatever the player
+  turns to. A release inside the recovery whose throw can't go there (nowhere to land, or indoors)
+  is refused at once, as any release is: no throw waits. A waiting release clears the fill's "Full —
+  release to throw." hint (`_full_hint()`). A press before then cancels it: the load stays, kept,
+  and the press goes on filling it (its next release aims afresh). A press the cap refuses is
+  ignored and cancels nothing (review fix: the cancel follows `_scoop_press()` and checks
+  `_fill_pressed`).
+- **Nothing is lost when a waiting throw is interrupted:** `_sync_tool()` (a tool switch) and
+  `dump_at_feet()` (saving, the rack, dropping the tool) clear it, and the load goes to your feet as
+  any load does; off foot (a vehicle, a blower, the player frozen by a screen) and with the mouse
+  freed (`ui_block`) it is cancelled and the load stays in the tool, kept (the next release on foot
+  throws it). Due indoors (`not work_ok`), it doesn't go either: the load stays, kept, without the
+  error sound or hint (review fix); the next release outside throws it. The pause menu pauses the
+  tree, so the wait resumes with the game. **New code that takes the load away** goes through
+  `dump_at_feet()`, or clears `throw_waiting` itself.
+- **A throw renews the bites** (accepted by the coordinator, third review): `_release_throw()`
+  clears `_cut_time` (review fix; the first version cleared it at a fresh load's first stroke). Without it a press right after a throw found the cells
+  just cut used up for as long as the sweep went over them (grind_bench 0.004 m³/s). No press clears
+  the memory, and a load emptied any other way (`dump_at_feet()`: a switch, saving, the rack) keeps
+  it, so a click can't renew a bite and only a throw does, at most once a `throw_recovery_s`. A new
+  way of throwing that should renew them goes through `_release_throw()`.
+- **The follow-through gives way to a scoop** once `ToolController.TOSS_MIN_S` (0.42 s, round 5's
+  toss) has played since the throw (`toss_t = 1`, `_toss_cut`); not scooping, it plays out over the
+  recovery as in §8.1. A tool switch doesn't bring back a follow-through a scoop ended.
+- **Unchanged:** `throw_recovery_s` per tool, `min_scoop_hold_s`, the press cap, the electric
+  shovel's chute beat and the blowers' interval, the dig cycle, the footprint fallback, push. No
+  balance or save change.
+- **The owner's second decision (data):** bare hands' **`fill_rate` = 0.1105** (round 5's 0.085
+  × 1.3) in `data/tools/hands.tres` and the generator's `_tools()`. With it §8.2's ladder sells
+  **one** of bare hands' two capacity levels (`ItemUpgrades.max_level(&"hands", &"capacity")` = 1;
+  level 1 $2, +75 %); `hands:capacity:2` exists only for old saves, which keep it and its effect
+  (`ItemUpgrades.mult` counts every owned level; the Upgrades app shows `max(for sale, owned)`).
+  Bare hands' other tracks are unchanged (throw 2, push width 1, push power 1). A later change to
+  bare hands' fill rate or capacity step, or the small shovel's base, moves this: the tests compute
+  it from the data (`_s81b_hands_levels()` in test_polish6, `_p6_hands_capacity_levels()` in
+  test_polish5).
+- **Benches** key on `"throw_waiting" in tc`, so they still run the baseline and §8.1 builds as
+  before: grind_bench's and contract_bench's bots no longer hold through the recovery before
+  sweeping, and after the release they wait (up to 120 frames) while a throw waits, turned to it.
+  click_bench: `_recovering(tc)` is false in a §8.1b build; `_throw_waits(tc)` makes the in-place
+  bots wait for a waiting throw before pressing again; the human-rhythm bot keeps its fixed rhythm
+  (a press that comes first cancels the waiting throw, as a hurried player's would).
+  `shot.gd --scoop=thrown --repress=R [--rethrow=H]` (press again R frames after the release,
+  sweeping; H frames into it, aim up and release). Shots in
+  `docs/polish6/shots/08-pause-spaces-throws/`.
+- **Numbers to compare against:** grind_bench `--full=1` **0.0378 m³/s** in 120 s, the path box
+  completed after **3.3–3.4 min (199.1–204.9 s by the report's probe line, mean 201.9; it varies
+  run to run), 343–351 strokes** (baseline 0.0376, 193.9 s, 349); before the second decision 0.0331 and not completed. contract_bench bot 0.7 / 0.6
+  / 5.4 / 4.3 min (human pace 1.0 / 0.8 / 7.3 / 5.8; small and standard shovel only, not rerun).
+  click_bench bare hands, held: 0.0477 m³/s taken in, 0.0315 out of the box, 52 throws; clicked
+  0.0027–0.0043, 0 throws.
+- **§8.1b's tests** in test_polish6: `test_s81b_a_waiting_throw_goes_when_the_pause_ends`,
+  `…_a_press_cancels_the_waiting_throw`, `…_an_interrupted_waiting_throw_loses_nothing`,
+  `…_bare_hands_one_capacity_level_old_saves_keep_two` (the second decision: the store and the
+  polish5_v3 `fun_2_upgrades.json` fixture; `S81B_HANDS_FILL_X` 1.3);
+  `test_s81_scoop_rules` and `test_s81_rhythm_across_a_tool_switch` were updated to the rule. A
+  change to the release, the recovery or `_sync_tool()` must keep them passing. After review they
+  also check that a throw empties the re-cut memory and a load dropped at your feet keeps it, that a
+  press the cap refuses leaves the throw waiting (they fill `Settings._presses["primary"]`), and that
+  a waiting throw due indoors stays in the tool without the error hint. After the second review:
+  turned back to the snow (along the path, looking down) before it goes, the ring's spot stays and
+  the throw lands on it, not where the aim is then; the fill's hint is gone once released; a release
+  indoors inside the recovery is refused at once.
+- **`click_bench --rows=rhythm --turnback=N`** (the second review's experiment, now in the bench):
+  the rhythm bot turns back to the snow N frames after its release and presses at the end of the
+  gap; each row also prints the strokes whose throw still waited at the press and the throws that
+  landed back in the box. With the landing fixed at the release it matches the bot that stays turned
+  (report/s8_1b.md *After the second review*). The rhythm rows' labels print two decimals now.
+
 **From §8.2 (loads twice as big):**
 - **The six shovel-type tools that throw** (small and standard shovel, wide pusher, both scrapers,
   sleigh) have twice round 5's capacity and fill rate. Bites were raised only where the measured
@@ -427,8 +558,9 @@ actions, function names, gotchas.
   - snow scraper 100 L, 200 L/s, bite 0.21;
   - large scraper 160 L, 320 L/s, bite 0.23;
   - sleigh 800 L, 640 L/s, bite 0.90.
-  Bare hands, the electric shovel and the blowers are unchanged. `test_s82_twice_the_load` holds
-  the table (`S82_ROUND5`, `S82_BITE`, `S82_SAME`); a later change to these values updates it.
+  Bare hands, the electric shovel and the blowers are unchanged (§8.1b, the owner's second decision:
+  bare hands' fill rate ×1.3, 0.1105). `test_s82_twice_the_load` holds the table (`S82_ROUND5`,
+  `S82_BITE`, `S82_SAME`, `S81B_HANDS_FILL_X`); a later change to these values updates it.
 - **New balance key `upgrade_hands_capacity_step` = 1.75**: each of bare hands' two capacity levels.
   `ItemUpgrades.level_value(cat, item, track, old_value)` gives a level's effect (the old global
   upgrade's, except this one). Every other level keeps its old upgrade's +25 %. A test that checks

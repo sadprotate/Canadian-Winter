@@ -49,7 +49,9 @@ extends Node
 ##                            glide series (--seq, --every)
 ##   --scoop=thrown --after=F (polish 6 §8.1) the same scoop, aimed up and released (thrown), captured
 ##                            F frames after the release (default 33: 0.55 s); --switch=S switches
-##                            to bare hands S frames after the release, inside the recovery
+##                            to bare hands S frames after the release, inside the recovery;
+##                            --repress=R (§8.1b) R frames after the release, look back down and
+##                            press again, sweeping; --rethrow=H H frames into it, aim up, release
 ##   --photo_out=path         also save the framed photograph's texture (full size) to path
 ##   --seq=N --every=F        capture N frames, one every F frames, to <out>_00.png, _01.png …
 ##   --menu_shot=k --menu_at=f   (menu) jump the background camera to shot k (0..2), fraction f
@@ -1419,6 +1421,7 @@ func _scoop_shot() -> void:
 	# Let the opening fade-in finish first (--frames, as for the other shots).
 	await _wait(maxi(int(args.get("frames", "40")), 3))
 	var base: float = pl.yaw
+	var pitch0: float = pl.pitch
 	Input.action_press("primary")
 	var sweep := 14 if args["scoop"] == "mid" else 30
 	for k in range(sweep):
@@ -1437,7 +1440,27 @@ func _scoop_shot() -> void:
 		await _wait(4)
 		Input.action_release("primary")
 		var after := int(args.get("after", "33"))
-		if args.has("switch"):
+		if args.has("repress"):
+			# Polish 6 §8.1b: --repress=R: R frames after the release (inside the recovery), look back
+			# down at the snow and press again, sweeping; --rethrow=H: H frames into that sweep, aim up
+			# and release (a release inside the recovery: its throw waits). Captured --after frames
+			# after the first release.
+			var rf := mini(int(args["repress"]), after)
+			await _wait(rf)
+			pl.pitch = pitch0
+			pl.head.rotation.x = pl.pitch
+			Input.action_press("primary")
+			var hf := int(args.get("rethrow", "-1"))
+			for k in range(after - rf):
+				if k == hf:
+					pl.pitch = up
+					pl.head.rotation.x = pl.pitch
+					Input.action_release("primary")
+				elif hf < 0 or k < hf:
+					pl.set_yaw(base + 0.3 * sin(k * 0.2))
+				await get_tree().physics_frame
+			after = 0
+		elif args.has("switch"):
 			# --switch=F: F frames after the release (inside the recovery), switch to bare hands (an
 			# empty slot); still captured --after frames after the release.
 			var f := mini(int(args["switch"]), after)

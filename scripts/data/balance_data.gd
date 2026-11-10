@@ -226,7 +226,8 @@ extends Resource
 ## Polish 6 §8.2: each of bare hands' capacity levels multiplies their load and fill speed by this
 ## (the hand tools' levels keep the old upgrades' +25 %). The six shovel-type tools' loads doubled
 ## and bare hands' didn't, so with +25 % levels fully upgraded hands reached half the small shovel's
-## base; with this they reach about all of it, as the ladder asks.
+## base; with this they reach about all of it, as the ladder asks. (§8.1b, the owner's decision: bare
+## hands fill ×1.3 faster, so the ladder sells one of the two levels; an old save keeps both.)
 @export var upgrade_hands_capacity_step: float = 1.75
 ## The heated cab (vehicles without a cab): its price for a vehicle at the vehicle reference price.
 @export var upgrade_cab_price: float = 1500.0

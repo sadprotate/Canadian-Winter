@@ -17,14 +17,6 @@ func _frames(n: int) -> void:
 		await _tree().physics_frame
 
 
-## Polish 6 §8.1: a scoop can't start until the last throw's recovery (ToolData.throw_recovery_s) is
-## over; a scripted stroke waits it out before pressing, as a player's turn back to the snow does.
-func _s81_recovered() -> void:
-	var tc = world.player.tools
-	while tc.recovery > 0.0:
-		await _tree().physics_frame
-
-
 func _load_world(mode := "fun", seed_val := 2024, hour := 10.0, day := 1) -> void:
 	await _unload()
 	Game.force_input = true
@@ -74,13 +66,12 @@ func _tap(action: String) -> void:
 
 
 ## Hold the primary action and sweep the aim point side to side through the snow in front.
-func _sweep_fill(frames: int, amp := 0.5) -> void:
+func _sweep_fill(frames: int, amp := 0.5, step := 0.12) -> void:
 	var pl: Player = world.player
-	await _s81_recovered()
 	var base := pl.yaw
 	Input.action_press("primary")
 	for k in range(frames):
-		pl.set_yaw(base + amp * sin(k * 0.12))
+		pl.set_yaw(base + amp * sin(k * step))
 		await _tree().physics_frame
 	pl.set_yaw(base)
 
@@ -306,7 +297,6 @@ func test_hands_sweep_fill_full_and_partial_throws() -> void:
 	# that long (it used to be a 3-frame press that took the press's opening bite in place).
 	pl.set_yaw(PI)
 	await _frames(2)
-	await _s81_recovered()
 	Input.action_press("primary")
 	for k in range(ceili(Catalog.balance.min_scoop_hold_s * 60.0)):
 		pl.set_yaw(PI + 0.5 * sin(k * 0.12))
@@ -1448,6 +1438,12 @@ func test_wading_speed_hips_and_banks() -> void:
 			runner.check(not crossed and pl.global_position.z > 78.8, "A %.1f m bank (above the hips) blocks the player" % h)
 
 
+## Bare hands' fill rate this test's sweep was tuned to (round 5's). Polish 6 §8.1b (the owner's
+## second decision) raised it ×1.3; the sweep turns that much faster, so the hands fill over the same
+## arc of it as before (at the old turn rate they fill near its far end, and this bot stalls 0.6 m out).
+const DIG_SWEEP_TUNED_FILL := 0.085
+
+
 func test_dig_out_by_hand_after_a_major_event() -> void:
 	await _load_world("survival", 2024, 10.0, 2)
 	var pl: Player = world.player
@@ -1472,10 +1468,11 @@ func test_dig_out_by_hand_after_a_major_event() -> void:
 	# Dig with bare hands: sweep-fill in front, turn, toss aside, step forward; repeat.
 	var base := pl.yaw
 	var free := false
+	var step := 0.12 * Catalog.tool(&"hands").fill_rate / DIG_SWEEP_TUNED_FILL
 	for k in range(320):
 		pl.set_yaw(base)
 		_look_at_snow_ahead()
-		await _sweep_fill(26, 0.35)
+		await _sweep_fill(26, 0.35, step)
 		pl.set_yaw(base + (1.4 if k % 2 == 0 else -1.4))
 		_look_down(-5.0)
 		await _frames(2)

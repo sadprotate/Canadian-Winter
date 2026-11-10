@@ -2517,6 +2517,9 @@ const S6_PROFILES := {
 ## their base capacity and fill rate (values 2 and 3 above) are these times the profiles' above.
 const S6_LOAD_X := {"small_shovel": 2.0, "standard_shovel": 2.0, "wide_pusher": 2.0, "snow_scraper": 2.0,
 	"large_scraper": 2.0, "snow_sleigh": 2.0}
+## Polish 6 §8.1b (the owner's decision): bare hands' fill rate (value 3 above) is this times the
+## profile's (0.085 → 0.1105 m³/s).
+const S6_FILL_X := {"hands": 1.3}
 
 
 ## The triangles of a mesh (every surface), as a flat array of vertices (three per triangle).
@@ -2592,10 +2595,10 @@ func test_s6_blades_match_the_profiles() -> void:
 		var p: Array = S6_PROFILES[id]
 		var now := [t.width, t.push_width, t.capacity, t.fill_rate, t.throw_distance, t.push_strength, t.rate]
 		for k in range(p.size()):
-			var want := float(p[k]) * (float(S6_LOAD_X.get(id, 1.0)) if k == 2 or k == 3 else 1.0)
+			var want := float(p[k]) * (float(S6_LOAD_X.get(id, 1.0)) if k == 2 or k == 3 else 1.0) * (float(S6_FILL_X.get(id, 1.0)) if k == 3 else 1.0)
 			if not is_equal_approx(want, float(now[k])):
 				bad.append("%s value %d: %s -> %s" % [id, k, want, now[k]])
-	runner.check(bad.is_empty(), "§6 the tool profiles are unchanged (width, push width, capacity, fill, throw, push strength, intake; polish 6 §8.2: the shovel-type tools' capacity and fill ×2) %s" % str(bad))
+	runner.check(bad.is_empty(), "§6 the tool profiles are unchanged (width, push width, capacity, fill, throw, push strength, intake; polish 6 §8.2: the shovel-type tools' capacity and fill ×2; §8.1b: bare hands' fill ×1.3) %s" % str(bad))
 	var widths := []
 	for id in S6_TOOLS:
 		var t: ToolData = Catalog.tool(StringName(id))
@@ -6607,22 +6610,32 @@ func test_s13_the_ladder() -> void:
 	runner.check(each_track.is_empty(), "§13 …every track has a level for sale %s" % str(each_track))
 	# About the next item's base, where the next item is the same kind of tool: bare hands → small
 	# shovel → standard shovel; scraper → large scraper (load, fill speed, throw).
+	# Polish 6 §8.1b (the owner's decision): bare hands fill ×1.3 faster, so the ladder sells one of
+	# their two capacity levels; fully upgraded they come as near the small shovel's base as the
+	# ladder allows: the next level would pass it by more than the slack on what the track improves.
 	var near := []
 	for pair in [["hands", "capacity"], ["hands", "fill"], ["small_shovel", "capacity"], ["small_shovel", "fill"], ["small_shovel", "throw"],
 			["snow_scraper", "capacity"], ["snow_scraper", "fill"], ["snow_scraper", "throw"], ["wide_pusher", "throw"], ["wide_pusher", "push_strength"]]:
 		for r in rows:
 			if String(r["item"]) == pair[0] and r["q"] == pair[1]:
 				var ratio: float = r["max"] / r["next_base"]
-				if ratio < 0.85 or ratio > 1.0 + slack:
+				if pair[0] == "hands":
+					if ratio > 1.0 + slack or not _p6_ladder_stops_short(rows, r, slack):
+						near.append("%s %s %.2f" % [pair[0], pair[1], ratio])
+					runner.info("§13 polish 6 §8.1b: bare hands' %s fully upgraded (%d levels) %.2f of the small shovel's base" % [pair[1], r["levels"], ratio])
+				elif ratio < 0.85 or ratio > 1.0 + slack:
 					near.append("%s %s %.2f" % [pair[0], pair[1], ratio])
-	runner.check(near.is_empty(), "§13 …and reaches about it (within 85 %%–%d %%) where the next item is the same kind of tool %s" % [int(100.0 + slack * 100.0), str(near)])
-	# The levels past the ladder are the old global levels' only (carried over, never sold).
+	runner.check(near.is_empty(), "§13 …and reaches about it (within 85 %%–%d %%) where the next item is the same kind of tool (polish 6 §8.1b: bare hands as near as the ladder allows) %s" % [int(100.0 + slack * 100.0), str(near)])
+	# The levels past the ladder are the old global levels' only (carried over, never sold). Polish 6
+	# §8.1b: and bare hands' capacity levels the data no longer lets the ladder sell (one).
 	var past := 0
 	for item in ItemUpgrades.items():
 		for t in ItemUpgrades.tracks(item):
 			past += ItemUpgrades.ids(item, t).size() - ItemUpgrades.max_level(item, t)
-	runner.info("§13 levels kept for old saves past the ladder: %d (small shovel capacity 2 / throw 2, wide pusher capacity 2 / throw 2, scraper throw 2)" % past)
-	runner.check(past == 5, "§13 five levels exist past the ladder, for old saves only (%d)" % past)
+	var hands_past := ItemUpgrades.ids(&"hands", &"capacity").size() - _p6_hands_capacity_levels()
+	runner.info("§13 levels kept for old saves past the ladder: %d (small shovel capacity 2 / throw 2, wide pusher capacity 2 / throw 2, scraper throw 2; polish 6 §8.1b: bare hands capacity %d)" % [past, hands_past])
+	runner.check(past == 5 + hands_past and hands_past == ItemUpgrades.ids(&"hands", &"capacity").size() - ItemUpgrades.max_level(&"hands", &"capacity"),
+		"§13 five levels exist past the ladder, for old saves only, and (polish 6 §8.1b) %d of bare hands' capacity levels (%d)" % [hands_past, past])
 	# Full-upgrade cost against the next item's price (the report's table).
 	for item in ItemUpgrades.items():
 		var cost := 0
@@ -6631,6 +6644,37 @@ func test_s13_the_ladder() -> void:
 				cost += (Catalog.upgrade(StringName(ItemUpgrades.ids(item, t)[k])) as UpgradeData).price
 		var nxt_i := order.find(item) + 1
 		runner.info("  cost %s: %s for every level for sale; the item %s, the next %s %s" % [item, UIKit.money(cost), UIKit.money(Economy.price_of(String(item))), order[nxt_i] if nxt_i < order.size() else "—", UIKit.money(Economy.price_of(String(order[nxt_i]))) if nxt_i < order.size() else ""])
+
+
+## Polish 6 §8.1b: a ladder row's track sells fewer levels than it has, and its next level would take
+## the item past the next item's base by more than the slack on one of the things the track improves
+## (the reason the ladder stops there).
+static func _p6_ladder_stops_short(rows: Array, r: Dictionary, slack: float) -> bool:
+	var ids := ItemUpgrades.ids(r["item"], r["track"])
+	if int(r["levels"]) >= ids.size():
+		return false
+	var v := (Catalog.upgrade(StringName(ids[int(r["levels"])])) as UpgradeData).value
+	for o in rows:
+		if o["item"] == r["item"] and o["track"] == r["track"] and float(o["next_base"]) > 0.0 and float(o["base"]) < float(o["next_base"]) and float(o["max"]) * v > float(o["next_base"]) * (1.0 + slack) + 1e-9:
+			return true
+	return false
+
+
+## Polish 6 §8.1b: bare hands' capacity levels the ladder can sell, from the data: the most levels
+## after which fully upgraded bare hands carry and fill no more than the slack past the small shovel's
+## base (balance.upgrade_hands_capacity_step a level).
+static func _p6_hands_capacity_levels() -> int:
+	var b: BalanceData = Catalog.balance
+	var hands: ToolData = Catalog.tool(&"hands")
+	var small: ToolData = Catalog.tool(&"small_shovel")
+	var n := 0
+	var m := 1.0
+	for k in range(ItemUpgrades.ids(&"hands", &"capacity").size()):
+		m *= b.upgrade_hands_capacity_step
+		if hands.capacity * m > small.capacity * (1.0 + b.upgrade_ladder_slack) + 1e-9 or hands.fill_rate * m > small.fill_rate * (1.0 + b.upgrade_ladder_slack) + 1e-9:
+			break
+		n += 1
+	return n
 
 
 ## The Upgrades app: grouped by item, the items you own first (each card with its own icon — the

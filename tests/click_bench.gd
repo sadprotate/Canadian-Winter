@@ -9,7 +9,9 @@ extends "res://tests/grind_bench.gd"
 ##   --cap=<presses per second; 0 = no cap> --fps=<frame rate the events are batched at, default 60:
 ##   20 hands the engine three frames' presses at once> --trace=<rate>
 ##   --rows=shallow --depths=0.06,0.12,0.25,0.6 (only when named in --rows)
-##   --rows=strokes --stroke_depths=0.2,0.4,0.8 --strokes=15 (only when named in --rows)]
+##   --rows=strokes --stroke_depths=0.2,0.4,0.8 --strokes=15 (only when named in --rows)
+##   --turnback=N (polish 6 §8.1b, second review: the rhythm bot turns back to the snow N frames
+##   after its release, before the gap ends)]
 ## Prints per tool and scenario: the snow removed from the box per second (after everything thrown
 ## has landed), the snow scooped / pushed per second, presses sent and registered, throws (per
 ## second and the shortest gap between two), m³ per registered press, what the frame a press
@@ -50,6 +52,10 @@ var _m_throw_frames: Array = []
 ## The stroke monitor (polish 6 §8.2, run_strokes): each throw's volume and each fill frame's limit.
 var _s82_on := false
 var _s82: Dictionary = {}
+## The rhythm bot's turn back (polish 6 §8.1b, --turnback): strokes whose throw still waited at the
+## next press, and throws that landed back in the box.
+var _tb_waiting := 0
+var _tb_backbox := 0
 
 
 func _ready() -> void:
@@ -102,7 +108,11 @@ func _ready() -> void:
 				_row("LMB hold + sweep at the feet, release when full", await run_hold_in_place(secs, true))
 			if _rows(["rhythm"]):
 				for h in rhythm:
-					_row("LMB human rhythm: hold %.1f s, %.1f s between" % [h, gap], await run_rhythm(h, secs, gap))
+					_tb_waiting = 0
+					_tb_backbox = 0
+					_row("LMB human rhythm: hold %.2f s, %.2f s between" % [h, gap], await run_rhythm(h, secs, gap))
+					if args.has("turnback"):
+						print("    turned back to the snow %s frames after each release: %d strokes' throws still waiting at the next press, %d throws back in the box" % [args["turnback"], _tb_waiting, _tb_backbox])
 			if _rows(["click"]):
 				for r in rates:
 					_row("LMB auto-click %d/s" % int(r), await run_click_primary(r, secs))
@@ -198,6 +208,8 @@ func setup(parent: Node) -> void:
 func _on_child(n: Node) -> void:
 	if n is ThrownSnow:
 		throws += 1
+		if world and world.player and "landing_back_in_box" in world.player.tools and bool(world.player.tools.get("landing_back_in_box")):
+			_tb_backbox += 1
 		if _mon:
 			_m_throw_frames.append(Engine.get_physics_frames())
 		if _s82_on:
@@ -228,6 +240,8 @@ func reset() -> void:
 	# the run before.
 	if "recovery" in pl.tools:
 		pl.tools.set("recovery", 0.0)
+	if "throw_waiting" in pl.tools:
+		pl.tools.set("throw_waiting", false)
 	if "_presses" in Settings:
 		(Settings.get("_presses") as Dictionary).clear()
 	throws = 0
@@ -484,6 +498,18 @@ func _stroke_rhythm(pl: Player, into: Vector2, side: float, hold_s: float, gap_s
 	await _frames(turn_f)
 	Input.action_release("primary")
 	var gap_f := roundi(gap_s * 60.0)
+	if args.has("turnback"):
+		# Polish 6 §8.1b, second review: a player who turns straight back to the snow after the
+		# release, before pressing again (a throw still waiting then goes where the release aimed).
+		var tb := int(args["turnback"])
+		await _frames(tb)
+		pl.set_yaw(yaw0)
+		pl.pitch = -atan2(eye.y - aim_y, maxf(to.length(), 0.05))
+		pl.head.rotation.x = pl.pitch
+		await _frames(maxi(gap_f - tb, 0))
+		if "throw_waiting" in pl.tools and bool(pl.tools.get("throw_waiting")):
+			_tb_waiting += 1
+		return hold_f + maxi(gap_f, tb)
 	await _frames(gap_f)
 	return hold_f + gap_f
 
@@ -544,9 +570,15 @@ func _next_spot(pl: Player, side_state: Dictionary) -> int:
 
 
 ## Polish 6 §8.1: the tool is recovering from a throw (no scoop can start yet). False in builds
-## without a throw recovery.
+## without a throw recovery, and since §8.1b (a scoop can start during it: `throw_waiting`).
 func _recovering(tc) -> bool:
-	return "recovery" in tc and float(tc.get("recovery")) > 0.0
+	return "recovery" in tc and not ("throw_waiting" in tc) and float(tc.get("recovery")) > 0.0
+
+
+## Polish 6 §8.1b: a release during the recovery throws when it ends; the in-place bots wait for it
+## before pressing again (a press would cancel it).
+func _throw_waits(tc) -> bool:
+	return "throw_waiting" in tc and bool(tc.get("throw_waiting"))
 
 
 ## Hold LMB without sweeping (digging in place), release when the hands are full; the same stance
@@ -585,6 +617,9 @@ func run_hold_in_place(secs: float, sweep := false) -> Dictionary:
 		Input.action_release("primary")
 		await _frames(3)
 		frames += n + 3
+		while _throw_waits(tc):
+			await get_tree().physics_frame
+			frames += 1
 	await _settle()
 	return _mon_end({"removed": v0 - _vol(box_rects_g), "moved": Snow.stat_player_moved - m0, "secs": frames / 60.0})
 

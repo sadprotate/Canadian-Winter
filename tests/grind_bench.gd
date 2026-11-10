@@ -238,9 +238,10 @@ func _stroke_new(pl: Player, into: Vector2, side: float) -> int:
 	pl.head.rotation.x = pl.pitch
 	Input.action_press("primary")
 	# Polish 6 §8.1: pressed during the last throw's recovery, the button is held through it and the
-	# scoop starts when it ends (builds without a throw recovery don't wait).
+	# scoop starts when it ends (builds without a throw recovery don't wait). §8.1b: a press scoops at
+	# once (builds with a waiting throw, `throw_waiting`, don't wait here; the throw waits, below).
 	var w := 0
-	while "recovery" in tc and float(tc.get("recovery")) > 0.0 and w < 120:
+	while "recovery" in tc and not ("throw_waiting" in tc) and float(tc.get("recovery")) > 0.0 and w < 120:
 		await get_tree().physics_frame
 		w += 1
 	var n := 0
@@ -287,7 +288,13 @@ func _stroke_new(pl: Player, into: Vector2, side: float) -> int:
 		await _frames(extra)
 	Input.action_release("primary")
 	await _frames(4)
-	return w + n + 8 + carried + extra
+	# Polish 6 §8.1b: a release during the recovery throws when it ends, where the release aimed: the
+	# bot stays turned to the lawn until it has gone, as a player watches the landing ring.
+	var tw := 0
+	while "throw_waiting" in tc and bool(tc.get("throw_waiting")) and tw < 120:
+		await get_tree().physics_frame
+		tw += 1
+	return w + n + 8 + carried + extra + tw
 
 
 ## How far the toss to one side lands from the box (m); negative inside it.
