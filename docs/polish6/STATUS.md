@@ -6,6 +6,9 @@ resume from here.
 
 ## Where things stand
 
+- **The round stopped after §8.1b** (the owner, 2026-11-10). §0–§3, §8.1, §8.2, §9 and §8.1b are
+  done. Everything else is carried over to a later round: see *Round 6 stopped after §8.1b*
+  below.
 - **Branch:** `wc-polish6-pg`, local on the owner's PC. The owner asked to keep the work on their
   computer, so it stands in for the brief's `wc-polish6`. Nothing is pushed until the owner says
   so, and no PR exists yet. Until then "CI green" means the same checks run locally: import,
@@ -24,18 +27,95 @@ resume from here.
 | §2 | The Godot errors after pulling | done | `c17cbe5` | `report/s2.md` |
 | §3 | Round 5's open items | done | `5287dfe` | `report/s3.md` |
 | §8.1 | Hold to fill, not spam-click | done; its decision (the recoveries against holding) was taken by the owner (option C) and carried out in §8.1b. Two things still for the coordinator to accept: tests whose inputs changed, and shallow-snow sweeps taking more than before (see open items). Amended after two reviews | `f10a4cf` | `report/s8_1.md` |
-| §8.2 | Loads twice as big | **needs a decision:** done except one Done-when item (the standard shovel carries ×1.6 a stroke in 40 cm with the bot, not ×2; ×1.85 in 80 cm), plus two things for the coordinator to accept: bare hands' capacity levels +75 % each, and the base large scraper passing the electric shovel by 5 % (see open items). Amended after review (the load visual) | this commit (`polish6 §8.2: Loads twice as big`) | `report/s8_2.md` |
-| §9 | Smooth piles | done; the coordinator accepted its readings (see open items). Amended after review: emptied cells lose their marks, the band test, the perf reading corrected (the plow truck pushing a berm +13 %) | this commit (`polish6 §9: Smooth piles`) | `report/s9.md` |
-| §8.1b | Pause spaces throws (the owner's decision on §8.1) | **done.** The owner's second decision ("Bare hands 30% faster", open items) closed the last Done-when item: bare hands' fill rate ×1.3 (0.1105), grind_bench 0.0374–0.0378 m³/s in 120 s (within 0.5 %) and the path box in 199.1–204.9 s over five runs (mean +4.1 %; **two of five over 5 %, +5.3 % and +5.7 %: for the coordinator**, open items); the ladder now sells one of bare hands' two capacity levels, old saves keep both. The coordinator accepted the third review's readings (open items). Amended after two reviews: a throw (not a fresh load) renews the bites; a press the cap refuses no longer cancels a waiting throw; one due indoors is kept without an error; a waiting throw lands where the release aimed (the ring stays there); a release inside the recovery with nowhere to land or indoors is refused at once; the stale "Full — release to throw." clears | this commit (`polish6 §8.1b: Pause spaces throws`) | `report/s8_1b.md` |
-| §10 | The plow truck from the start | not started | | |
-| §11 | Blade up/down, push and pull | not started | | |
-| §7 | Weather you can see and hear | not started | | |
-| §13 | The phone and the radar | not started | | |
-| §12 | Every key rebindable | not started | | |
-| §14 | Cold nights | not started | | |
-| §15 | The garage | not started | | |
-| §16 | The commercial property | not started | | |
-| Part 4 | Checks, play-through, HANDOFF, report | not started | | |
+| §8.2 | Loads twice as big | done; the coordinator accepted its open readings (*Accepted by the coordinator*, below): the standard shovel carries ×1.6 a stroke in 40 cm with the bot, not ×2 (×1.85 in 80 cm); bare hands' capacity levels +75 % each; the base large scraper passing the electric shovel by 5 %. Amended after review (the load visual) | `677c686` | `report/s8_2.md` |
+| §9 | Smooth piles | done; the coordinator accepted its readings (see open items). Amended after review: emptied cells lose their marks, the band test, the perf reading corrected (the plow truck pushing a berm +13 %) | `b415fdd` | `report/s9.md` |
+| §8.1b | Pause spaces throws (the owner's decision on §8.1) | **done.** The owner's second decision ("Bare hands 30% faster", open items) closed the last Done-when item: bare hands' fill rate ×1.3 (0.1105), grind_bench 0.0374–0.0378 m³/s in 120 s (within 0.5 %) and the path box in 199.1–204.9 s over five runs (mean +4.1 %; two of five over 5 %, +5.3 % and +5.7 %: accepted by the coordinator as run-to-run spread, its cause carried over); the ladder now sells one of bare hands' two capacity levels, old saves keep both. The coordinator accepted the third review's readings (open items). Amended after two reviews: a throw (not a fresh load) renews the bites; a press the cap refuses no longer cancels a waiting throw; one due indoors is kept without an error; a waiting throw lands where the release aimed (the ring stays there); a release inside the recovery with nowhere to land or indoors is refused at once; the stale "Full — release to throw." clears | `f34dfd9` | `report/s8_1b.md` |
+| §10 | The plow truck from the start | not started: **carried over** to a later round (the owner, 2026-11-10) | | |
+| §11 | Blade up/down, push and pull | not started: **carried over** | | |
+| §7 | Weather you can see and hear | not started: **carried over** | | |
+| §13 | The phone and the radar | not started: **carried over** | | |
+| §12 | Every key rebindable | not started: **carried over** | | |
+| §14 | Cold nights | not started: **carried over** | | |
+| §15 | The garage | not started: **carried over** | | |
+| §16 | The commercial property | not started: **carried over** | | |
+| Part 4 | Checks, play-through, HANDOFF, report | not started: **carried over** | | |
+
+## Round 6 stopped after §8.1b: carried over to a later round
+
+On 2026-11-10 the owner asked to finish the work under way and start nothing new. The sections not
+started move to a later polish round. In the owner's words: "finish what you are doing the tasks
+you're under and don't proceed to a new tasks … we'll take whatever task you haven't done and bring
+them back in a different polish."
+
+- **Last code commit:** `f34dfd9` (§8.1b). §10's agent had begun reading when the run was stopped.
+  It changed nothing, and the tree was clean afterwards.
+- **Local CI at `f34dfd9`** (this PC):
+  - import clean; `parse_all` 91 scripts, 0 errors
+  - snow 13/13, systems 28/28, gameplay 41/41, polish4 19/19, polish5 87/87, polish6 32/32
+  - polish3 20/21: the known load-dependent `test_menu_fixture_load_is_the_same_as_direct`
+    failed (open items), then passed alone
+  - `weather_truth` byte-identical to the baseline
+- **Nothing is pushed** and there is no PR. The branch is `wc-polish6-pg`, local.
+
+### Not started: bring back as written in `docs/polish6/POLISH_ROUND_6_PROMPT.md`
+
+The order this round planned, top to bottom. "Brief lines" are line numbers in the brief.
+
+| § | Title | Brief lines | Decisions | Notes for the next round |
+|---|---|---|---|---|
+| §10 | The plow truck from the start | 636–678 | 3 | The old-save fixture is ready: `tests/fixtures/polish5_v3/7_keys_pickup_plow_order`. Keep §9's blade deposit (spread band, `Snow.soft` marks, one `push_rng` draw per moved cell). |
+| §11 | Blade up/down, push and pull | 679–709 | 4 | After §10. Back-drag through `Snow.blade_push` keeps §9's band and marks (Decision 2 includes back-drag). |
+| §7 | Weather you can see and hear | 446–498 | 8 | `weather_truth` must stay byte-identical (SHA-256 `173434ae6cb718c401272e758e3875bcf9594f46c14a2a8697bde2f0ae5ee30b`). |
+| §13 | The phone and the radar | 738–794 | 6, 7 | |
+| §12 | Every key rebindable | 710–737 | 5 | After §11 and §13: it covers `veh_blade_up`, `veh_blade_down` and `phone`. |
+| §14 | Cold nights | 800–809 | 9 | Round 5's §14 as written, plus the updates. The starting truck's cab assumes §10. |
+| §15 | The garage | 810–823 | 9 | Assumes §10 and §11 (the plowed truck, back-drag from the door) and §7 (no flakes inside). |
+| §16 | The commercial property | 824–835 | 9 | |
+| Part 4 | Checks, play-through, screenshots, HANDOFF 9e/9f, report, PR description | 836–889 | | Much of its list assumes §7 and §10–§13. For the work done so far: HANDOFF needs its pass-6 notes. Its §7 tool table still shows round 5's values, e.g. bare hands fill 85 L/s at HANDOFF lines 218 and 339, now 110.5. The PR description is also still to write. |
+
+### Open items to carry with them
+
+Details are under *Open items* below.
+
+- **Needs the owner:** RMB click-push can beat holding in deep snow (§8.1). Changing it changes
+  push behaviour, which this round protects. For example, a push could start only from a held
+  press.
+- **Needs the owner:** pushing the two baseline tags, the `build/windows/` folder for exporting,
+  and an optional `.gitattributes` line.
+- **grind_bench varies run to run since §9.** The path box takes 199–205 s against the baseline's
+  steady 193.9 s: mean +4.1 %, two of five runs over 5 %.
+  - Likely cause: the relaxation's per-frame time budget (`Snow.process_relax(…, max_usec)`),
+    which §9's costlier tiles reach more often. Not traced.
+  - Worth checking whether anything besides the bench depends on frame timing.
+- **The dig-out test's bot is marginal** (gameplay `test_dig_out_by_hand_after_a_major_event`).
+  Its sweep rate now scales with bare hands' fill rate.
+- **polish3's `test_menu_fixture_load_is_the_same_as_direct` is load-dependent.** It failed again
+  in the final full run and passed alone. The fix is to wait for the start, not 30 frames.
+- **§9:** an emptied cell keeps its player-moved mark until its chunk syncs (at most 3 game hours).
+- **§8.1b, cosmetic:**
+  - the follow-through pose after a very short stroke
+  - a throw that waits spawns from the facing stored at the release
+- **Upgrades app, cosmetic:** an old save with bare hands' level 2 still on order shows
+  "Level 1 / 1 · Fully upgraded", without "On order.", until the crate is collected.
+- **§3:**
+  - F1 multi-day jumps don't relax between city passes.
+  - Round 5's mid-winter save settles for about 75 s on load.
+
+### Accepted by the coordinator (2026-11-10)
+
+Each section left some readings "for the coordinator". They are taken as committed so the round
+can stop cleanly, and any of them can be revisited.
+
+- **§8.1:**
+  - Nine tests had their inputs changed; since §8.1b, eight are back to their old inputs.
+  - Shallow snow: a held sweep in 6 cm takes up to 25 % more than before.
+- **§8.2:**
+  - The standard shovel carries ×1.6 a stroke in 40 cm with the bot (×2 when swept until full).
+  - Bare hands' capacity levels are +75 % each.
+  - At base, the large scraper passes the electric shovel by 5 %.
+  - The load mesh is turned half a segment.
+- **§8.1b:** the path-box time's run-to-run spread (its cause is carried over, above).
+- **§9 and §8.1b's third review:** the readings already listed under *Open items*.
 
 ## Open items
 
