@@ -3230,6 +3230,7 @@ func test_s7_v3_save_round_trips() -> void:
 	Snow.push_rng.randf()
 	var want_p6 := JSON.stringify(Snow.serialize_pending())
 	var pend_p6 := Snow.relax_pending()
+	var soft_p6 := Snow.soft.duplicate()      # polish 6 §9: the player-moved marks (the throws' snow)
 	runner.check(Saves.save_game(), "§7 a version-3 save")
 	Game.upgrades = {}
 	Game.company_name = ""
@@ -3243,6 +3244,7 @@ func test_s7_v3_save_round_trips() -> void:
 	runner.check(Saves.load_game("fun"), "§7 …loads")
 	var got_p6 := JSON.stringify(Snow.serialize_pending())
 	runner.check(got_p6 == want_p6 and Snow.relax_pending() == pend_p6 and pend_p6 > 0 and not Snow.settle_on_load, "§3 (polish 6) …and the snow's pending relaxation (%d tiles, hot and cold in order) and blade_push's stream exactly as saved" % pend_p6)
+	runner.check(Snow.soft == soft_p6 and soft_p6.count(1) > 0, "§9 (polish 6) …and the player-moved snow's marks exactly as saved (%d cells)" % soft_p6.count(1))
 	if got_p6 != want_p6:
 		runner.info("want %s\n got %s" % [want_p6.left(600), got_p6.left(600)])
 	var got13b := JSON.stringify({"eq": Game.equipment, "used": Economy.heat_used, "acc": Economy.heat_acc, "bills": bills_of.call(), "melted": Snow.melted}, "", true)

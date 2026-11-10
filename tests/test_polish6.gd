@@ -1866,3 +1866,398 @@ func test_s82_full_load_heaps_bigger_clear_of_the_camera() -> void:
 	runner.info("§8.2 round 5's load cut the view at the near plane: %s" % (str(on_screen5) if not on_screen5.is_empty() else "nowhere"))
 	runner.check(on_screen.is_empty(), "§8.2 …and where a load passes the near plane (looking straight down, above the view) it never cuts the view: no clip on screen at any look angle, field of view up to %d° and aspect up to %.1f %s" % [int(S82_FOV_MAX), S82_ASPECT_MAX, str(on_screen)])
 	await _s3_unload()
+
+
+# =============================================================================
+# §9 Smooth piles
+# =============================================================================
+# Snow the player moves (Snow.soft: pushed by hand or by a blade, shoved, thrown) lands spread over
+# a band ahead of a blade (Snow.PUSH_BAND), settles at Snow.moved_repose (balance
+# moved_repose_max_diff, lower than repose's 43°) and rounds off at its tops (moved_crest); the face
+# a blade leaves behind settles once the blade has gone (the guard's tiles are queued again). The
+# city's windrows and the sidewalk crew's mounds aren't marked and settle as before.
+
+const S9_TOL := 0.001     # m: the relaxation stops on sub-millimetre moves
+
+
+## Whether relaxation lets snow slide from cell i onto its neighbour n (not a wall, not off the
+## property onto the street, not into a completed box from outside it).
+func _s9_can_slide(i: int, n: int) -> bool:
+	if Snow.surf[n] == Snow.S_BLOCKED:
+		return false
+	if Snow.surf[n] == Snow.S_ROAD and Snow.surf[i] != Snow.S_ROAD:
+		return false
+	return not (Snow.hold[n] == 1 and Snow.hold[i] == 0)
+
+
+## A settled pile in `area`: for each cell of player-moved loose snow (soft,
+## more than a millimetre loose) and each neighbour it could slide onto that lies lower, the step
+## down — `over_step`, the most any step passes the new repose step — and `over_rule`, the most a
+## step passes the rule (the new repose step, less at a top or a shoulder: no more than
+## 2 × moved_crest more than the step up to the cell on its other side; a wall, the curb or a
+## completed box on that side supports it).
+func _s9_pile(area: Rect2) -> Dictionary:
+	Snow.sync_all()
+	var W := Snow.W
+	var H := Snow.H
+	var out := {"cells": 0, "steepest": 0.0, "over_step": -1.0, "over_rule": -1.0, "at": Vector2.ZERO, "top": 0.0}
+	for z in range(Snow.cell_z(area.position.y), Snow.cell_z(area.end.y) + 1):
+		for x in range(Snow.cell_x(area.position.x), Snow.cell_x(area.end.x) + 1):
+			var i := z * W + x
+			if Snow.surf[i] == Snow.S_BLOCKED:
+				continue
+			if Snow.soft[i] != 1 or Snow.loose[i] <= S9_TOL:
+				continue
+			out["cells"] = int(out["cells"]) + 1
+			out["top"] = maxf(float(out["top"]), Snow.depth[i])
+			var h := Snow.ground[i] + Snow.depth[i]
+			for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				var nx: int = x + d.x
+				var nz: int = z + d.y
+				if nx < 0 or nz < 0 or nx >= W or nz >= H:
+					continue
+				var n := nz * W + nx
+				if not _s9_can_slide(i, n):
+					continue
+				var step := h - (Snow.ground[n] + Snow.depth[n])
+				if step <= 0.0:
+					continue
+				var lim := Snow.moved_repose
+				var bx: int = x - d.x
+				var bz: int = z - d.y
+				if bx >= 0 and bz >= 0 and bx < W and bz < H and _s9_can_slide(i, bz * W + bx):
+					var b := bz * W + bx
+					lim = clampf(Snow.ground[b] + Snow.depth[b] - h + 2.0 * Snow.moved_crest, 0.0, Snow.moved_repose)
+				out["steepest"] = maxf(float(out["steepest"]), step)
+				out["over_step"] = maxf(float(out["over_step"]), step - Snow.moved_repose)
+				if step - lim > float(out["over_rule"]):
+					out["over_rule"] = step - lim
+					out["at"] = Vector2((x + 0.5) * Snow.CELL, (z + 0.5) * Snow.CELL)
+	return out
+
+
+func _s9_report(what: String, p: Dictionary, v0: float) -> void:
+	runner.near(Snow.total_volume(), v0, 1e-4, "§9 %s: the snow is conserved through the work and the settling" % what)
+	runner.check(int(p["cells"]) > 20 and float(p["steepest"]) > 0.1, "§9 %s: a pile of player-moved snow (%d cells of it, %.2f m deep at its deepest, slopes down to %.3f m a cell)" % [what, int(p["cells"]), float(p["top"]), float(p["steepest"])])
+	runner.check(float(p["over_step"]) <= S9_TOL, "§9 %s, settled: no cell of it stands more than the new repose step (%.2f m; repose %.2f m) above a neighbour (steepest step %.3f m)" % [what, Snow.moved_repose, Snow.repose, float(p["steepest"])])
+	runner.check(float(p["over_rule"]) <= S9_TOL, "§9 %s: …and its top is rounded — no step passes the step up behind it by more than 2 × %.2f m (worst %+.4f m at %s)" % [what, Snow.moved_crest, float(p["over_rule"]), str(p["at"])])
+
+
+## A vehicle at (x, lane) facing east along Maple Street with the player in it; the blade down if it
+## has one; driven until it has stood still for half a second (or `frames`); then the blade up,
+## backed off, the player out. Returns where its front got to (x).
+func _s9_drive(id: String, x: float, frames: int) -> float:
+	var pl: Player = world.player
+	Game.flags["truck_keys"] = true
+	Game.flags["help_vehicle_0"] = true
+	var e := {"uid": Game.uid(), "id": id, "pos": Vector3(x, 0, 84.95), "yaw": -PI * 0.5, "snow": 0.0}
+	Game.vehicles.append(e)
+	var v: Vehicle = world.spawn_vehicle_node(e)
+	await _s3_frames(2)
+	v.enter_vehicle(pl)
+	await _s3_frames(2)
+	if v.data.has_plow and not v.tool_on:
+		v._toggle_tool()
+	Input.action_press("veh_accelerate")
+	var still := 0
+	for k in range(frames):
+		await _s3_frames(1)
+		still = still + 1 if absf(v.speed) < 0.05 and k > 60 else 0
+		if still > 30:
+			break
+	Input.action_release("veh_accelerate")
+	var front := v.global_position.x + v.data.length * 0.5
+	if v.tool_on:
+		v._toggle_tool()
+	Input.action_press("veh_reverse")
+	await _s3_frames(60)
+	Input.action_release("veh_reverse")
+	v.exit_vehicle()
+	await _s3_frames(60)      # the guard runs out and its tiles are queued (Snow.GUARD_SETTLE_STEPS)
+	return front
+
+
+## Done-when: a pile pushed by hand and by a plow, with the real controls, has no cell more than
+## the new repose step above its neighbours once settled; its top is rounded; the snow is
+## conserved. Before §9 the hand push left a 0.49 m cliff on its blade side (the guard's tiles were
+## never looked at again) and the plow's pile a 1.1 m one, both over a one-cell ridge.
+func test_s9_pushed_piles_settle_at_the_new_step() -> void:
+	await _s3_world("fun", 12.0)
+	Clock.running = false
+	Weather.force(Weather.C.CLEAR, 48.0)
+	world.snow_renderer.relax_usec = 0      # relaxation by tile count only: the same every run
+	Snow.push_rng.seed = Snow.PUSH_SEED + 9
+	var b: BalanceData = Catalog.balance
+	runner.check(is_equal_approx(Snow.moved_repose, b.moved_repose_max_diff) and is_equal_approx(Snow.moved_crest, b.moved_crest_max_diff) and Snow.moved_repose < Snow.repose and Snow.moved_crest < Snow.moved_repose,
+		"§9 player-moved snow settles at %.2f m a cell (%.0f°) and rounds off at its tops (%.2f m), other loose snow at %.2f m (%.0f°)" % [Snow.moved_repose, rad_to_deg(atan(Snow.moved_repose / Snow.CELL)), Snow.moved_crest, Snow.repose, rad_to_deg(atan(Snow.repose / Snow.CELL))])
+	# By hand: the wide pusher held down (RMB) and walked 1.5 s across 30 cm of the front yard.
+	var pl: Player = world.player
+	var lot := Layout.player_lot
+	var inward := Vector2(lot["inward"]).normalized()
+	var a := Layout.lot_to_world(lot, Layout.gu(lot, -3.5), 1.2)
+	var yard := Layout.lot_rect_world(lot, Layout.gu(lot, -6.5), Layout.gu(lot, -0.5), 0.2, 8.5)
+	Snow.set_rect(yard, 0.30)
+	Snow.relax_until_stable()
+	var v0 := Snow.total_volume()
+	Game.slots = ["wide_pusher", "", "", ""]
+	Game.selected = 0
+	Game.inventory_changed.emit()
+	await _s3_frames(2)
+	pl.teleport(Vector3(a.x, Snow.surface_height(a.x, a.y) + 0.05, a.y), atan2(-inward.x, -inward.y))
+	pl.pitch = deg_to_rad(-30.0)
+	pl.head.rotation.x = pl.pitch
+	await _s3_frames(2)
+	Input.action_press("secondary")
+	Input.action_press("move_forward")
+	await _s3_frames(90)
+	Input.action_release("move_forward")
+	Input.action_release("secondary")
+	await _s3_frames(60)      # the guard runs out and its tiles are queued (Snow.GUARD_SETTLE_STEPS)
+	Snow.relax_until_stable()
+	var walked := Vector2(pl.global_position.x, pl.global_position.z).distance_to(a)
+	runner.info("§9 the wide pusher walked %.2f m in 1.5 s" % walked)
+	_s9_report("a berm pushed by hand (the wide pusher, 30 cm)", _s9_pile(yard), v0)
+	# A plow: the pickup with its plow down, 5 s along Maple Street's south lane: 22 m of 30 cm snow,
+	# then the bare street (the berm goes on with the blade until it is lifted).
+	Snow.set_rect(Rect2(0, 79, 92, 8), 0.02)
+	Snow.set_rect(Rect2(14, 81.5, 22, 4.5), 0.30)
+	Snow.relax_until_stable()
+	var v1 := Snow.total_volume()
+	var front := await _s9_drive("pickup_plow", 6.0, 300)
+	Snow.relax_until_stable()
+	runner.info("§9 the plow's front got to x %.1f (the snow from x 14 to 36)" % front)
+	_s9_report("a pile plowed by the pickup with its plow", _s9_pile(Rect2(10, 79.5, maxf(front - 4.0, 30.0), 9)), v1)
+	await _s3_unload()
+
+
+## The pickup's shove (polish 5 §12) and repeated throws on one spot settle the same way.
+func test_s9_shoved_and_thrown_piles_settle_at_the_new_step() -> void:
+	await _s3_world("fun", 12.0)
+	Clock.running = false
+	Weather.force(Weather.C.CLEAR, 48.0)
+	world.snow_renderer.relax_usec = 0
+	Snow.push_rng.seed = Snow.PUSH_SEED + 9
+	# The pickup (no plow) shoving 60 cm on Maple Street, under its bog depth, as perf.tscn does.
+	Snow.set_rect(Rect2(0, 79, 24, 8), 0.03)
+	Snow.set_rect(Rect2(24, 79, 30, 8), 0.6)
+	Snow.relax_until_stable()
+	var v0 := Snow.total_volume()
+	var front := await _s9_drive("pickup", 8.0, 420)
+	Snow.relax_until_stable()
+	runner.info("§9 the pickup shoved on to x %.1f (the snow from x 24)" % front)
+	_s9_report("the pickup's shove (60 cm)", _s9_pile(Rect2(22, 78.5, 20, 10)), v0)
+	# Twenty standard-shovel loads (§8.2's 130 L) landed on one spot of the front yard: the throw's
+	# landing op, a third of a second apart.
+	var lot := Layout.player_lot
+	var at := Layout.lot_to_world(lot, Layout.gu(lot, -3.5), 5.5)
+	var area := Rect2(at - Vector2(3.5, 3.5), Vector2(7.0, 7.0))
+	Snow.set_rect(area, 0.10)
+	Snow.relax_until_stable()
+	var v1 := Snow.total_volume()
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4
+	for k in range(20):
+		Snow.deposit(at + Vector2(rng.randf_range(-0.2, 0.2), rng.randf_range(-0.2, 0.2)), 0.13, 0.25 + 0.13 * 2.5, true)
+		await _s3_frames(20)
+	Snow.relax_until_stable()
+	_s9_report("20 throws on one spot", _s9_pile(area), v1 + 20 * 0.13)
+	await _s3_unload()
+
+
+## The band: one blade step on flat snow spreads each cell's snow over several cells ahead of the
+## face, centred where the one line used to be (push_dist + the 0–12 cm draw), never behind the
+## face; one draw from push_rng per moved cell as before; the snow conserved and marked soft. Each
+## distance pushes on ground of its own (no marks left by another push), with a blade as wide as
+## the plows' (3 m) and a band 0.75 m deep behind it: 36 cells of 20 cm snow, each with its own draw.
+func test_s9_blade_push_spreads_over_a_band() -> void:
+	await _s3_unload()
+	Game.new_game("fun", 2024)
+	var hw := 1.5
+	var band := 0.75
+	var n := 0
+	for pd in [0.3, 0.38, 0.6, 1.5]:      # bare hands, the hand tools, the plows, the pickup's shove
+		var at := Vector2(36.0 + 6.0 * n, 120.0)
+		n += 1
+		var area := Rect2(at - Vector2(2.5, 1.5), Vector2(5.0, 4.5))
+		Snow.set_rect(area, 0.0)
+		Snow.set_rect(Rect2(at.x - 2.0, at.y - 1.0, 4.0, 1.0), 0.2)
+		Snow.relax_until_stable()
+		var sx0 := Snow.cell_x(area.position.x)
+		var sz0 := Snow.cell_z(area.position.y)
+		var before := PackedFloat32Array()
+		var cells := 0
+		var marked := 0
+		var blocked := 0
+		for z in range(sz0, Snow.cell_z(area.end.y)):
+			for x in range(sx0, Snow.cell_x(area.end.x)):
+				var i := z * Snow.W + x
+				before.append(Snow.depth[i])
+				marked += Snow.soft[i]
+				if Snow.surf[i] == Snow.S_BLOCKED:
+					blocked += 1
+				var c := Vector2((x + 0.5) * Snow.CELL, (z + 0.5) * Snow.CELL) - at
+				if absf(c.x) <= hw and c.y <= 0.0 and c.y >= -band and Snow.depth[i] > 0.0:
+					cells += 1
+		var v0 := Snow.volume_in_rect(area)
+		Snow.push_rng.seed = Snow.PUSH_SEED + 5
+		var ref := RandomNumberGenerator.new()
+		ref.seed = Snow.PUSH_SEED + 5
+		for k in range(cells):
+			ref.randf()
+		var r := Snow.blade_push(at, Vector2(0, 1), hw, band, 0.0, false, pd)
+		var rows := {}
+		var sum := 0.0
+		var wsum := 0.0
+		var behind := 0.0
+		var unmarked := 0
+		var k2 := 0
+		for z in range(sz0, Snow.cell_z(area.end.y)):
+			for x in range(sx0, Snow.cell_x(area.end.x)):
+				var i := z * Snow.W + x
+				var add := Snow.depth[i] - before[k2]
+				k2 += 1
+				if add <= 1e-6:
+					continue
+				var ahead := (z + 0.5) * Snow.CELL - at.y
+				if ahead <= 0.0:
+					behind += add
+				rows[z] = true
+				sum += add
+				wsum += add * ahead
+				if Snow.soft[i] != 1:
+					unmarked += 1
+		var mean := wsum / maxf(sum, 1e-9)
+		var want := cells * 0.2 * Snow.CELL_AREA
+		runner.check(blocked == 0 and marked == 0 and cells == 36 and Snow.push_rng.state == ref.state, "§9 push %.2f m, on open ground with no marks (%d blocked cells, %d marked): one draw from push_rng per moved cell (%d cells)" % [pd, blocked, marked, cells])
+		runner.check(rows.size() >= 3 and behind <= 0.0 and absf(mean - (pd + 0.06)) < 0.05, "§9 push %.2f m: the snow lands over %d rows ahead of the face (round 5: one line), none behind it, centred %.3f m ahead, within 5 cm of where the line was (%.2f–%.2f)" % [pd, rows.size(), mean, pd, pd + 0.12])
+		runner.check(unmarked == 0 and absf(Snow.volume_in_rect(area) - v0) < 1e-5 and absf(float(r["moved"]) - want) < 1e-4, "§9 push %.2f m: %.3f m³ moved (all of the band's %.3f), conserved, all of it marked player-moved (%d cells unmarked)" % [pd, float(r["moved"]), want, unmarked])
+
+
+## The city's snow isn't player-moved: the grader's windrows and the sidewalk crew's mounds settle as
+## before (round 5 Decision 6). Player-moved snow stops being so once it has hardened. A save keeps
+## the marks; an older save, without them, has none.
+func test_s9_whose_snow_is_marked() -> void:
+	await _s3_unload()
+	Game.world = null
+	Game.player = null
+	Municipal.world_handles_passes = false
+	Game.new_game("fun", 2024)
+	Snow.add_snowfall(0.2)
+	Snow.sync_all()
+	Municipal.crew_pending = Municipal.crew_route()
+	Municipal.run_batch(Municipal.route_lanes())
+	var city := Snow.soft.count(1)
+	var wind := 0
+	for i in range(Snow.W * Snow.H):
+		if Snow.loose[i] > 0.01:
+			wind += 1
+	runner.check(city == 0 and wind > 1000, "§9 the grader's windrows and the sidewalk crew's mounds (%d cells of loose snow) aren't player-moved snow: %d cells marked" % [wind, city])
+	Game.new_game("fun", 2024)
+	var p := Layout.lot_to_world(Layout.player_lot, Layout.gu(Layout.player_lot, -6.0), 6.0)
+	Snow.deposit(p, 0.4, 0.5)
+	Snow.relax_until_stable()
+	var thrown := Snow.soft.count(1)
+	var d := Snow.serialize()
+	d.merge(Snow.serialize_pending())
+	var want := Snow.soft.duplicate()
+	Snow.soft.fill(0)
+	Snow.deserialize(d.duplicate())
+	runner.check(thrown > 10 and Snow.soft == want, "§9 a throw's snow is marked (%d cells) and a save keeps the marks" % thrown)
+	var old := d.duplicate()
+	old.erase("soft")
+	Snow.deserialize(old)
+	runner.check(Snow.soft.count(1) == 0, "§9 …and a save without them (older than §9) loads with none: its loose snow settles as before")
+	Snow.deserialize(d.duplicate())
+	Snow.advance_settle(1440.0 * 10.0)       # ten days: the loose snow has hardened
+	Snow.sync_all()
+	runner.check(Snow.soft.count(1) == 0, "§9 once its loose snow has hardened, it is no longer player-moved snow (%d cells left marked)" % Snow.soft.count(1))
+
+
+## Marks (Snow.soft) within a rect.
+func _s9_marks(r: Rect2) -> int:
+	var n := 0
+	for z in range(Snow.cell_z(r.position.y), Snow.cell_z(r.end.y) + 1):
+		for x in range(Snow.cell_x(r.position.x), Snow.cell_x(r.end.x) + 1):
+			n += Snow.soft[z * Snow.W + x]
+	return n
+
+
+## On a fresh map, a bare 8 m square of the front yard; with `marked`, a throw's player-moved snow
+## in the middle of it; then `how` empties the middle (a completed box's snap and hold, the heated
+## pad's melting, a floor-0 scraper pass on past it), the chunk syncs, and snow that isn't the
+## player's (wading's flank) lands on the same spot and settles. Without `marked` the same steps on
+## ground that was never marked: the reference.
+func _s9_emptied(how: String, marked: bool) -> Dictionary:
+	Game.new_game("fun", 2024)
+	var lot := Layout.player_lot
+	var p := Layout.lot_to_world(lot, Layout.gu(lot, -6.0), 6.0)
+	var e := Rect2(p - Vector2(1.5, 1.5), Vector2(3.0, 3.0))
+	var c := Rect2(p - Vector2(1.25, 1.25), Vector2(2.5, 2.5))
+	Snow.set_rect(e.grow(2.5), 0.0)
+	Snow.relax_until_stable()
+	var out := {"thrown": 0, "elsewhere": 0}
+	if marked:
+		Snow.deposit(p, 0.3, 0.5)       # a throw
+		Snow.relax_until_stable()
+		out["thrown"] = _s9_marks(e)
+		out["elsewhere"] = Snow.soft.count(1) - int(out["thrown"])
+	match how:
+		"a completed box's snap":       # Boxes.complete
+			Snow.set_rect(e, 0.0, true)
+			Snow.set_hold_rect(e, true)
+		"melting":                      # the heated pad
+			Snow.melt_rect(e, 1.0)
+		"a floor-0 scrape":             # the snow scraper, row by row, on past the spot
+			for k in range(16):
+				Snow.blade_push(Vector2(p.x, e.position.y + k * 0.25), Vector2(0, 1), 1.6, 0.3, 0.0, false, 0.38)
+	Snow.relax_until_stable()
+	out["after_op"] = _s9_marks(e)
+	Snow.advance_settle(1.0)            # the chunk's next sync
+	Snow.sync_all()
+	out["after_sync"] = _s9_marks(e)
+	Snow.deposit(p, 0.3, 0.4, false, false)     # wading's flank: not the player's snow
+	Snow.relax_until_stable()
+	out["after_flank"] = _s9_marks(e)
+	var hs := PackedFloat32Array()
+	var steepest := 0.0
+	for z in range(Snow.cell_z(c.position.y), Snow.cell_z(c.end.y) + 1):
+		for x in range(Snow.cell_x(c.position.x), Snow.cell_x(c.end.x) + 1):
+			var i := z * Snow.W + x
+			hs.append(Snow.depth[i])
+			if Snow.loose[i] <= S9_TOL:
+				continue
+			for d in [1, -1, Snow.W, -Snow.W]:
+				var nb: int = i + d
+				if _s9_can_slide(i, nb):
+					steepest = maxf(steepest, Snow.ground[i] + Snow.depth[i] - Snow.ground[nb] - Snow.depth[nb])
+	out["heights"] = hs
+	out["steepest"] = steepest
+	return out
+
+
+## A mark lasts only while its cell holds player-moved loose snow. A marked cell emptied some other
+## way loses it — a completed box's snap at once (set_rect), melting and a floor-0 scrape at the
+## chunk's next sync (before, the mark stayed for the rest of the winter) — so snow that isn't the
+## player's landing there afterwards settles by the original rule (43°), exactly as on ground that
+## was never marked, and marks nothing.
+func test_s9_emptied_cells_lose_their_marks() -> void:
+	await _s3_unload()
+	Game.world = null
+	Game.player = null
+	Municipal.world_handles_passes = false
+	for how in ["a completed box's snap", "melting", "a floor-0 scrape"]:
+		var ref := _s9_emptied(how, false)
+		var got := _s9_emptied(how, true)
+		var hr: PackedFloat32Array = ref["heights"]
+		var hg: PackedFloat32Array = got["heights"]
+		var diff := 0.0
+		for k in range(hr.size()):
+			diff = maxf(diff, absf(hg[k] - hr[k]))
+		runner.check(int(got["thrown"]) > 10 and int(got["elsewhere"]) == 0, "§9 %s: a throw's snow marked %d cells, all on the spot emptied" % [how, int(got["thrown"])])
+		if how == "a completed box's snap":
+			runner.check(int(got["after_op"]) == 0, "§9 %s: the emptied cells lose their marks at once (%d left)" % [how, int(got["after_op"])])
+		else:
+			runner.info("§9 %s: %d marks on the emptied cells until the chunk syncs" % [how, int(got["after_op"])])
+		runner.check(int(got["after_sync"]) == 0, "§9 %s: once the chunk has synced, none of the emptied cells is marked (%d)" % [how, int(got["after_sync"])])
+		runner.check(int(got["after_flank"]) == 0 and int(ref["after_flank"]) == 0 and diff <= 1e-6 and float(got["steepest"]) > Snow.moved_repose + 0.01,
+			"§9 %s: wading's snow landing there afterwards is not marked (%d cells) and settles as on ground never marked (heights within %.6f m), at the original step (steepest %.3f m; player-moved snow %.2f, other loose snow %.2f)" % [how, int(got["after_flank"]), diff, float(got["steepest"]), Snow.moved_repose, Snow.repose])

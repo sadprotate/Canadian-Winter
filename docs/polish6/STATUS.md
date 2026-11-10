@@ -25,7 +25,7 @@ resume from here.
 | §3 | Round 5's open items | done | `5287dfe` | `report/s3.md` |
 | §8.1 | Hold to fill, not spam-click | **needs a decision:** done except two Done-when items that Decision 10's recoveries rule out (grind_bench within 5 %; a human rhythm loses nothing), plus two things for the coordinator to accept: tests whose inputs changed, and shallow-snow sweeps taking more than before (see open items). Amended after two reviews | `f10a4cf` | `report/s8_1.md` |
 | §8.2 | Loads twice as big | **needs a decision:** done except one Done-when item (the standard shovel carries ×1.6 a stroke in 40 cm with the bot, not ×2; ×1.85 in 80 cm), plus two things for the coordinator to accept: bare hands' capacity levels +75 % each, and the base large scraper passing the electric shovel by 5 % (see open items). Amended after review (the load visual) | this commit (`polish6 §8.2: Loads twice as big`) | `report/s8_2.md` |
-| §9 | Smooth piles | not started | | |
+| §9 | Smooth piles | done; the coordinator accepted its readings (see open items). Amended after review: emptied cells lose their marks, the band test, the perf reading corrected (the plow truck pushing a berm +13 %) | this commit (`polish6 §9: Smooth piles`) | `report/s9.md` |
 | §10 | The plow truck from the start | not started | | |
 | §11 | Blade up/down, push and pull | not started | | |
 | §7 | Weather you can see and hear | not started | | |
@@ -183,6 +183,34 @@ resume from here.
   (report/s8_2.md *What changed*).
 - **HANDOFF §7's tool table** shows round 5's capacities, fill rates and bites (§8.2 changed
   them); Part 4 updates HANDOFF.
+
+- **§9, accepted by the coordinator** (the review's readings):
+  - **A pushed berm slumps back** at 37° onto the end of the cleared strip 0.75 s after the blade
+    lifts (`Snow.GUARD_SETTLE_STEPS`; before, it kept a cliff on its blade side until it hardened).
+  - **Pushing goes a little further.** Before, the wide pusher in 30 cm stopped dead after 1.5 m:
+    its one-cell ridge reached hip height (0.99 m) and became a wall, though the push drag still
+    allowed 42 %. Now it stops at 2.25 m (the berm, spread, against the blade). Plows and the
+    pickup go as far as before (report/s9.md *Push behaviour*).
+  - **Small hand mounds are lower:** bare hands in 20 cm leave a 33 cm mound (a 53 cm one-cell
+    spike before); `test_push_builds_a_mound_conserving_volume` (> 30 cm) passes unchanged. The
+    rounding, `moved_crest_max_diff` 0.08, was set for it: 0.03 gives big piles true domes but that
+    mound 28 cm (report/s9.md *Choosing the values*).
+  - **Grader windrows landing on unhardened player-moved snow** settle with it as player-moved
+    snow. The grader's lane op and `test_s11_grader_pass_unchanged` are untouched.
+- **§9, the cost (corrected after review):** relaxing a tile that holds player-moved snow costs
+  ×1.25–×1.7 (work bench); other tiles are unchanged. The frame budget is unchanged, so big pushed
+  piles take longer to settle (a 75 m³ dump: about twice the work). perf.tscn, the review's
+  alternating pairs (`677c686` → §9): the plow truck pushing a berm avg 5.86 / 5.79 → 6.62 / 6.58 ms
+  (+13 %), p95 9.19 / 8.97 → 10.20 / 9.89 ms, relaxation p95 2,540 / 2,521 → 2,688 / 2,686 µs (the
+  2,500 µs budget, checked between tiles, was already passed before), chunk updates 1,055 / 1,049 →
+  1,137 / 1,135; 10× snow settling p95 34.4 / 35.3 → 36.7 / 36.3 ms; the pickup shoving p95 9.62 /
+  9.54 → 8.27 / 8.28 ms; 9 → 8 scenarios over 16.7 ms at p95. No exact, cheap change recovers the
+  plow berm's cost: 93 % of its soft-pass time is tiles that move snow (report/s9.md *Perf*).
+  The review's fix (emptied cells lose their marks) measured nothing worse beyond noise.
+- **§9: an emptied cell keeps its mark until its chunk syncs** (`sync_chunk`: every 3 game hours
+  at most, 3¾ min at 1×, sooner while snow falls), except where `set_rect` empties it (a box's
+  snap: at once). Snow that isn't the player's landing on it before then (wading's flanks, the
+  crew, the grader) settles as player-moved snow until it hardens.
 
 ## Binding notes
 
@@ -447,3 +475,46 @@ actions, function names, gotchas.
   (`ItemUpgrades.level_value`).
 - **Shots:** `docs/polish6/shots/08-loads-twice-as-big/` (`--setup=cleared_drive --player=6,5,0
   --pitch=0 --pose=hold --load=1`; `_down` at `--pitch=-30`, every tool).
+
+**From §9 (smooth piles):**
+- **Player-moved snow is `Snow.soft`** (a byte per cell): loose snow pushed by any blade or hand
+  tool (`blade_push`), thrown or dumped (`deposit`, default `moved = true`, and its ceiling overflow
+  through `_spill(…, moved)`), or slid off such snow. Not marked: the grader (`grader_lane`), the
+  sidewalk crew, wading (`deposit(…, false, false)`), `set_rect`/`add_layer_rect` fills. It clears
+  whenever the cell holds no more than 2 mm of loose snow, whatever took it (hardening, a box's
+  snap, melting, a scrape, a slump, the save's rounding): at the chunk's next `sync_chunk` (a pass
+  of its own over the chunk's tiles that hold marks, by `soft_tiles`; keep the sync's cell loop
+  free of it, a check there cost the 10× snowfall scenarios 5–8 %), and at once in `set_rect`.
+  Until that sync an emptied cell keeps its mark. **Every write goes through `_set_soft(i)` /
+  `_clear_soft(i)`**: they keep `soft_tiles` (soft cells per relaxation tile) exact, and a tile with
+  none runs the original relaxation loop. New code that writes `soft` directly breaks that.
+- **Its rules** (`_relax_tile_soft`): it slumps past `moved_repose_max_diff` (0.19 m a cell, 37°;
+  other loose snow keeps `repose_max_diff` 0.23), and a cell stands at most `2 × moved_crest_max_diff`
+  (0.16 m) more above its lower neighbour than below its other neighbour on that axis — a wall, the
+  map's edge, the curb from the property side, a completed box from outside, or the guarded strip
+  there supports it instead. New balance keys `moved_repose_max_diff` 0.19 and
+  `moved_crest_max_diff` 0.08 (defaults and `balance.tres`).
+- **`blade_push` spreads each cell's snow over `PUSH_BAND`** (five points `min(0.2, push_dist / 3)`
+  apart, centred at push_dist + the 0–12 cm draw), still **one `push_rng` draw per moved cell**.
+  **§11's back-drag** uses `blade_push`, so its snow is marked and spread too; keep the draw count.
+  The dirty/relax rectangle now covers every cell the band reaches.
+- **The blade guard's tiles are queued again** once it no longer covers them, and all of them
+  `Snow.GUARD_SETTLE_STEPS` (45) relaxation steps after it expires without being set again
+  (`guard_tiles`, `guard_settle`, `_release_guard`). The wait keeps RMB clicking from pushing more
+  than holding (`test_s2_autoclick_capped`): don't shorten it without rerunning that test. A new
+  blade calls `set_blade_guard` every frame as before and gets this for free. A test or bench that
+  wants a pushed pile settled waits ≥ 50 frames after the push before `relax_until_stable()` (which
+  doesn't step the guard while the queue is empty).
+- **Saves:** `serialize_pending()` has `"soft"` (zstd bytes, base64); a save without it has no
+  marks (older saves settle as before). In the v3 round-trip test (`test_s7_v3_save_round_trips`).
+- **`SnowRenderer.mesh_us_last`** (µs of chunk mesh updates last frame) and perf.tscn's
+  "snow counters" line after each scenario (relaxation and mesh µs p95/max, updates a frame).
+- **`shot.gd --pile=hand|plow|pickup|throws [--pile_frames=n]`** (with `--setup=medium
+  --fixed-fps 60`); shots in `docs/polish6/shots/09-smooth-piles/`.
+- **§9's tests** in test_polish6: `test_s9_pushed_piles_settle_at_the_new_step` (hand and plow, the
+  Done-when), `test_s9_shoved_and_thrown_piles_settle_at_the_new_step`,
+  `test_s9_blade_push_spreads_over_a_band` (each push distance on fresh ground, 36 cells),
+  `test_s9_whose_snow_is_marked`, `test_s9_emptied_cells_lose_their_marks` (a box's snap, melting,
+  a floor-0 scrape; wading's snow there afterwards settles exactly as on ground never marked). A
+  change to the blade deposit, the relaxation, the guard or the marks must keep them passing;
+  `_s9_pile` mirrors the rule.

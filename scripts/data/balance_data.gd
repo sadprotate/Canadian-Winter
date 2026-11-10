@@ -84,6 +84,12 @@ extends Resource
 @export var initial_road_depth_year1: float = 0.55
 @export var initial_depth_later: float = 0.35
 @export var repose_max_diff: float = 0.23
+## Polish 6 §9: loose snow the player moved (pushed, plowed, shoved, thrown) settles at this step
+## per 25 cm cell (≈ 37°, a little lower than repose_max_diff's 43°) …
+@export var moved_repose_max_diff: float = 0.19
+## … and a cell of it stands at most this far (m) above the mean of its two neighbours along an
+## axis: piles and berms round off at their tops instead of peaking.
+@export var moved_crest_max_diff: float = 0.08
 ## Compaction of deep untouched snow per day (fraction of the depth above settle_threshold).
 ## 0 = off: every snowfall stays on top of the snow already on the ground.
 @export var settle_rate_per_day: float = 0.0

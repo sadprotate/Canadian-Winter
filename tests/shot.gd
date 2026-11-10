@@ -153,6 +153,15 @@ extends Node
 ##   --street_scoop=1         (§3) a shovel's scoop on the boulevard just short of the curb in front
 ##                            of the player's house (Maple Street), then the snow settled; prints the
 ##                            spot (aim --cam/--look at it)
+##   --pile=hand|plow|pickup|throws  (§9) a pile made with the real controls, then settled, the
+##                            camera on it unless --cam is given: a berm pushed (RMB, walking) with
+##                            the wide pusher across the front yard; a pile pushed along Maple Street
+##                            by the pickup with its plow down, the truck then backed off; the pickup
+##                            (no plow) shoving along Maple Street, then backed off; or 20 standard-
+##                            shovel loads landed on one spot of the front yard (the throw's landing
+##                            op). Use with --setup=medium (35 cm everywhere) and --fixed-fps 60;
+##                            --pile_frames=n pushes (default 90) / drives (600) that long; prints
+##                            the pile's top
 
 var args := {}
 var game: Node = null
@@ -603,6 +612,8 @@ func _setup_after_spawn() -> void:
 		_crew_watch(w)
 	if args.has("pickup_bank"):
 		await _pickup_bank(w)
+	if args.has("pile"):
+		await _pile(w)
 	if args.has("cam") or args.has("lotcam") or args.has("hcam"):
 		_cam = Camera3D.new()
 		_cam.fov = float(args.get("fov", "62"))
@@ -763,6 +774,127 @@ func _pickup_bank(w) -> void:
 		var fx := v.global_position.x + v.data.length * 0.5
 		args["cam"] = "%f,2.4,%f" % [fx + 5.5, lane - 5.2]
 		args["look"] = "%f,0.6,%f" % [fx - 1.2, lane + 0.3]
+
+
+## Polish 6 §9: --pile=hand|plow|pickup|throws — a pile made with the real controls (see the top),
+## settled, then framed from the side (unless --cam). The same steps on any build since round 5.
+func _pile(w) -> void:
+	var kind := str(args["pile"])
+	var lot := Layout.player_lot
+	var inward := Vector2(lot["inward"]).normalized()
+	Game.force_input = true
+	Game.flags["truck_keys"] = true
+	Game.flags["help_vehicle_0"] = true   # no controls panel over the shot
+	Clock.running = false
+	var pl: Player = w.player
+	var frames := int(args.get("pile_frames", "0"))
+	var area := Rect2()
+	var hide_at := Layout.lot_to_world(lot, Layout.gu(lot, 8.0), 6.0)
+	match kind:
+		"hand":
+			var a := Layout.lot_to_world(lot, Layout.gu(lot, -3.5), 1.2)   # beside the walkway: no trees
+			Game.slots = ["wide_pusher", "", "", ""]
+			Game.selected = 0
+			Game.inventory_changed.emit()
+			await _wait(2)
+			pl.teleport(Vector3(a.x, Snow.surface_height(a.x, a.y) + 0.05, a.y), atan2(-inward.x, -inward.y))
+			pl.pitch = deg_to_rad(-30.0)
+			await get_tree().physics_frame
+			Input.action_press("secondary")
+			Input.action_press("move_forward")
+			for i in range(frames if frames > 0 else 90):
+				await get_tree().physics_frame
+			Input.action_release("move_forward")
+			Input.action_release("secondary")
+			await _wait(4)
+			area = Rect2(a - Vector2(3.0, 3.0), Vector2(6.0, 6.0)).merge(Rect2(Vector2(pl.global_position.x, pl.global_position.z) - Vector2(3.0, 3.0), Vector2(6.0, 6.0)))
+		"plow", "pickup":
+			var lane := 84.95
+			var id := "pickup_plow" if kind == "plow" else "pickup"
+			if kind == "pickup":
+				# As perf.tscn's pickup scenario: a bare run-up, then 60 cm (under its bog depth).
+				Snow.set_rect(Rect2(0, 79, 24, 8), 0.03)
+				Snow.set_rect(Rect2(24, 79, 68, 8), 0.6)
+				Snow.relax_until_stable()
+			var e := {"uid": Game.uid(), "id": id, "pos": Vector3(6.0, 0, lane), "yaw": -PI * 0.5, "snow": 0.0}
+			Game.vehicles.append(e)
+			var v: Vehicle = w.spawn_vehicle_node(e)
+			await get_tree().physics_frame
+			await get_tree().physics_frame
+			v.enter_vehicle(pl)
+			await get_tree().physics_frame
+			if v.data.has_plow and not v.tool_on:
+				v._toggle_tool()
+			Input.action_press("veh_accelerate")
+			var still := 0
+			for i in range(frames if frames > 0 else 600):
+				await get_tree().physics_frame
+				still = still + 1 if absf(v.speed) < 0.05 and i > 60 else 0
+				if still > 30:
+					break
+			Input.action_release("veh_accelerate")
+			var front := v.global_position.x + v.data.length * 0.5
+			if v.tool_on:
+				v._toggle_tool()
+			Input.action_press("veh_reverse")
+			for i in range(110):
+				await get_tree().physics_frame
+			Input.action_release("veh_reverse")
+			Input.action_press("veh_brake")
+			await _wait(40)
+			Input.action_release("veh_brake")
+			v.exit_vehicle()
+			await get_tree().physics_frame
+			# The truck out of the way, behind the camera.
+			v.global_position = Vector3(2.0, v.global_position.y, 81.0)
+			v.set_physics_process(false)
+			area = Rect2(6.0 if kind == "plow" else 24.0, 79.0, maxf(front - 6.0, 4.0) + 4.0, 8.0)
+		"throws":
+			var a2 := Layout.lot_to_world(lot, Layout.gu(lot, -3.5), 5.5)
+			var load := 0.13      # a standard shovel's full load (polish 6 §8.2)
+			var rng := RandomNumberGenerator.new()
+			rng.seed = 4
+			for k in range(20):
+				Snow.deposit(a2 + Vector2(rng.randf_range(-0.2, 0.2), rng.randf_range(-0.2, 0.2)), load, 0.25 + load * 2.5, true)
+				for f in range(20):
+					await get_tree().process_frame
+			area = Rect2(a2 - Vector2(3.0, 3.0), Vector2(6.0, 6.0))
+	pl.teleport(Vector3(hide_at.x, Snow.surface_height(hide_at.x, hide_at.y) + 0.05, hide_at.y))
+	await _wait(60)      # a blade guard runs out (polish 6 §9: its tiles are queued 0.75 s later)
+	Snow.relax_until_stable()
+	await _wait(4)
+	# The pile's top in the area.
+	var top := -1.0
+	var tp := Vector2.ZERO
+	for z in range(Snow.cell_z(area.position.y), Snow.cell_z(area.end.y)):
+		for x in range(Snow.cell_x(area.position.x), Snow.cell_x(area.end.x)):
+			var hh := Snow.cell_surface(x, z)
+			if hh > top:
+				top = hh
+				tp = Vector2((x + 0.5) * Snow.CELL, (z + 0.5) * Snow.CELL)
+	print("pile %s: top %.2f m at (%.2f, %.2f)" % [kind, top, tp.x, tp.y])
+	if not args.has("cam"):
+		var side := (Layout.lot_to_world(lot, Layout.gu(lot, -1.0), 0.0) - Layout.lot_to_world(lot, 0.0, 0.0)).normalized()
+		var c := Vector2.ZERO
+		var hgt := top + 1.3
+		match kind:
+			"hand":
+				c = tp - inward * 3.8 + side * 2.8
+			"throws":
+				# The same view on any build: low, across the yard from the walkway's far side.
+				tp = Layout.lot_to_world(lot, Layout.gu(lot, -3.5), 5.5)
+				c = tp - side * 5.0
+				hgt = top + 0.2
+			"plow":
+				c = tp + Vector2(-5.5, -4.0)
+			"pickup":
+				# The same view on any build: along the shove from behind its start, north side.
+				tp = Vector2(31.0, 84.8)
+				top = 0.9
+				c = Vector2(19.5, 81.2)
+				hgt = 3.1
+		args["cam"] = "%f,%f,%f" % [c.x, hgt, c.y]
+		args["look"] = "%f,%f,%f" % [tp.x, top - 0.5, tp.y]
 
 
 ## --pose=hold|scoop|push|toss [--load=0.5] [--toss=0.5]: freeze the hands / tool in a pose.

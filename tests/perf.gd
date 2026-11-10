@@ -36,6 +36,9 @@ extends Node
 ## the player in the front yard beside the driveway, at 1× and at fast-forward (capped at 2× in the
 ## snow). On older builds the same storm without the heating (the upgrades do nothing, no pad).
 ##   -- --only=heat    runs just the world and the heating
+## Polish 6 §9: after each scenario's line, a "snow counters" line from the snow renderer: the
+## relaxation's µs a frame (relax_us_last, budget relax_usec) and the chunk meshes' (mesh_us_last,
+## budget mesh_usec; -1 on a build without that counter), p95 and max, and chunk updates a frame.
 
 ## Polish 4 §1: the highest hourly snowfall of any major event (seed 2024 and 20 other seeds,
 ## winters 1–5) once storms open with a lead-in (pass 3: 52.2 cm/h). Measured at the game's own
@@ -537,6 +540,11 @@ func _ff_sweep(pl: Player, p: Vector2) -> void:
 func _measure(label: String, frames: int, step: Callable) -> void:
 	var vals: Array = []
 	var chunk_updates := 0
+	# Polish 6 §9: the snow renderer's own per-frame counters — relaxation µs (budget relax_usec),
+	# chunk mesh update µs (budget mesh_usec; -1 on a build without the counter) and updates.
+	var relax_us: Array = []
+	var mesh_us: Array = []
+	var upd: Array = []
 	var last := Time.get_ticks_usec()
 	for i in range(frames):
 		step.call(i)
@@ -544,7 +552,13 @@ func _measure(label: String, frames: int, step: Callable) -> void:
 		var now := Time.get_ticks_usec()
 		vals.append((now - last) / 1000.0)   # wall-clock frame time (scripts + physics, no GPU)
 		last = now
-		chunk_updates += (world.snow_renderer if world else menu.get("_sr")).updates_last_frame
+		var sr: Node = world.snow_renderer if world else menu.get("_sr")
+		chunk_updates += sr.updates_last_frame
+		var ru = sr.get("relax_us_last")
+		var mu = sr.get("mesh_us_last")
+		relax_us.append(int(ru) if ru != null else -1)
+		mesh_us.append(int(mu) if mu != null else -1)
+		upd.append(int(sr.updates_last_frame))
 	var worst := 0
 	for k in range(vals.size()):
 		if vals[k] > vals[worst]:
@@ -556,3 +570,9 @@ func _measure(label: String, frames: int, step: Callable) -> void:
 		avg += x
 	avg /= vals.size()
 	print("%-28s avg %5.2f ms  p95 %5.2f ms  max %6.2f ms @frame %d  (chunk mesh updates %d, relax queue %d)" % [label, avg, vals[int(vals.size() * 0.95)], vals[vals.size() - 1], worst_frame, chunk_updates, Snow.relax_pending()])
+	relax_us.sort()
+	mesh_us.sort()
+	upd.sort()
+	var q := func(a: Array) -> int: return a[int(a.size() * 0.95)]
+	print("  snow counters: relaxation µs p95 %d max %d, chunk mesh µs p95 %d max %d, chunk updates a frame p95 %d max %d" % [
+		q.call(relax_us), relax_us[relax_us.size() - 1], q.call(mesh_us), mesh_us[mesh_us.size() - 1], q.call(upd), upd[upd.size() - 1]])

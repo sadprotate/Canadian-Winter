@@ -17,6 +17,7 @@ var sync_budget := 1           # snowfall chunk syncs per frame
 var mesh_usec := 3500          # time budget for chunk mesh updates per frame (µs)
 var updates_last_frame := 0
 var relax_us_last := 0         # polish 5 §9: µs the last sim_step spent on relaxation
+var mesh_us_last := 0          # polish 6 §9: µs the last frame spent on chunk mesh updates
 var detail := 1                # 0 low, 1 medium, 2 high (from settings)
 
 var _mi: Array = []            # MeshInstance3D per chunk
@@ -132,6 +133,7 @@ func _update_lods(cam_pos: Vector3) -> void:
 
 func _update_dirty(cam_pos: Vector3) -> void:
 	updates_last_frame = 0
+	mesh_us_last = 0
 	# Collect candidates: LOD changes and dirty chunks, nearest first.
 	var cands := []
 	for ci in range(Snow.CW * Snow.CH):
@@ -158,6 +160,7 @@ func _update_dirty(cam_pos: Vector3) -> void:
 			if r.size.x >= 0:
 				_partial(ci, r)
 		updates_last_frame += 1
+	mesh_us_last = Time.get_ticks_usec() - t0
 
 
 func _indices(step: int) -> PackedInt32Array:
