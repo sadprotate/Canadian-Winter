@@ -77,3 +77,6 @@ Bid on contracts → sleep → wake up and check the weather → do the contract
 ## What's in the game now
 
 <!-- Ask Opus: "Fill in the 'What's in the game now' section of GAME.md from the code: the main systems and features, one line each, with a link to each feature's doc in docs/features/ where one exists." Claude keeps this section up to date after each polish. -->
+
+- The truck and its plow: a new game starts with the player's pickup truck with its front plow in the driveway, locked until the keys are found. With the blade up it drives through deep snow like a pickup; with the blade down it plows. The plow isn't sold. ([vehicles](docs/features/vehicles.md))
+- The blade keys: Up / Down raise and lower the blade on every plow; reversing with the blade down drags snow back (back-drag). All keys are rebindable. ([vehicles](docs/features/vehicles.md), [controls](docs/features/controls.md))

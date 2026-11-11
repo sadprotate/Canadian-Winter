@@ -36,6 +36,12 @@ None before starting. Design choices made from the brief and recorded in the sec
 - The review fixes changed `test_s13_ownership_and_the_front_plow` and `test_s13_upgrades_app` after
   the §10 commit (committed with §11).
 
+**Final check (after §11):** import clean (exit 0, no errors); parse check 92 scripts, 0 errors;
+the full suite once: **255 passed, 0 failed** (1,979 s), no engine errors or warnings in the log. It
+covers every item above (the menu tests after the shoveller moved, every test looping over the
+actions, the push and blade tests, all fixture suites). Weather untouched: `weather_truth` not
+needed. The known flaky `test_menu_fixture_load_is_the_same_as_direct` passed in the full run.
+
 ## Issues
 
 - §10 shots: three images instead of two. The menu's home shot is kept as a reference for the
