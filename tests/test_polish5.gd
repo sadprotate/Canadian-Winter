@@ -6530,8 +6530,9 @@ func test_s13_ownership_and_the_front_plow() -> void:
 	truck.global_position = Vector3(lot.get_center().x, 0.0, lot.get_center().y)
 	await _frames(4)
 	var ids := Game.vehicles.map(func(v): return str(v["id"]))
-	runner.check(Game.has_upgrade(ItemUpgrades.PLOW_ID) and pe["id"] == "pickup_plow" and o["status"] == "collected", "§13 …an old save's plow order: driven into the store lot, its pickup gets its plow %s" % str(ids))
-	runner.check(Economy.can_buy(plow) == "Already owned.", "§13 …and the plow is bought once (\"%s\")" % Economy.can_buy(plow))
+	runner.check(Game.has_upgrade(ItemUpgrades.PLOW_ID) and pe["id"] == "pickup_plow" and o["status"] == "collected" and Game.vehicles.size() == nveh + 1 and ids.count("pickup_plow") == ids.size(),
+		"§13 …an old save's plow order: driven into the store lot, its pickup gets its plow — no other truck, every truck plowed %s" % str(ids))
+	runner.check(Economy.can_buy(plow) == "Already owned." and Game.vehicles.size() == nveh + 1, "§13 …and the plow is bought once (\"%s\")" % Economy.can_buy(plow))
 	runner.check(Economy.can_buy(ItemUpgrades.level_id(&"pickup_plow", &"plow_width", 1)) == "", "§13 …the plow's own upgrades are for sale")
 	# The heated cab: for the ATV (no cab), Survival only; bought, it's that vehicle type's flag.
 	var cab := ItemUpgrades.level_id(&"atv_blade", &"cab", 1)
@@ -6759,10 +6760,9 @@ func test_s13_upgrades_app() -> void:
 		for k in range(0, grid.get_child_count(), 5):
 			names.append((grid.get_child(k) as Label).text)
 		var want_names := []
-		var grp: Array = ComputerUI.upgrade_groups().filter(func(g): return String(g[0]) == item)[0]
-		for member in grp:
+		for member in [StringName(item)] + ([&"pickup_plow"] if item == "pickup" else []):
 			for t in ItemUpgrades.tracks(member):
-				if ItemUpgrades.track_shown(member, t):
+				if t != &"front_plow":      # polish 7 §10: no longer sold
 					want_names.append(ItemUpgrades.TRACKS[t]["name"])
 		if item == truck_card and want_names != [ItemUpgrades.TRACKS[&"plow_width"]["name"], ItemUpgrades.TRACKS[&"plow_power"]["name"]]:
 			bad.append("%s: the truck's own tracks only %s" % [item, str(want_names)])

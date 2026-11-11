@@ -14,9 +14,13 @@
   - A bank above the grille is a wall.
   - The status line says what is in the way, with the numbers.
 - **Plows** (your truck, the ATV, the tractor with blade, the plow truck, the grader):
-  - The blade toggle (left mouse) raises or lowers the blade.
+  - Down lowers the blade and Up raises it. The blade toggle (left mouse) does either.
   - The angle keys turn it.
   - Blade down, driving forward pushes the snow ahead into a berm.
+  - **Blade down, reversing drags the snow back with you (back-drag).** Drive up to a garage door or
+    a wall with the blade up, lower it, and back away: the snow comes away with the blade. Raise the
+    blade or drive forward and it stays where it is as a pile, which you can then push away. The status
+    line reads "Blade down — dragging".
 - **Blowers** (the tractor with blower, the rotary blower) throw the snow through a turnable chute. The
   **dump truck** dumps its bed at the municipal snow dump or anywhere else.
 - The store sells the other vehicles. Your truck and its plow are your own: neither the plow nor the
@@ -58,6 +62,37 @@
   - the berm ahead slows the vehicle (`blade_capacity`), and caps the bank check (`clearance × 1.5`).
   - The `vehicle_blade_width` and `vehicle_clear_speed` upgrades (`ItemUpgrades.mult`) widen the blade
     and lower its drag.
+- **Back-drag** (blade down, reversing: `speed < 0` and the frame's travel backward):
+  - `back_drag()` calls `Snow.blade_push` with the face turned toward the vehicle.
+  - The band is the frame's reverse travel + 0.1 m, the same rule as a push's.
+  - The snow lands `DRAG_CAST` (0.3 m) behind the blade: 0.1–0.62 m with blade_push's band and its
+    draw. That keeps it against the back face and clear of every blade vehicle's front wheels, which
+    stand 1 m or more behind the blade.
+  - `player_guard` guards the ground it uncovers, on the blade's far side.
+  - Polish 6 §9's rules hold: the spread band, `soft` marks, one `push_rng` draw per moved cell.
+    Volume is exact.
+  - The berm (the dragged pile) slows it like a push: while dragging, the reverse limit is also capped
+    at `reverse_speed × work_drag`.
+  - Snow the blade's ends don't cover stays beside its path, as a plow's windrow does.
+  - `dragging` is true for the frame, for the status line and the HUD line ("— dragging").
+- **Standing still** with the blade down, the blade holds the side it last worked (`_drag_side`):
+  - After a push, it is the push's 0.1 m band, as before. Lowering the blade starts there.
+  - After a back-drag, it is the drag's band on the uncovered ground, so the pile stays against the
+    blade's back and nothing goes back through it.
+- **Driving forward off a dragged pile** (blade down, `_leaving_drag`):
+  - The push takes only the ground the blade has crossed since it stopped dragging (`_drag_stop`),
+    half a cell clear of that line, because the cell on the line holds some of the pile.
+  - Its guard reaches a cell past the face, so the pile's front can't slump into the gap and be
+    carried off.
+  - Once the blade is a push's margin past the line, it pushes as always. The pile stays where it
+    was.
+- **Blade keys:** `veh_blade_up` / `veh_blade_down` (see [controls.md](controls.md)), read in `_input`
+  before the GUI.
+  - `set_blade(down)` changes the blade only when it isn't already that way, then `_toggle_tool()`
+    gives the click and "Blade down" / "Blade up".
+  - `has_blade()` is a plow with no dump bed. On the plain pickup, the blower vehicles and the dump
+    truck the keys do nothing.
+  - `veh_tool` still toggles: it raises or lowers a blade, runs a blower, dumps a bed.
 - **Volume** is conserved: every snow move is `Snow.blade_push` (or the blowers' intake and thrown
   snow). Only the dump truck's dump at the municipal lot removes snow (ledgered).
 - **The front plow upgrade** (`ItemUpgrades.PLOW_ID`, the `front_plow` track) is no longer sold:
@@ -108,6 +143,15 @@
 - `--only=gameplay --test=vehicle_plow`, `--test=plow_pushes`.
 - `--only=polish5 --test=test_s13_`: the front plow isn't sold; the Upgrades card.
 - `--only=polish4 --test=photo`, `--only=polish5 --test=s4_photo`: the photo.
+- `--only=polish7 --test=test_s11_`:
+  - the blade keys on every vehicle;
+  - one back-drag step: the draws, the band, the marks, the volume;
+  - back-drag from the garage door: the snow away from the door, the volume exact, the slowdown,
+    standing still, driving forward, the pile left after the blade lifts;
+  - driving off the pile from five starts across a cell.
+- Pushing unchanged: `--only=gameplay --test=vehicle_plow`, `--test=plow_pushes`,
+  `--only=snow --test=test_blade_push`, `--only=polish6 --test=test_s3_blade`, `--test=test_s9_`.
+- Shots: `tests/shot.gd --back_drag=frames [--drag_lift=1]`.
 
 ## Decisions
 
@@ -118,6 +162,13 @@
     either way. Before this, it used the generic path: stuck from 39 cm and walled from 65 cm.
   - The shove's cast scales with the truck's width.
   - No balance value changed.
+- Round 7 §11: Up and Down raise and lower the blade.
+  - Back-drag uses the existing blade op, with the face turned toward the vehicle.
+  - Standing still, the blade holds the side it last worked. Otherwise a stopped truck's push would
+    send the dragged pile back through the blade.
+  - Driving off a dragged pile, the blade leaves the pile: the brief's "drive forward, and the snow
+    stays where it is".
+  - Dragging caps the reverse speed by the berm's drag: the old reverse limit hid it below about 3 m³.
 
 ## Known issues
 

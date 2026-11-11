@@ -164,6 +164,13 @@ extends Node
 ##                            op). Use with --setup=medium (35 cm everywhere) and --fixed-fps 60;
 ##                            --pile_frames=n pushes (default 90) / drives (600) that long; prints
 ##                            the pile's top
+## Polish 7 additions:
+##   --back_drag=frames       (§11) the truck (the pickup with its plow) up to the garage door with
+##                            snow piled against the door, the blade lowered (set_blade, as its
+##                            Down key does), reversing `frames` frames (default 70): back-dragging,
+##                            held there for the shot; --drag_lift=1 then raises the blade, backs off and
+##                            settles the snow: the pile left. Without --cam the camera looks across
+##                            the driveway from the lawn. Use with --unlock=1 and --fixed-fps 60
 
 var args := {}
 var game: Node = null
@@ -616,6 +623,8 @@ func _setup_after_spawn() -> void:
 		await _pickup_bank(w)
 	if args.has("pile"):
 		await _pile(w)
+	if args.has("back_drag"):
+		await _back_drag(w)
 	if args.has("cam") or args.has("lotcam") or args.has("hcam"):
 		_cam = Camera3D.new()
 		_cam.fov = float(args.get("fov", "62"))
@@ -776,6 +785,58 @@ func _pickup_bank(w) -> void:
 		var fx := v.global_position.x + v.data.length * 0.5
 		args["cam"] = "%f,2.4,%f" % [fx + 5.5, lane - 5.2]
 		args["look"] = "%f,0.6,%f" % [fx - 1.2, lane + 0.3]
+
+
+## Polish 7 §11: --back_drag=frames [--drag_lift=1] (see the top).
+func _back_drag(w) -> void:
+	var hi := Layout.house_info(Layout.player_lot)
+	var drv: Rect2 = hi["driveway"]
+	var door_z: float = (hi["garage"] as Rect2).position.y
+	var cx := drv.get_center().x
+	Game.force_input = true
+	Game.flags["truck_keys"] = true
+	Game.flags["help_vehicle_%d" % VehicleData.Kind.PICKUP_PLOW] = true   # no controls panel over the shot
+	Clock.running = false
+	Snow.set_rect(Rect2(drv.position.x - 3.0, door_z - 14.0, drv.size.x + 6.0, 14.0), 0.0)
+	Snow.set_rect(Rect2(cx - 1.0, door_z - 1.4, 2.0, 1.4), 0.8)     # as test_s11_back_drag_from_the_garage_door
+	Snow.relax_until_stable()
+	for n in w.vehicle_nodes():          # the truck parked in the driveway: put up to the door instead
+		Game.vehicles.erase((n as Vehicle).entry)
+		n.queue_free()
+	await get_tree().physics_frame
+	var vd: VehicleData = Catalog.vehicle(&"pickup_plow")
+	var reach := -float(VehicleModels.build(vd)["blade_z"])
+	var e := {"uid": Game.uid(), "id": "pickup_plow", "pos": Vector3(cx, 0, door_z - 0.15 - reach), "yaw": PI, "snow": 0.0}
+	Game.vehicles.append(e)
+	var v: Vehicle = w.spawn_vehicle_node(e)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	v.enter_vehicle(w.player)
+	await get_tree().physics_frame
+	v.set_blade(true)
+	Input.action_press("veh_reverse")
+	for i in range(int(args["back_drag"]) if str(args["back_drag"]).is_valid_int() else 70):
+		await get_tree().physics_frame
+	Input.action_release("veh_reverse")
+	if args.has("drag_lift"):
+		v.set_blade(false)
+		Input.action_press("veh_reverse")
+		for i in range(50):
+			await get_tree().physics_frame
+		Input.action_release("veh_reverse")
+		Input.action_press("veh_brake")
+		await _wait(60)
+		Input.action_release("veh_brake")
+		Snow.relax_until_stable()
+		await _wait(4)
+	else:
+		v.set_physics_process(false)   # hold it there, dragging, for the shot
+	var bz := v.global_position.z + reach
+	print("back_drag: blade at z %.2f (the door at %.2f), status '%s', snow at the door %.3f m³; in the blade's swath: door side %.3f, the 1.5 m behind it %.3f m³" % [bz, door_z, v.status_text, Snow.volume_in_rect(Rect2(cx - 1.2, door_z - 1.0, 2.4, 1.0)),
+		Snow.volume_in_rect(Rect2(cx - 1.2, bz + Snow.CELL, 2.4, maxf(door_z - bz - Snow.CELL, 0.0))), Snow.volume_in_rect(Rect2(cx - 1.2, bz - 1.5, 2.4, 1.5))])
+	if not args.has("cam"):
+		args["cam"] = "%f,2.6,%f" % [drv.position.x - 3.2, door_z - 6.5]
+		args["look"] = "%f,0.5,%f" % [cx + 0.6, door_z - 2.4]
 
 
 ## Polish 6 §9: --pile=hand|plow|pickup|throws — a pile made with the real controls (see the top),

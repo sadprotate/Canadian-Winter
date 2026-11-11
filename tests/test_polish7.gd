@@ -308,3 +308,469 @@ func test_s10_starting_truck_and_contracts() -> void:
 	runner.check(Contracts.listing_lock_text(lr) == "Needs a plow or a blower vehicle", "§10 …without it, it is (\"%s\")" % Contracts.listing_lock_text(lr))
 	Game.vehicles.assign(kept)
 	await _unload()
+
+
+# =============================================================================
+# §11 Blade up/down, push and pull
+# =============================================================================
+
+## The vehicles with a blade the player drives (Decision 2), and those without one.
+const S11_BLADES := ["pickup_plow", "atv_blade", "tractor_blade", "plow_truck", "grader"]
+const S11_NO_BLADE := ["pickup", "tractor_blower", "rotary_blower", "dump_truck"]
+
+
+## A real key press and release (through the viewport: _input, the GUI, _unhandled_input), then a
+## pause that keeps the presses under the per-second cap (Settings.accept_press).
+func _s11_key(code: Key) -> void:
+	for down in [true, false]:
+		var e := InputEventKey.new()
+		e.physical_keycode = code
+		e.keycode = code
+		e.pressed = down
+		Input.parse_input_event(e)
+		await _frames(2)
+	await _frames(12)
+
+
+func _s11_action(action: String, down: bool) -> InputEventAction:
+	var e := InputEventAction.new()
+	e.action = action
+	e.pressed = down
+	return e
+
+
+## The key an action is bound to now (its first binding).
+func _s11_bound(action: String) -> Key:
+	var e := Settings.decode(String(Settings.bindings[action][0]))
+	return (e as InputEventKey).physical_keycode
+
+
+## The settings file as it is (or null), to put back after a test that writes it (rebind saves).
+func _s11_backup() -> Variant:
+	if not FileAccess.file_exists(Settings.PATH):
+		return null
+	return FileAccess.get_file_as_bytes(Settings.PATH)
+
+
+func _s11_restore(saved: Variant) -> void:
+	if saved == null:
+		if FileAccess.file_exists(Settings.PATH):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(Settings.PATH))
+	else:
+		var f := FileAccess.open(Settings.PATH, FileAccess.WRITE)
+		f.store_buffer(saved)
+		f.close()
+	Settings.load_controls()
+
+
+## The actions: in the vehicle context right after the blade toggle, Up and Down by default, capped,
+## no conflict anywhere; their labels from the input map.
+func test_s11_the_actions() -> void:
+	var keys: Array = Settings.ACTIONS.keys()
+	var at := keys.find("veh_tool")
+	runner.check(keys[at + 1] == "veh_blade_up" and keys[at + 2] == "veh_blade_down"
+		and Settings.ACTIONS["veh_blade_up"][0] == "Raise the blade" and Settings.ACTIONS["veh_blade_down"][0] == "Lower the blade"
+		and Settings.ACTIONS["veh_blade_up"][1] == "vehicle" and Settings.ACTIONS["veh_blade_down"][1] == "vehicle"
+		and Settings.ACTIONS["veh_blade_up"][2] == ["key:%d" % KEY_UP] and Settings.ACTIONS["veh_blade_down"][2] == ["key:%d" % KEY_DOWN],
+		"§11 \"Raise the blade\" (Up) and \"Lower the blade\" (Down), vehicle actions beside the blade toggle")
+	runner.check(Settings.RATE_LIMITED.has("veh_blade_up") and Settings.RATE_LIMITED.has("veh_blade_down"), "§11 …both capped per second (accept_press)")
+	var bad := []
+	for place in Settings.PLACES:
+		if not Settings.conflicts(place).is_empty():
+			bad.append("%s %s" % [place, str(Settings.conflicts(place))])
+	runner.check(bad.is_empty() and Settings.live_actions("vehicle").has("veh_blade_up") and Settings.live_actions("vehicle").has("veh_blade_down"),
+		"§11 …live in a vehicle, no conflict anywhere %s; shown as \"%s\" / \"%s\"" % [str(bad), Settings.action_label("veh_blade_up"), Settings.action_label("veh_blade_down")])
+
+
+## Down lowers and Up raises the blade on every vehicle with one; a press that changes nothing does
+## nothing; the blade toggle still works; the keys do nothing on the vehicles without a blade.
+func test_s11_up_and_down() -> void:
+	await _world()
+	var up := _s11_bound("veh_blade_up")
+	var dn := _s11_bound("veh_blade_down")
+	var bad := []
+	for id in S11_BLADES:
+		var v := await _truck(id, 40.0)
+		v.set_status("", 0.0)
+		await _s11_key(dn)
+		var lowered: bool = v.tool_on and v.status_text == "Blade down"
+		v.set_status("", 0.0)
+		await _s11_key(dn)
+		var again: bool = v.tool_on and v.status_text == ""
+		var hud_down := v.hud_text()
+		await _s11_key(up)
+		var raised: bool = not v.tool_on and v.status_text == "Blade up"
+		v.set_status("", 0.0)
+		await _s11_key(up)
+		var again2: bool = not v.tool_on and v.status_text == ""
+		Input.parse_input_event(_s11_action("veh_tool", true))
+		await _frames(2)
+		Input.parse_input_event(_s11_action("veh_tool", false))
+		await _frames(12)
+		var toggled: bool = v.tool_on
+		runner.info("%s: %s" % [id, hud_down])
+		if not (lowered and again and raised and again2 and toggled and hud_down.contains("Blade DOWN")):
+			bad.append("%s %s" % [id, str([lowered, again, raised, again2, toggled])])
+		await _drop(v)
+	runner.check(bad.is_empty(), "§11 Down lowers the blade (\"Blade down\"), Up raises it (\"Blade up\"), a second press does nothing, the blade toggle still toggles, on %s %s" % [str(S11_BLADES), str(bad)])
+	var bad2 := []
+	for id in S11_NO_BLADE:
+		var v := await _truck(id, 40.0)
+		v.bed_load = 3.0 if v.data.dump_capacity > 0.0 else 0.0
+		await _s11_key(dn)
+		await _s11_key(up)
+		await _s11_key(dn)
+		if v.tool_on or (v.data.dump_capacity > 0.0 and not is_equal_approx(v.bed_load, 3.0)):
+			bad2.append(id)
+		await _drop(v)
+	runner.check(bad2.is_empty(), "§11 …ignored on %s (the dump truck keeps its load) %s" % [str(S11_NO_BLADE), str(bad2)])
+	await _unload()
+
+
+## Rebound, the new keys work and the old ones do nothing.
+func test_s11_rebinding() -> void:
+	var saved: Variant = _s11_backup()
+	await _world()
+	var old_up := _s11_bound("veh_blade_up")
+	var old_dn := _s11_bound("veh_blade_down")
+	var e_up := InputEventKey.new()
+	e_up.physical_keycode = KEY_PAGEUP
+	var e_dn := InputEventKey.new()
+	e_dn.physical_keycode = KEY_PAGEDOWN
+	var c1 := Settings.rebind("veh_blade_up", e_up)
+	var c2 := Settings.rebind("veh_blade_down", e_dn)
+	var v := await _truck("pickup_plow", 40.0)
+	await _s11_key(old_dn)
+	var old_dn_nothing := not v.tool_on
+	await _s11_key(KEY_PAGEDOWN)
+	var new_dn := v.tool_on
+	await _s11_key(old_up)
+	var old_up_nothing := v.tool_on
+	await _s11_key(KEY_PAGEUP)
+	var new_up := not v.tool_on
+	runner.check(c1 == "" and c2 == "" and old_dn_nothing and new_dn and old_up_nothing and new_up and Settings.action_label("veh_blade_down") == OS.get_keycode_string(KEY_PAGEDOWN),
+		"§11 rebound to %s / %s: they raise and lower the blade, %s and %s do nothing now" % [Settings.action_label("veh_blade_up"), Settings.action_label("veh_blade_down"), OS.get_keycode_string(old_up), OS.get_keycode_string(old_dn)])
+	await _drop(v)
+	_s11_restore(saved)
+	runner.check(Settings.bindings["veh_blade_down"] == ["key:%d" % old_dn], "§11 …the settings file put back")
+	await _unload()
+
+
+## The arrows are also ui_up / ui_down: a focused control (one that would move its focus down)
+## doesn't take the press from the vehicle.
+func test_s11_press_reaches_with_a_control_focused() -> void:
+	await _world()
+	var box := VBoxContainer.new()
+	world.hud.add_child(box)
+	var b1 := Button.new()
+	b1.text = "One"
+	var b2 := Button.new()
+	b2.text = "Two"
+	box.add_child(b1)
+	box.add_child(b2)
+	await _frames(2)
+	var vp := _tree().root.get_viewport()
+	b1.grab_focus()
+	await _s11_key(_s11_bound("veh_blade_down"))
+	var on_foot_moved := vp.gui_get_focus_owner() == b2      # on foot the arrow moves the focus
+	var v := await _truck("pickup_plow", 40.0)
+	b1.grab_focus()
+	await _frames(1)
+	await _s11_key(_s11_bound("veh_blade_down"))
+	var lowered := v.tool_on
+	var kept := vp.gui_get_focus_owner() == b1
+	await _s11_key(_s11_bound("veh_blade_up"))
+	runner.check(on_foot_moved and lowered and kept and not v.tool_on,
+		"§11 a HUD button focused (on foot Down moves its focus: %s): in the vehicle Down still lowers the blade (%s), the focus stays put (%s), Up raises it" % [on_foot_moved, lowered, kept])
+	await _drop(v)
+	box.queue_free()
+	await _unload()
+
+
+## One frame of back-drag on open ground: the snow on the blade's far side within the band moves to
+## its back (toward the vehicle), spread over several rows, none left beyond the face; one push_rng
+## draw per moved cell; marked player-moved; the volume exact.
+func test_s11_back_drag_one_step() -> void:
+	await _world()
+	var v := await _truck("pickup_plow", 40.0)
+	v.exit_vehicle()
+	await _frames(2)
+	var at := Vector2(40.0, 120.0)
+	var fwd := Vector2(0, 1)          # the vehicle faces +z: its far side is +z, its back face −z
+	var hw := 1.2
+	var back := 0.65
+	var band := back + 0.1
+	var area := Rect2(at - Vector2(2.0, 1.5), Vector2(4.0, 3.0))
+	Snow.set_rect(area, 0.0)
+	Snow.set_rect(Rect2(at.x - 1.5, at.y, 3.0, 1.0), 0.2)
+	Snow.relax_until_stable()
+	var sx0 := Snow.cell_x(area.position.x)
+	var sz0 := Snow.cell_z(area.position.y)
+	var before := PackedFloat32Array()
+	var cells := 0
+	var marked := 0
+	for z in range(sz0, Snow.cell_z(area.end.y)):
+		for x in range(sx0, Snow.cell_x(area.end.x)):
+			var i := z * Snow.W + x
+			before.append(Snow.depth[i])
+			marked += Snow.soft[i]
+			var c := Vector2((x + 0.5) * Snow.CELL, (z + 0.5) * Snow.CELL) - at
+			if absf(c.x) <= hw and c.y >= 0.0 and c.y <= band and Snow.surf[i] != Snow.S_BLOCKED and Snow.depth[i] > v.data.blade_floor:
+				cells += 1
+	var v0 := Snow.volume_in_rect(area)
+	Snow.push_rng.seed = Snow.PUSH_SEED + 7
+	var ref := RandomNumberGenerator.new()
+	ref.seed = Snow.PUSH_SEED + 7
+	for k in range(cells):
+		ref.randf()
+	var r := v.back_drag(at, fwd, fwd, hw, back)
+	var rows := {}
+	var beyond := 0.0
+	var unmarked := 0
+	var k2 := 0
+	for z in range(sz0, Snow.cell_z(area.end.y)):
+		for x in range(sx0, Snow.cell_x(area.end.x)):
+			var i := z * Snow.W + x
+			var add := Snow.depth[i] - before[k2]
+			k2 += 1
+			if add <= 1e-6:
+				continue
+			if (z + 0.5) * Snow.CELL - at.y >= 0.0:
+				beyond += add
+			rows[z] = true
+			if Snow.soft[i] != 1:
+				unmarked += 1
+	runner.check(marked == 0 and cells > 20 and Snow.push_rng.state == ref.state, "§11 back-drag: one draw from push_rng per moved cell (%d cells, none marked before)" % cells)
+	runner.check(rows.size() >= 2 and beyond <= 0.0 and unmarked == 0, "§11 …the snow lands behind the blade (toward the vehicle) over %d rows, none beyond its face, all of it marked player-moved (%d unmarked)" % [rows.size(), unmarked])
+	runner.check(float(r["moved"]) > 0.1 and absf(Snow.volume_in_rect(area) - v0) < 1e-5, "§11 …%.3f m³ moved, the volume exact (%.6f → %.6f m³)" % [float(r["moved"]), v0, Snow.volume_in_rect(area)])
+	Game.vehicles.erase(v.entry)
+	v.queue_free()
+	await _unload()
+
+
+## The typical use: the truck up to the garage door, the blade lowered at the door, 3 m in reverse.
+## The snow piled against the door comes away with the blade (volume exact, marked player-moved),
+## slowing the truck as a push does, never stuck. Standing still or driving forward with the blade
+## down leaves the pile where it is; raised, the blade leaves it as a pile, which stays away from the
+## door once settled.
+func test_s11_back_drag_from_the_garage_door() -> void:
+	await _world()
+	var hi := Layout.house_info(Layout.player_lot)
+	var drv: Rect2 = hi["driveway"]
+	var garage: Rect2 = hi["garage"]
+	var door_z := garage.position.y
+	var cx := drv.get_center().x
+	var region := Rect2(drv.position.x - 3.0, door_z - 14.0, drv.size.x + 6.0, 14.0)
+	Snow.set_rect(region, 0.0)
+	# The truck the game started with is parked here: out of the way.
+	var parked: Vehicle = world.vehicle_nodes()[0]
+	Game.vehicles.erase(parked.entry)
+	parked.queue_free()
+	await _frames(2)
+	var near := Rect2(cx - 1.2, door_z - 1.0, 2.4, 1.0)           # the metre at the door, the blade's width
+	var vd: VehicleData = Catalog.vehicle(&"pickup_plow")
+	var info := VehicleModels.build(vd)
+	var reach := -float(info["blade_z"])                           # the blade's centre ahead of the truck's
+	# The same reverse on bare ground, blade up: the speed to beat.
+	var bare_speed := 0.0
+	var v0 := await _truck("pickup_plow", cx, door_z - 0.15 - reach, PI)
+	var p0 := v0.global_position
+	Input.action_press("veh_reverse")
+	for f in range(600):
+		await _frames(1)
+		bare_speed = minf(bare_speed, v0.speed)
+		if v0.global_position.distance_to(p0) >= 3.0:
+			break
+	Input.action_release("veh_reverse")
+	await _drop(v0)
+	# Snow against the door: 1.4 m out (the front wheels stand 1.5 m behind the blade), 0.8 m deep.
+	Snow.set_rect(Rect2(cx - 1.0, door_z - 1.4, 2.0, 1.4), 0.8)
+	Snow.relax_until_stable()
+	var vol0 := Snow.volume_in_rect(region)
+	var near0 := Snow.volume_in_rect(near)
+	# Up to the door, its blade's face 15 cm from it, the blade lowered (Down).
+	var v := await _truck("pickup_plow", cx, door_z - 0.15 - reach, PI)
+	Snow.push_rng.seed = Snow.PUSH_SEED + 12
+	await _s11_key(_s11_bound("veh_blade_down"))
+	var start := v.global_position
+	var moved0 := Snow.stat_player_moved
+	var stuck := 0
+	var saw_status := false
+	var saw_hud := false
+	var drag_speed := 0.0
+	Input.action_press("veh_reverse")
+	for f in range(600):
+		await _frames(1)
+		stuck += 1 if v.stuck else 0
+		saw_status = saw_status or v.status_text == Vehicle.DRAG_STATUS
+		saw_hud = saw_hud or v.hud_text().contains("dragging")
+		drag_speed = minf(drag_speed, v.speed)
+		if v.global_position.distance_to(start) >= 3.0:
+			break
+	Input.action_release("veh_reverse")
+	Input.action_press("veh_brake")           # stopped (still dragging while it slows)
+	for f in range(120):
+		await _frames(1)
+		if absf(v.speed) < 0.01:
+			break
+	Input.action_release("veh_brake")
+	await _frames(2)
+	var dist := v.global_position.distance_to(start)
+	var near1 := Snow.volume_in_rect(near)
+	var hw := vd.blade_width * 0.5
+	# Where the snow in the blade's swath is now: its centre (weighted by depth) along the drive,
+	# from the door. (Snow that slumps past the blade's ends is left beside its path, as a plow's.)
+	var centre := func() -> float:
+		var s := 0.0
+		var w := 0.0
+		for z in range(Snow.cell_z(region.position.y), Snow.cell_z(region.end.y)):
+			for x in range(Snow.cell_x(cx - hw), Snow.cell_x(cx + hw)):
+				var d: float = Snow.depth[z * Snow.W + x]
+				s += d * (door_z - (z + 0.5) * Snow.CELL)
+				w += d
+		return s / maxf(w, 1e-9)
+	var c1: float = centre.call()
+	var bz := v.global_position.z + reach                          # the blade's centre now
+	var blade_out := door_z - bz
+	var soft_pile := 0
+	var pile_cells := 0
+	for z in range(Snow.cell_z(bz - 1.0), Snow.cell_z(bz)):
+		for x in range(Snow.cell_x(cx - 1.0), Snow.cell_x(cx + 1.0)):
+			var i := z * Snow.W + x
+			if Snow.depth[i] > 0.05:
+				pile_cells += 1
+				soft_pile += Snow.soft[i]
+	# The ground the blade uncovered (its swath between the blade and the door, past the blade's cell).
+	var far := Rect2(cx - hw, bz + Snow.CELL, hw * 2.0, door_z - bz - Snow.CELL)
+	var far0 := Snow.volume_in_rect(far)
+	var spill := Snow.volume_in_rect(Rect2(cx - 4.0, bz, 8.0, door_z - bz)) - Snow.volume_in_rect(Rect2(cx - hw, bz, hw * 2.0, door_z - bz))
+	runner.info("bare reverse %.1f km/h, dragging %.1f km/h; moved %.2f m; near the door %.3f → %.3f m³; the swath's snow centre %.2f m from it, the blade %.2f m; %.3f m³ left past the blade's ends" % [-bare_speed * 3.6, -drag_speed * 3.6, dist, near0, near1, c1, blade_out, spill])
+	runner.check(dist >= 3.0 and stuck == 0 and saw_status and saw_hud, "§11 back-drag from the garage door: 3 m in reverse (%.2f m), never stuck by its own pile, \"%s\" on the status line and the HUD" % [dist, Vehicle.DRAG_STATUS])
+	runner.check(near1 < near0 * 0.15 and far0 < far.get_area() * 0.03 and c1 > blade_out and Snow.stat_player_moved > moved0 + 0.5,
+		"§11 …the snow comes away from the door with the blade: %.2f → %.2f m³ in its last metre, %.3f m³ left in the blade's swath (its floor, blade_floor), the swath's snow centred %.2f m out, behind the blade (%.2f m out)" % [near0, near1, far0, c1, blade_out])
+	runner.near(Snow.volume_in_rect(region), vol0, 1e-4, "§11 …the volume exact (%.6f → %.6f m³)" % [vol0, Snow.volume_in_rect(region)])
+	runner.check(pile_cells > 0 and soft_pile == pile_cells and -drag_speed < -bare_speed * 0.95, "§11 …the pile against the blade's back is player-moved snow (%d of %d cells), and it slows the truck as a push does (%.1f km/h, %.1f bare)" % [soft_pile, pile_cells, -drag_speed * 3.6, -bare_speed * 3.6])
+	# Standing still with the blade down adds nothing: the pile stays against the blade's back.
+	await _frames(60)
+	runner.check(v.tool_on and Snow.volume_in_rect(far) <= far0 + 0.1 and v.global_position.distance_to(start) - dist < 0.05,
+		"§11 …then a second standing still, the blade still down: the ground it uncovered stays clear (%.3f → %.3f m³: only the windrows beside it settling; the blade sends none of its pile back)" % [far0, Snow.volume_in_rect(far)])
+	# Driving forward with the blade down leaves the pile where it is: the blade takes the ground it
+	# crosses, not the pile behind the line where it stopped dragging.
+	var behind := Rect2(cx - hw, bz - 2.0, hw * 2.0, 2.0)
+	var ahead_r := Rect2(cx - hw, bz, hw * 2.0, door_z - bz)
+	var behind0 := Snow.volume_in_rect(behind)
+	var ahead0 := Snow.volume_in_rect(ahead_r)
+	var p1 := v.global_position
+	Input.action_press("veh_accelerate")
+	for f in range(240):
+		await _frames(1)
+		if v.global_position.distance_to(p1) >= 1.0:
+			break
+	Input.action_release("veh_accelerate")
+	Input.action_press("veh_brake")
+	for f in range(120):
+		await _frames(1)
+		if absf(v.speed) < 0.01:
+			break
+	Input.action_release("veh_brake")
+	runner.info("forward %.2f m, blade down: behind the drag's stop %.3f → %.3f m³, ahead of it %.3f → %.3f m³" % [v.global_position.distance_to(p1), behind0, Snow.volume_in_rect(behind), ahead0, Snow.volume_in_rect(ahead_r)])
+	runner.check(v.tool_on and v.global_position.distance_to(p1) >= 1.0 and Snow.volume_in_rect(ahead_r) <= ahead0 + 0.15 and Snow.volume_in_rect(behind) >= behind0 - 0.05,
+		"§11 …driving forward 1 m, the blade still down: the pile stays where it is (%.3f → %.3f m³ behind where the drag stopped; %.3f → %.3f m³ ahead of it: the windrows beside the swath settling)" % [behind0, Snow.volume_in_rect(behind), ahead0, Snow.volume_in_rect(ahead_r)])
+	# Raise the blade (Up): the pile stays; settled, it is still away from the door.
+	await _s11_key(_s11_bound("veh_blade_up"))
+	var raised := not v.tool_on and v.status_text == "Blade up"
+	await _frames(60)
+	Snow.relax_until_stable()
+	var c2: float = centre.call()
+	runner.check(raised and Snow.volume_in_rect(near) < near0 * 0.15 and c2 > blade_out - 0.5, "§11 …the blade raised (\"%s\"), the snow settles as a pile away from the door: %.2f m³ in its last metre, the swath's snow centred %.2f m out" % [v.status_text, Snow.volume_in_rect(near), c2])
+	runner.near(Snow.volume_in_rect(region), vol0, 1e-4, "§11 …settled, the volume still exact")
+	await _drop(v)
+	await _unload()
+
+
+## Driving forward off a dragged pile with the blade still down leaves the pile where it is: the
+## blade takes the ground it crosses, not the pile behind the line where it stopped dragging. Where
+## the drag stops against the 25 cm grid decides whether the pile's nearest row lies within a push's
+## 10 cm margin, so the drag starts from five offsets across a cell.
+func test_s11_driving_off_the_pile() -> void:
+	await _world()
+	var hi := Layout.house_info(Layout.player_lot)
+	var drv: Rect2 = hi["driveway"]
+	var door_z: float = (hi["garage"] as Rect2).position.y
+	var cx := drv.get_center().x
+	var region := Rect2(drv.position.x - 3.0, door_z - 14.0, drv.size.x + 6.0, 14.0)
+	var parked: Vehicle = world.vehicle_nodes()[0]
+	Game.vehicles.erase(parked.entry)
+	parked.queue_free()
+	await _frames(2)
+	var vd: VehicleData = Catalog.vehicle(&"pickup_plow")
+	var reach := -float(VehicleModels.build(vd)["blade_z"])
+	var hw := vd.blade_width * 0.5
+	var bad := []
+	var runs := []
+	for k in range(5):
+		Snow.set_rect(region, 0.0)
+		Snow.set_rect(Rect2(cx - 1.0, door_z - 1.4, 2.0, 1.4), 0.8)
+		Snow.relax_until_stable()
+		Snow.push_rng.seed = Snow.PUSH_SEED + 20 + k
+		var vol0 := Snow.volume_in_rect(region)
+		var v := await _truck("pickup_plow", cx, door_z - 0.15 - reach - 0.05 * k, PI)
+		v.set_blade(true)
+		var start := v.global_position
+		Input.action_press("veh_reverse")
+		for f in range(600):
+			await _frames(1)
+			if v.global_position.distance_to(start) >= 2.0:
+				break
+		Input.action_release("veh_reverse")
+		Input.action_press("veh_brake")
+		for f in range(120):
+			await _frames(1)
+			if absf(v.speed) < 0.01:
+				break
+		Input.action_release("veh_brake")
+		await _frames(2)
+		var bz := v.global_position.z + reach
+		var behind := Rect2(cx - hw, bz - 2.0, hw * 2.0, 2.0)
+		var behind0 := Snow.volume_in_rect(behind)
+		var p1 := v.global_position
+		Input.action_press("veh_accelerate")
+		for f in range(240):
+			await _frames(1)
+			if v.global_position.distance_to(p1) >= 1.0:
+				break
+		Input.action_release("veh_accelerate")
+		Input.action_press("veh_brake")
+		for f in range(120):
+			await _frames(1)
+			if absf(v.speed) < 0.01:
+				break
+		Input.action_release("veh_brake")
+		var behind1 := Snow.volume_in_rect(behind)
+		runs.append("%.2f→%.2f" % [behind0, behind1])
+		if not v.tool_on or behind1 < behind0 - 0.01 or absf(Snow.volume_in_rect(region) - vol0) > 1e-4:
+			bad.append("offset %.2f m: %.3f → %.3f m³" % [0.05 * k, behind0, behind1])
+		await _drop(v)
+	runner.check(bad.is_empty(), "§11 driving forward off the dragged pile, the blade down, from five starts across a cell: the pile behind where the drag stopped stays (m³ %s) %s" % [str(runs), str(bad)])
+	await _unload()
+
+
+## The first-drive help lists the blade keys from the input map beside the blade toggle.
+func test_s11_help_lists_the_keys() -> void:
+	await _world()
+	var v := await _truck("pickup_plow", 40.0)
+	var panel: Control = Panels.vehicle_help(world.hud, v)
+	var lines := []
+	for c in panel.find_children("*", "Label", true, false):
+		lines.append((c as Label).text)
+	var i_tool := lines.find(Settings.action_label("veh_tool") + "  lower / raise the blade")
+	var i_keys := lines.find("%s / %s  raise / lower the blade" % [Settings.action_label("veh_blade_up"), Settings.action_label("veh_blade_down")])
+	var i_drag := lines.find("%s, blade down  drag the snow back" % Settings.action_label("veh_reverse"))
+	runner.check(i_tool >= 0 and i_keys == i_tool + 1 and i_drag == i_keys + 1, "§11 the first-drive panel lists the blade keys under the blade toggle, then back-drag: %s" % str(lines.slice(maxi(i_tool, 0), i_drag + 1)))
+	await _frames(2)
+	var box: Control = panel.find_children("*", "PanelContainer", true, false)[0]
+	var screen: Rect2 = world.hud.get_global_rect()
+	runner.check(screen.encloses(box.get_global_rect()), "§11 …the panel fits on the screen (%s in %s)" % [str(box.get_global_rect()), str(screen)])
+	panel.queue_free()
+	await _drop(v)
+	await _unload()

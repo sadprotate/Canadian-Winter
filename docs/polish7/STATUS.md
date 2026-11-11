@@ -8,7 +8,12 @@ Branch `cw-polish7-pg` from `main` (`dcd0b78`). Brief: `POLISH_ROUND_7_PROMPT.md
   street sections; the photo and the menu show the plow. Tested: polish7 §10 (6 new), the §12 tests
   for both trucks, §13, §10/§10b, the keys end to end, the photo, menu and fixture tests
   (`report/s10.md`).
-- [ ] §11 — Blade up/down, push and pull
+- [x] §11 — Blade up/down, push and pull. `veh_blade_up` / `veh_blade_down` (Up / Down, capped,
+  read before the GUI) on every blade vehicle; back-drag with the existing blade op (face to the
+  vehicle, §9's band, marks and draws, volume exact); standing still the blade holds the side it
+  last worked and driving forward leaves the pile; dragging slows the reverse like a push. Tested:
+  polish7 (8 new, 14 in all), the §2 key tests, the push and §3/§9 blade tests, the snow suite; a
+  review pass (4 findings fixed) (`report/s11.md`).
 
 ## Questions
 
@@ -23,6 +28,13 @@ None before starting. Design choices made from the brief and recorded in the sec
 - §10: `Contracts.equipment_capability()` / `listing_needs_vehicle()` changed (contracts are global
   game state). Their tests passed; the full suite covers the rest. The menu's shoveller moved after
   the menu tests ran (visual only): the full suite reruns them.
+- §11: `Vehicle._physics_process`'s plow branch (shared by every blade vehicle) and
+  `Settings.ACTIONS` (two new actions; every test that loops over the actions) changed. The push
+  path runs with the same arguments as before unless the vehicle has just back-dragged; the full
+  suite covers the rest (perf's plow scenario isn't rerun: no new kind of work per frame, as the
+  brief says).
+- The review fixes changed `test_s13_ownership_and_the_front_plow` and `test_s13_upgrades_app` after
+  the §10 commit (committed with §11).
 
 ## Issues
 
@@ -33,3 +45,12 @@ None before starting. Design choices made from the brief and recorded in the sec
   support (Decision 1).
 - The store's plow-fitting message (`store.gd`) names only the `veh_tool` key, not §11's blade keys.
   It is left alone as the brief asks; only an old save's order reaches it.
+- §11 shots: besides the two kept, a too-close first framing and a top-down probe (to check which
+  side of the blade the snow was on) were taken and not kept.
+- §11: a plow's cleared lane keeps the blade's 1.5 cm floor (`blade_floor`), which renders as a light
+  speckled film; behind a back-drag it can read as snow still at the door in a screenshot. Same as a
+  push's lane; not changed.
+- Lowering the blade at a standstill right against a settled pile (raise after a drag, then lower
+  again without moving) still runs the standstill push as before the round, which can throw the
+  pile's nearest row forward. Left as it was ("Standing still adds nothing new"); noted for the
+  playtest.

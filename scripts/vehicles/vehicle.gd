@@ -3,7 +3,8 @@ extends CharacterBody3D
 ## Shared vehicle controller (Part 10) driven by VehicleData. Arcade handling with snow-dependent
 ## traction and resistance, getting stuck, snowbank collision, plows, blowers and the dump truck.
 ## Controls (remappable): W/S drive & brake/reverse, A/D steer, Space handbrake, LMB blade/blower
-## on-off (or dump), Z/C blade angle / chute, V camera, H horn, T radio, E exit.
+## on-off (or dump), Up/Down raise / lower the blade (polish 7 §11), Z/C blade angle / chute,
+## V camera, H horn, T radio, E exit.
 
 # Polish 6 §2: classes added in polish 5, by path rather than global name, so this script still
 # loads when the editor's class cache predates a pull.
@@ -54,6 +55,18 @@ var _land_timer := 0.0
 var status_text := ""
 var _status_t := 0.0
 var blocked_reason := ""     # what stops the vehicle right now ("" when nothing does)
+var dragging := false        # polish 7 §11: the blade down and reversing (back-drag) this frame
+var _drag_side := false      # polish 7 §11: the blade last dragged (reversing) rather than pushed
+var _drag_stop := Vector2.ZERO   # polish 7 §11: the blade's centre when it last dragged
+var _leaving_drag := false   # polish 7 §11: driving forward off a dragged pile (see the push)
+
+## Polish 7 §11: back-drag (the blade down, reversing). The blade takes the snow it passes over on its
+## far side and carries it toward the vehicle: Snow.blade_push with the face turned to the vehicle,
+## the band the frame's reverse travel + 0.1 m (as a push's), the snow landing DRAG_CAST behind the
+## blade (0.1–0.62 m with blade_push's band and draw), against its back face and clear of every
+## blade vehicle's front wheels (1 m behind the blade or more).
+const DRAG_CAST := 0.3
+const DRAG_STATUS := "Blade down — dragging"
 
 
 func setup(vd: VehicleData, e: Dictionary) -> void:
@@ -273,6 +286,30 @@ func _unhandled_input(event: InputEvent) -> void:
 		Notify.push("Radio: " + Weather.radio_bulletin(), Notify.INFO)
 
 
+## Polish 7 §11: the blade keys (Up / Down by default) are read here, before the GUI: the arrows are
+## also Godot's ui_up / ui_down, which a focused control would take as a focus move.
+func _input(event: InputEvent) -> void:
+	if not occupied or not has_blade() or not Game.input_captured() or Game.typing():
+		return
+	var down := event.is_action_pressed("veh_blade_down")
+	if not down and not event.is_action_pressed("veh_blade_up"):
+		return
+	get_viewport().set_input_as_handled()
+	if Settings.accept_press("veh_blade_down" if down else "veh_blade_up"):   # capped per second
+		set_blade(down)
+
+
+## Polish 7 §11: a blade the player raises and lowers (a plow; the dump truck's veh_tool dumps).
+func has_blade() -> bool:
+	return data.has_plow and data.dump_capacity <= 0.0
+
+
+## Polish 7 §11: lower (true) or raise the blade; a press that changes nothing does nothing.
+func set_blade(down: bool) -> void:
+	if has_blade() and tool_on != down:
+		_toggle_tool()
+
+
 func _toggle_tool() -> void:
 	if data.dump_capacity > 0.0:
 		_dump()
@@ -280,6 +317,8 @@ func _toggle_tool() -> void:
 	if not (data.has_plow or data.has_blower):
 		return
 	tool_on = not tool_on
+	_drag_side = false           # polish 7 §11: a blade lowered starts as a push (standing still: as before)
+	_leaving_drag = false
 	AudioMgr.play_at("ui_click", global_position, -4.0, 0.7)
 	if data.has_plow:
 		set_status("Blade down" if tool_on else "Blade up")
@@ -336,21 +375,51 @@ func _physics_process(delta: float) -> void:
 	max_fwd *= drag
 	var accel := data.acceleration * lerpf(0.35, 1.0, data.traction) * (1.0 / (1.0 + sink))
 	var work_drag := 1.0
+	dragging = false
 	# Plow / blower operation.
 	if occupied and tool_on and data.has_plow and blade_node:
 		var bp: Vector3 = global_transform * Vector3(0, 0, info["blade_z"])
 		var face := fwd.rotated(deg_to_rad(blade_angle))
 		var adv := maxf(travel.dot(fwd), 0.0)
 		var hw := data.blade_width * 0.5 * _ItemUpgrades.mult(data.id, &"vehicle_blade_width")
-		# Polish 5 §3 (Decision 12): no road rule — a plow carries yard snow over the curb.
-		var r := Snow.blade_push(Vector2(bp.x, bp.z), face, hw, adv + 0.1, data.blade_floor, false, 0.6)
-		player_guard(Vector2(bp.x, bp.z), fwd, hw + 0.2)
+		# Polish 7 §11: reversing, the blade drags the snow back; driving forward it pushes. Standing
+		# still adds nothing new: the blade holds the side it last worked (a push's band as before, or
+		# a drag's on the ground it uncovered, so a dragged pile stays against its back face).
+		var back := maxf(-travel.dot(fwd), 0.0)
+		if speed < 0.0 and back > 0.0:
+			_drag_side = true
+		elif adv > 0.0 and _drag_side:
+			_drag_side = false
+			_leaving_drag = true
+		dragging = _drag_side and back > 0.0
+		var r: Dictionary
+		if _drag_side:
+			r = back_drag(Vector2(bp.x, bp.z), face, fwd, hw, back)
+			_drag_stop = Vector2(bp.x, bp.z)
+			if dragging and status_text in ["", "Blade down", DRAG_STATUS]:     # a blocked reason stays first
+				set_status(DRAG_STATUS, 0.5)
+		else:
+			# Polish 7 §11: driving off a dragged pile, the blade takes only the ground it has crossed
+			# since it stopped dragging, half a cell clear of that line (the cell on it holds some of the
+			# pile), not the pile behind it; once it is a push's margin past, it pushes as always.
+			var band := adv + 0.1
+			if _leaving_drag:
+				var gone := (Vector2(bp.x, bp.z) - _drag_stop).dot(fwd) - Snow.CELL * 0.5
+				if gone >= band:
+					_leaving_drag = false
+				else:
+					band = maxf(gone, 0.0)
+			# Polish 5 §3 (Decision 12): no road rule — a plow carries yard snow over the curb.
+			r = Snow.blade_push(Vector2(bp.x, bp.z), face, hw, band, data.blade_floor, false, 0.6)
+			# Polish 7 §11: leaving a drag, the guard reaches a cell past the face, so the pile's front
+			# can't slump into the gap the blade opens (and be carried off with it).
+			player_guard(Vector2(bp.x, bp.z) + (fwd * Snow.CELL if _leaving_drag else Vector2.ZERO), fwd, hw + 0.2)
 		var ratio: float = r["berm"] / (data.blade_capacity * _ItemUpgrades.mult(data.id, &"vehicle_clear_speed"))
 		work_drag = 1.0 / (1.0 + ratio * ratio)
 		Snow.stat_player_moved += r["moved"]
 		Game.stats_add("snow_moved", r["moved"])
 		work_snd.volume_db = move_toward(work_snd.volume_db, -4.0 if absf(speed) > 0.5 else -20.0, delta * 40.0)
-		if r["moved"] > 0.002 and randf() < 0.4:
+		if not _drag_side and r["moved"] > 0.002 and randf() < 0.4:
 			var side := Vector2(face.x, face.y).rotated(deg_to_rad(90.0 * signf(blade_angle))) if blade_angle != 0.0 else face
 			SnowFX.burst(Vector3(bp.x, 0.6, bp.z) + Vector3(side.x, 0, side.y) * hw * 0.6, 10, 1.2, Vector3(side.x, 1.0, side.y).normalized())
 		ahead = minf(ahead, c * 1.5)   # the plow cuts through banks (with drag)
@@ -394,7 +463,10 @@ func _physics_process(delta: float) -> void:
 		if _warn_timer <= 0.0:
 			_warn_timer = 2.0
 			set_status(blocked_reason, 3.0)
-	var target := throttle * (max_fwd if throttle > 0.0 else minf(data.reverse_speed, max_fwd * 0.6 + 1.0))
+	var rev_max := minf(data.reverse_speed, max_fwd * 0.6 + 1.0)
+	if dragging:
+		rev_max = minf(rev_max, data.reverse_speed * work_drag)   # polish 7 §11: the dragged snow slows it as a berm slows a push
+	var target := throttle * (max_fwd if throttle > 0.0 else rev_max)
 	if stuck and absf(throttle) > 0.0:
 		target *= 0.15
 		if _warn_timer <= 0.0:
@@ -492,6 +564,16 @@ func stuck_depth() -> float:
 	if is_pickup():
 		return Catalog.balance.pickup_stuck_depth
 	return data.clearance * 1.15
+
+
+## Polish 7 §11: one frame of back-drag at the blade's centre `bp`: the blade's face turned toward the
+## vehicle, the band the frame's reverse travel `back` + 0.1 m, the snow landing DRAG_CAST behind
+## the blade (spread over blade_push's band, one push_rng draw per moved cell, marked soft); the
+## ground it uncovers (the blade's far side) guarded from slumping back, as behind a push.
+func back_drag(bp: Vector2, face: Vector2, fwd: Vector2, hw: float, back: float) -> Dictionary:
+	var r := Snow.blade_push(bp, -face, hw, back + 0.1, data.blade_floor, false, DRAG_CAST)
+	player_guard(bp, -fwd, hw + 0.2)
+	return r
 
 
 func player_guard(center: Vector2, fwd: Vector2, hw: float) -> void:
@@ -643,6 +725,8 @@ func hud_text() -> String:
 	var s := data.display_name
 	if data.has_plow:
 		s += "  |  Blade %s %+d°" % ["DOWN" if tool_on else "up", int(blade_angle)]
+		if dragging:
+			s += " — dragging"      # polish 7 §11
 	if data.has_blower:
 		s += "  |  Blower %s, chute %+d°" % ["ON" if tool_on else "off", int(chute_angle)]
 	if data.dump_capacity > 0.0:
