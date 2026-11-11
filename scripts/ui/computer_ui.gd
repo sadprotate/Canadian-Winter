@@ -802,7 +802,7 @@ static func _group_owned(g: Array) -> bool:
 
 static func _not_owned_hint(item: StringName) -> String:
 	if _ItemUpgrades.GROUP.has(item):
-		return "Fit the pickup's front plow first"
+		return "—"      # polish 7 §10: the plowed truck is a new game's own; it isn't sold
 	var p := Economy.price_of(String(item))
 	return "Equipment store · %s" % UIKit.money(p) if p > 0 else "—"
 

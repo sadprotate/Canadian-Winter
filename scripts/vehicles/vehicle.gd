@@ -158,14 +158,20 @@ func _ready() -> void:
 	_prev_pos = Vector2(global_position.x, global_position.z)
 
 
+## Polish 7 §10: the player's own truck: the pickup with its plow (a new game's) or the plain pickup
+## (older saves). The truck keys lock it, and it has round 5 §12's snow handling.
+func is_pickup() -> bool:
+	return data.kind == VehicleData.Kind.PICKUP or data.kind == VehicleData.Kind.PICKUP_PLOW
+
+
 func interact_prompt(_p: Player) -> String:
-	if data.kind == VehicleData.Kind.PICKUP and not Game.flags.get("truck_keys", false):
+	if is_pickup() and not Game.flags.get("truck_keys", false):
 		return "[E] Pickup truck (locked)"
 	return "[E] Drive %s" % data.display_name
 
 
 func interact(p: Player) -> void:
-	if data.kind == VehicleData.Kind.PICKUP and not Game.flags.get("truck_keys", false):
+	if is_pickup() and not Game.flags.get("truck_keys", false):
 		AudioMgr.play_at("truck_locked", global_position, -2.0)
 		Notify.push("The truck is locked and the keys are missing. You had them before the storm — they must be out there somewhere.", Notify.INFO)
 		return
@@ -315,7 +321,10 @@ func _physics_process(delta: float) -> void:
 			_aim(1.0, delta)
 	# Resistance: deep snow slows and eventually stops the vehicle.
 	# Polish 5 §12: the plain pickup reads its snow handling from the balance data.
-	var pickup := data.kind == VehicleData.Kind.PICKUP
+	# Polish 7 §10: so does the pickup with its plow while the blade is up; with the blade down it
+	# plows as before. Its wheels are the pickup's either way (stuck_depth()).
+	var truck := is_pickup()
+	var pickup := truck and not (tool_on and data.has_plow)
 	var bal: BalanceData = Catalog.balance
 	var max_fwd := data.max_speed
 	var sink := d_wheels / (bal.pickup_drag_depth if pickup else c)
@@ -370,7 +379,7 @@ func _physics_process(delta: float) -> void:
 	blocked_reason = ""
 	if stuck:
 		blocked_reason = "Stuck: %d cm of snow under the wheels — this %s only clears about %d cm. Dig around the wheels and clear a path." % [
-			int(round(d_wheels * 100.0)), data.display_name.to_lower(), int(round(bal.pickup_stuck_depth * 100.0)) if pickup else int(round(c * 115.0))]
+			int(round(d_wheels * 100.0)), data.display_name.to_lower(), int(round(bal.pickup_stuck_depth * 100.0)) if truck else int(round(c * 115.0))]
 	elif bank_block and pickup:
 		blocked_reason = "Snowbank ahead: %d cm deep — too much to drive through (about %d cm at most, with a run-up). Clear it or back up." % [
 			int(round(ahead * 100.0)), int(round(bal.pickup_bank_max * 100.0))]
@@ -445,6 +454,9 @@ func _physics_process(delta: float) -> void:
 ## snow).
 const SHOVE_SPLAY_DEG := 45.0
 const SHOVE_CAST := 1.5
+## Polish 7 §10: SHOVE_CAST is for the plain pickup's 2 m. The pickup with its plow (2.4 m with the
+## blade raised) casts in proportion, so its snow too lands clear of its path.
+const SHOVE_CAST_WIDTH := 2.0
 
 func _shove(fwd: Vector2, travel: Vector2) -> void:
 	var bp: Vector3 = global_transform * Vector3(0, 0, -data.length * 0.5)
@@ -453,10 +465,11 @@ func _shove(fwd: Vector2, travel: Vector2) -> void:
 	var ang := deg_to_rad(SHOVE_SPLAY_DEG)
 	var hw := data.width * 0.25 / cos(ang)   # each arm spans half the truck's width
 	var adv := maxf(travel.dot(fwd), 0.0)
+	var cast := SHOVE_CAST * data.width / SHOVE_CAST_WIDTH
 	var moved := 0.0
 	for s in [-1.0, 1.0]:
 		var mid: Vector2 = front - fwd * (data.width * 0.25 * tan(ang)) + right * (data.width * 0.25 * s)
-		var r := Snow.blade_push(mid, fwd.rotated(ang * s), hw, adv + 0.1, Catalog.balance.pickup_shove_floor, false, SHOVE_CAST)
+		var r := Snow.blade_push(mid, fwd.rotated(ang * s), hw, adv + 0.1, Catalog.balance.pickup_shove_floor, false, cast)
 		moved += float(r["moved"])
 	# The truck's body holds back the snow that slumps around it, as the strip behind a plow's
 	# blade does (player_guard).
@@ -474,8 +487,9 @@ func _shove(fwd: Vector2, travel: Vector2) -> void:
 
 
 ## Polish 5 §12: the average snow depth under the wheels (m) at which this vehicle is stuck.
+## Polish 7 §10: the pickup's, for the pickup with its plow too (blade up or down).
 func stuck_depth() -> float:
-	if data.kind == VehicleData.Kind.PICKUP:
+	if is_pickup():
 		return Catalog.balance.pickup_stuck_depth
 	return data.clearance * 1.15
 

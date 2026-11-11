@@ -116,9 +116,10 @@ func new_game(m: String, seed_override := -1) -> void:
 	Contracts.reset_for_new_game()
 	start_winter(1)
 	# The opening: a buried small shovel beside the truck, keys lost in the front lawn.
+	# Polish 7 §10: the truck has its plow from the start (locked until the keys are found).
 	var lot := Layout.player_lot
 	var ts := truck_start()
-	vehicles.append({"uid": uid(), "id": "pickup", "pos": ts["pos"], "yaw": ts["yaw"], "snow": 0.55})
+	vehicles.append({"uid": uid(), "id": "pickup_plow", "pos": ts["pos"], "yaw": ts["yaw"], "snow": 0.55})
 	var sh := shovel_spot()
 	items.append({"uid": uid(), "tool": "small_shovel", "pos": Vector3(sh.x, 0.0, sh.y), "yaw": 0.6, "buried": true})
 	# The snow over the shovel forms a slightly bigger, odd-looking oblong pile (polish §4).

@@ -1573,11 +1573,14 @@ func test_computer_locked_until_gerry_and_saved() -> void:
 
 ## Polish 2 §4: find the keys, get in and drive the truck out of the driveway, with real input,
 ## in both modes. Covers the no-keys message, the blocked-by-snow message and saves.
+## Polish 7 §10: the truck has its plow from the start: out through the windrow across the apron
+## with the blade up, then the blade lowered, plowing.
 func test_truck_keys_end_to_end() -> void:
 	for mode in ["fun", "survival"]:
 		await _load_world(mode, 2024, 10.0, 0)
 		var pl: Player = world.player
 		var truck: Vehicle = world.vehicle_nodes()[0]
+		runner.check(truck.data.has_plow and not truck.tool_on, "%s: the truck in the driveway has its plow (%s), the blade up" % [mode, truck.data.display_name])
 		var tp := Vector2(truck.global_position.x, truck.global_position.z)
 		var tfwd := Vector2(-truck.global_transform.basis.z.x, -truck.global_transform.basis.z.z).normalized()
 		var tright := Vector2(-tfwd.y, tfwd.x)
@@ -1631,16 +1634,40 @@ func test_truck_keys_end_to_end() -> void:
 		var drv: Rect2 = Boxes.get_box(Boxes.lot_box(Layout.player_lot, "driveway"))["rects"][0]
 		Snow.set_rect(drv, 0.03)
 		Snow.set_rect(Rect2(drv.position.x - 1.0, drv.position.y - 9.0, drv.size.x + 2.0, 9.0), 0.03, true)
+		# Polish 7 §10: the windrow a grader leaves across the apron, as deep as the pickup pushes from
+		# a standstill (pickup_bog_depth), with shoulders: 2 m across, along the curb.
+		var wh := Catalog.balance.pickup_bog_depth
+		var wx := drv.position.x - 1.0
+		var ww := drv.size.x + 2.0
+		Snow.set_rect(Rect2(wx, drv.position.y - 2.0, ww, 0.5), wh * 0.5)
+		Snow.set_rect(Rect2(wx, drv.position.y - 1.5, ww, 1.0), wh)
+		Snow.set_rect(Rect2(wx, drv.position.y - 0.5, ww, 0.5), wh * 0.5)
 		await _face_truck(door, truck)
 		await _press_event("interact")
 		await _frames(3)
 		p0 = truck.global_position
-		await _hold("veh_accelerate", 240)
+		var shoved0 := Snow.stat_player_moved
+		var stuck := 0
+		Input.action_press("veh_accelerate")
+		for f in range(360):
+			await _frames(1)
+			stuck += 1 if truck.stuck else 0
+			if truck.global_position.z + truck.data.length * 0.5 < drv.position.y - 2.0:
+				break       # its tailgate past the windrow
+		Input.action_release("veh_accelerate")
+		await _frames(1)
 		var moved := truck.global_position.distance_to(p0)
 		var tz := truck.global_position.z
 		runner.info("%s: dug out, drove %.1f m (truck z %.1f, driveway apron at %.1f), status '%s'" % [mode, moved, tz, drv.position.y, truck.status_text])
 		runner.check(moved > 6.0, "%s: dug out, the truck drives down the driveway (%.1f m)" % [mode, moved])
 		runner.check(tz < drv.position.y + 1.0, "%s: …and out onto the street" % mode)
+		runner.check(not truck.tool_on and stuck == 0 and truck.global_position.z + truck.data.length * 0.5 < drv.position.y - 2.0 and Snow.stat_player_moved > shoved0 + 0.05,
+			"%s: …with the blade up, through the %d cm windrow across the apron, never stuck, shoving %.2f m³ aside" % [mode, int(round(wh * 100.0)), Snow.stat_player_moved - shoved0])
+		# Lower the blade and plow (the far side of the street still has the opening's snow).
+		await _press_event("veh_tool")
+		var plowed0 := Snow.stat_player_moved
+		await _hold("veh_accelerate", 90)
+		runner.check(truck.tool_on and Snow.stat_player_moved > plowed0 + 0.1, "%s: …the blade lowered, it plows (%.2f m³, status '%s')" % [mode, Snow.stat_player_moved - plowed0, truck.status_text])
 		_release_all()
 		await _press_event("interact")
 		await _frames(2)

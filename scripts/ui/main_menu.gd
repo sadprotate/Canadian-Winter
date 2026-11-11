@@ -144,7 +144,7 @@ func _stage_home() -> void:
 	var sb: float = lot["setback"]
 	var truck_p := Layout.lot_to_world(lot, Layout.gu(lot, 6.0), sb - 4.4)
 	var face := Layout.lot_to_world(lot, Layout.gu(lot, 6.0), sb) - truck_p
-	var vd: VehicleData = Catalog.vehicle(&"pickup")
+	var vd: VehicleData = Catalog.vehicle(&"pickup_plow")   # polish 7 §10: the truck has its plow
 	var info := VehicleModels.build(vd)
 	var truck := Node3D.new()
 	add_child(truck)
@@ -158,6 +158,11 @@ func _stage_home() -> void:
 		wm.mesh = w["mesh"]
 		wm.position = w["pos"]
 		truck.add_child(wm)
+	if info.has("blade_mesh"):
+		var bm := MeshInstance3D.new()
+		bm.mesh = info["blade_mesh"]
+		bm.position = (info["blade_pivot"] as Vector3) + Vector3(0, 0.18, 0)   # raised, as parked
+		truck.add_child(bm)
 	var sk := MeshKit.new()
 	for s in info["snow"]:
 		sk.pillow(Mats.snow_soft(), s[0], s[1].x, s[1].y, 0.3, 0.1, 8, 2.6)
@@ -176,7 +181,7 @@ func _stage_home() -> void:
 	figure = CharacterModel.new()
 	add_child(figure)
 	figure.build()
-	var fp := Layout.lot_to_world(lot, Layout.gu(lot, 4.6), 3.0)
+	var fp := Layout.lot_to_world(lot, Layout.gu(lot, 4.6), 2.2)   # polish 7 §10: clear of the blade
 	figure.global_position = Vector3(fp.x, 0, fp.y)
 	figure.rotation.y = truck.rotation.y + 0.9
 	var shovel := MeshInstance3D.new()

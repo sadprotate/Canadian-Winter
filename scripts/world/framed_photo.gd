@@ -218,8 +218,9 @@ static func build_scene(vp: SubViewport) -> void:
 		tree.position = Vector3(s * p.x, p.y, p.z)
 		tree.scale = Vector3.ONE * 1.1
 		root.add_child(tree)
-	# The pickup (the player's own truck model), parked.
-	var vd: VehicleData = Catalog.vehicle(&"pickup")
+	# The pickup (the player's own truck model), parked. Polish 7 §10: with its plow, the blade
+	# raised as a parked vehicle holds it (0.18 m, Vehicle).
+	var vd: VehicleData = Catalog.vehicle(&"pickup_plow")
 	var info := VehicleModels.build(vd)
 	var truck := Node3D.new()
 	truck.name = "Truck"
@@ -232,6 +233,11 @@ static func build_scene(vp: SubViewport) -> void:
 		wm.mesh = w["mesh"]
 		wm.position = w["pos"]
 		truck.add_child(wm)
+	if info.has("blade_mesh"):
+		var bm := MeshInstance3D.new()
+		bm.mesh = info["blade_mesh"]
+		bm.position = (info["blade_pivot"] as Vector3) + Vector3(0, 0.18, 0)
+		truck.add_child(bm)
 	var cam_pos := Vector3(s * CAM.x, CAM.y, CAM.z)
 	# The small shovel, planted upright in the snow where it lies buried, its scoop turned towards
 	# the camera. Placed from its own mesh (the grip is the origin, the shaft runs to tip()), so a

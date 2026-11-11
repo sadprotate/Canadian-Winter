@@ -508,9 +508,16 @@ func listing_lock_text(l: Dictionary) -> String:
 	return ""
 
 
-## A street section, and no vehicle with a plow or a blower (equipment_capability() < 3).
+## A street section, and no vehicle with a plow or a blower. Polish 7 §10: the starting truck's plow
+## counts here, though it counts as hand tools for listing sizes (equipment_capability()).
 func listing_needs_vehicle(l: Dictionary) -> bool:
-	return str(l.get("target", "")).begins_with("road:") and equipment_capability() < 3
+	if not str(l.get("target", "")).begins_with("road:"):
+		return false
+	for v in Game.vehicles:
+		var vd: VehicleData = Catalog.vehicle(StringName(v["id"]))
+		if vd and (vd.has_plow or vd.has_blower):
+			return false
+	return true
 
 
 ## Progress to the next tier: {name, need (the reputation it starts at), left, frac}; {} at the top.
@@ -913,12 +920,13 @@ func near_existing(pos: Vector2) -> bool:
 	return false
 
 
-## 0 hands/shovel, 1 pushers/sleigh, 2 blowers, 3 vehicles with plow/blower.
+## 0 hands/shovel, 1 pushers/sleigh, 2 blowers, 3 vehicles with plow/blower. Polish 7 §10: the
+## pickup with its plow (the truck a new game starts with) counts as hand tools.
 func equipment_capability() -> int:
 	var cap := 0
 	for v in Game.vehicles:
 		var vd: VehicleData = Catalog.vehicle(StringName(v["id"]))
-		if vd and (vd.has_plow or vd.has_blower):
+		if vd and (vd.has_plow or vd.has_blower) and vd.kind != VehicleData.Kind.PICKUP_PLOW:
 			cap = 3
 	if cap < 3 and (Game.owns_tool("small_blower") or Game.owns_tool("large_blower")):
 		cap = 2
