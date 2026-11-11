@@ -5,6 +5,10 @@ extends CharacterBody3D
 
 signal interact_target_changed(prompt: String)
 
+# Polish 6 §2: classes added in polish 5, by path rather than global name, so this script still
+# loads when the editor's class cache predates a pull.
+const _Equipment := preload("res://scripts/data/equipment.gd")
+
 const HEAD_H := 1.62
 const CROUCH_HEAD := 1.05
 const RADIUS := 0.3
@@ -111,7 +115,7 @@ func _ready() -> void:
 ## Polish 5 §13: the coat on the model and the first-person sleeves (Survival only — Fun Mode shows
 ## no coat), the snowshoes on the model while they're on outdoors.
 func refresh_equipment() -> void:
-	var coat := Equipment.coat_worn()
+	var coat := _Equipment.coat_worn()
 	if coat != model.coat_on:
 		model.set_coat(coat)
 	if tools and tools.arms:
@@ -120,7 +124,7 @@ func refresh_equipment() -> void:
 
 ## Snowshoes are on your feet and working: on foot (or at the computer) and outdoors.
 func shoes_active() -> bool:
-	return Equipment.snowshoes_on() and not indoors and (state == "foot" or state == "frozen")
+	return _Equipment.snowshoes_on() and not indoors and (state == "foot" or state == "frozen")
 
 
 ## Where your feet are (world y): the ground under you, raised by the snow under snowshoes.

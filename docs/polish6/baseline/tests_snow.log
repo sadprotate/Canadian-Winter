@@ -1,0 +1,26 @@
+# command: godot --headless --fixed-fps 60 --path . res://tests/test_runner.tscn -- --only=snow
+# cwd: /c/Users/orsin/OneDrive/Desktop/Canadian Winter/Canadian-Winter (at 1b38f4a, game code = polish6-baseline)
+# exit code: 0   wall time: 10 s   finished: 2026-11-05 08:51
+# Godot: 4.7.2.stable.official.ed1daf0bf
+
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+      player lot: 16 Maple Street, neighbor: 15 Maple Street
+  PASS  test_snow.gd::test_static_map (1 ms)
+  PASS  test_snow.gd::test_initial_fill_year1 (410 ms)
+  PASS  test_snow.gd::test_scoop_and_deposit_conserve_volume (491 ms)
+  PASS  test_snow.gd::test_shallow_scoop_takes_all (438 ms)
+  PASS  test_snow.gd::test_deposit_lands_on_road_where_aimed (863 ms)
+  PASS  test_snow.gd::test_blade_push_moves_berm_over_the_curb (441 ms)
+  PASS  test_snow.gd::test_road_snow_can_be_pushed_off_road (440 ms)
+      relaxing a 2 m3 dump took 15.3 ms
+  PASS  test_snow.gd::test_relaxation_angle_of_repose (411 ms)
+  PASS  test_snow.gd::test_snowfall_accumulates_lazily (404 ms)
+  PASS  test_snow.gd::test_intake_and_settle (570 ms)
+      compressed snow state: 588 KB (raw 2688 KB)
+  PASS  test_snow.gd::test_serialize_roundtrip_exact (1199 ms)
+  PASS  test_snow.gd::test_grader_lane (823 ms)
+      scoop 13 us, push step 26 us, chunk sync 748 us, relax 48 tiles 6694 us, sync_all 122 ms
+  PASS  test_snow.gd::test_performance_ops (549 ms)
+
+==== 13 passed, 0 failed (7.2 s) ====

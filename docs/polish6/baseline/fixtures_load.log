@@ -1,0 +1,238 @@
+# command: godot --headless --fixed-fps 60 --path . res://tests/test_runner.tscn -- --only=polish5 --test=polish5_fixtures --verbose
+# cwd: /c/Users/orsin/OneDrive/Desktop/Canadian Winter/Canadian-Winter (at 1b38f4a, game code = polish6-baseline)
+# exit code: 0   wall time: 71 s   finished: 2026-11-05 10:06
+# Godot: 4.7.2.stable.official.ed1daf0bf
+
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+    ✓ res://tests/fixtures/polish5/ holds save fixtures (6 points)
+    ✓ res://tests/fixtures/polish5/1_contracts: a fixture for both modes
+    ✓ polish5/fun_1_contracts.json loads
+    ✓ polish5/fun_1_contracts.json: the player moves (0.83 m)
+    ✓ polish5/fun_1_contracts.json: scooping picks up snow (30.0 L)
+[notify] Good morning.
+[notify] Game saved.
+    ✓ polish5/fun_1_contracts.json: sleep ends at 7:00 and autosaves (Dec 4 07:00)
+    ✓ polish5/fun_1_contracts.json: the autosave reloads
+    ✓ polish5/fun_1_contracts.json: reloaded at the same time, money and stage
+    ✓ polish5/survival_1_contracts.json loads
+    ✓ polish5/survival_1_contracts.json: the player moves (0.83 m)
+    ✓ polish5/survival_1_contracts.json: scooping picks up snow (30.0 L)
+[notify] Good morning.
+[notify] Game saved.
+    ✓ polish5/survival_1_contracts.json: sleep ends at 7:00 and autosaves (Dec 4 07:00)
+    ✓ polish5/survival_1_contracts.json: the autosave reloads
+    ✓ polish5/survival_1_contracts.json: reloaded at the same time, money and stage
+    ✓ res://tests/fixtures/polish5/2_upgrades: a fixture for both modes
+    ✓ polish5/fun_2_upgrades.json loads
+[notify] Upgrades now belong to each item. Everything you bought carries over to every item it improved.
+    ✓ polish5/fun_2_upgrades.json: the player moves (0.99 m)
+    ✓ polish5/fun_2_upgrades.json: scooping picks up snow (78.1 L)
+[notify] Good morning.
+[notify] Game saved.
+    ✓ polish5/fun_2_upgrades.json: sleep ends at 7:00 and autosaves (Dec 3 07:00)
+    ✓ polish5/fun_2_upgrades.json: the autosave reloads
+    ✓ polish5/fun_2_upgrades.json: reloaded at the same time, money and stage
+    ✓ polish5/survival_2_upgrades.json loads
+[notify] Upgrades now belong to each item. Everything you bought carries over to every item it improved.
+[notify] Your jacket and parka are now one insulated coat: the same warmth, worn as before.
+    ✓ polish5/survival_2_upgrades.json: the player moves (0.99 m)
+    ✓ polish5/survival_2_upgrades.json: scooping picks up snow (78.1 L)
+[notify] Good morning.
+[notify] Game saved.
+    ✓ polish5/survival_2_upgrades.json: sleep ends at 7:00 and autosaves (Dec 3 07:00)
+    ✓ polish5/survival_2_upgrades.json: the autosave reloads
+    ✓ polish5/survival_2_upgrades.json: reloaded at the same time, money and stage
+    ✓ res://tests/fixtures/polish5/3_vehicle: a fixture for both modes
+    ✓ polish5/fun_3_vehicle.json loads
+    ✓ polish5/fun_3_vehicle.json: the player moves (0.99 m)
+    ✓ polish5/fun_3_vehicle.json: scooping picks up snow (30.0 L)
+[notify] Good morning.
+[notify] Game saved.
+    ✓ polish5/fun_3_vehicle.json: sleep ends at 7:00 and autosaves (Dec 3 07:00)
+    ✓ polish5/fun_3_vehicle.json: the autosave reloads
+    ✓ polish5/fun_3_vehicle.json: reloaded at the same time, money and stage
+    ✓ polish5/survival_3_vehicle.json loads
+    ✓ polish5/survival_3_vehicle.json: the player moves (0.99 m)
+    ✓ polish5/survival_3_vehicle.json: scooping picks up snow (30.0 L)
+[notify] Good morning.
+[notify] Game saved.
+    ✓ polish5/survival_3_vehicle.json: sleep ends at 7:00 and autosaves (Dec 3 07:00)
+    ✓ polish5/survival_3_vehicle.json: the autosave reloads
+    ✓ polish5/survival_3_vehicle.json: reloaded at the same time, money and stage
+    ✓ res://tests/fixtures/polish5/4_midwinter: a fixture for both modes
+    ✓ polish5/fun_4_midwinter.json loads
+    ✓ polish5/fun_4_midwinter.json: the player moves (2.70 m)
+    ✓ polish5/fun_4_midwinter.json: scooping picks up snow (30.0 L)
+[notify] Good morning.
+[notify] Game saved.
+    ✓ polish5/fun_4_midwinter.json: sleep ends at 7:00 and autosaves (Jan 24 07:00)
+    ✓ polish5/fun_4_midwinter.json: the autosave reloads
+    ✓ polish5/fun_4_midwinter.json: reloaded at the same time, money and stage
+    ✓ polish5/survival_4_midwinter.json loads
+    ✓ polish5/survival_4_midwinter.json: the player moves (2.70 m)
+    ✓ polish5/survival_4_midwinter.json: scooping picks up snow (30.0 L)
+[notify] Good morning.
+[notify] Game saved.
+    ✓ polish5/survival_4_midwinter.json: sleep ends at 7:00 and autosaves (Jan 24 07:00)
+    ✓ polish5/survival_4_midwinter.json: the autosave reloads
+    ✓ polish5/survival_4_midwinter.json: reloaded at the same time, money and stage
+    ✓ res://tests/fixtures/polish5/5_evening: a fixture for both modes
+    ✓ polish5/fun_5_evening.json loads
+    ✓ polish5/fun_5_evening.json: the player moves (0.83 m)
+    ✓ polish5/fun_5_evening.json: scooping picks up snow (30.0 L)
+[notify] Good morning.
+[notify] Game saved.
+    ✓ polish5/fun_5_evening.json: sleep ends at 7:00 and autosaves (Dec 4 07:00)
+    ✓ polish5/fun_5_evening.json: the autosave reloads
+    ✓ polish5/fun_5_evening.json: reloaded at the same time, money and stage
+    ✓ polish5/survival_5_evening.json loads
+    ✓ polish5/survival_5_evening.json: the player moves (0.83 m)
+    ✓ polish5/survival_5_evening.json: scooping picks up snow (30.0 L)
+[notify] Good morning.
+[notify] Game saved.
+    ✓ polish5/survival_5_evening.json: sleep ends at 7:00 and autosaves (Dec 4 07:00)
+    ✓ polish5/survival_5_evening.json: the autosave reloads
+    ✓ polish5/survival_5_evening.json: reloaded at the same time, money and stage
+    ✓ res://tests/fixtures/polish5/6_winter2: a fixture for both modes
+    ✓ polish5/fun_6_winter2.json loads
+    ✓ polish5/fun_6_winter2.json: the player moves (1.92 m)
+    ✓ polish5/fun_6_winter2.json: scooping picks up snow (30.0 L)
+[notify] Good morning.
+[notify] Game saved.
+    ✓ polish5/fun_6_winter2.json: sleep ends at 7:00 and autosaves (Dec 3 07:00)
+    ✓ polish5/fun_6_winter2.json: the autosave reloads
+    ✓ polish5/fun_6_winter2.json: reloaded at the same time, money and stage
+    ✓ polish5/survival_6_winter2.json loads
+    ✓ polish5/survival_6_winter2.json: the player moves (1.92 m)
+    ✓ polish5/survival_6_winter2.json: scooping picks up snow (30.0 L)
+[notify] Good morning.
+[notify] Game saved.
+    ✓ polish5/survival_6_winter2.json: sleep ends at 7:00 and autosaves (Dec 3 07:00)
+    ✓ polish5/survival_6_winter2.json: the autosave reloads
+    ✓ polish5/survival_6_winter2.json: reloaded at the same time, money and stage
+    ✓ res://tests/fixtures/polish5_v3/ holds save fixtures (7 points)
+    ✓ res://tests/fixtures/polish5_v3/1_contracts: a fixture for both modes
+    ✓ polish5_v3/fun_1_contracts.json loads
+    ✓ polish5_v3/fun_1_contracts.json: the player moves (0.99 m)
+    ✓ polish5_v3/fun_1_contracts.json: scooping picks up snow (30.0 L)
+[notify] Good morning.
+[notify] Game saved.
+    ✓ polish5_v3/fun_1_contracts.json: sleep ends at 7:00 and autosaves (Dec 3 07:00)
+    ✓ polish5_v3/fun_1_contracts.json: the autosave reloads
+    ✓ polish5_v3/fun_1_contracts.json: reloaded at the same time, money and stage
+    ✓ polish5_v3/survival_1_contracts.json loads
+    ✓ polish5_v3/survival_1_contracts.json: the player moves (0.99 m)
+    ✓ polish5_v3/survival_1_contracts.json: scooping picks up snow (30.0 L)
+[notify] Good morning.
+[notify] Game saved.
+    ✓ polish5_v3/survival_1_contracts.json: sleep ends at 7:00 and autosaves (Dec 3 07:00)
+    ✓ polish5_v3/survival_1_contracts.json: the autosave reloads
+    ✓ polish5_v3/survival_1_contracts.json: reloaded at the same time, money and stage
+    ✓ res://tests/fixtures/polish5_v3/2_upgrades: a fixture for both modes
+    ✓ polish5_v3/fun_2_upgrades.json loads
+    ✓ polish5_v3/fun_2_upgrades.json: the player moves (0.99 m)
+    ✓ polish5_v3/fun_2_upgrades.json: scooping picks up snow (78.1 L)
+[notify] Good morning.
+[notify] Game saved.
+    ✓ polish5_v3/fun_2_upgrades.json: sleep ends at 7:00 and autosaves (Dec 3 07:00)
+    ✓ polish5_v3/fun_2_upgrades.json: the autosave reloads
+    ✓ polish5_v3/fun_2_upgrades.json: reloaded at the same time, money and stage
+    ✓ polish5_v3/survival_2_upgrades.json loads
+    ✓ polish5_v3/survival_2_upgrades.json: the player moves (0.99 m)
+    ✓ polish5_v3/survival_2_upgrades.json: scooping picks up snow (78.1 L)
+[notify] Good morning.
+[notify] Game saved.
+    ✓ polish5_v3/survival_2_upgrades.json: sleep ends at 7:00 and autosaves (Dec 3 07:00)
+    ✓ polish5_v3/survival_2_upgrades.json: the autosave reloads
+    ✓ polish5_v3/survival_2_upgrades.json: reloaded at the same time, money and stage
+    ✓ res://tests/fixtures/polish5_v3/3_vehicle: a fixture for both modes
+    ✓ polish5_v3/fun_3_vehicle.json loads
+    ✓ polish5_v3/fun_3_vehicle.json: the player moves (0.99 m)
+    ✓ polish5_v3/fun_3_vehicle.json: scooping picks up snow (30.0 L)
+[notify] Good morning.
+[notify] Game saved.
+    ✓ polish5_v3/fun_3_vehicle.json: sleep ends at 7:00 and autosaves (Dec 3 07:00)
+    ✓ polish5_v3/fun_3_vehicle.json: the autosave reloads
+    ✓ polish5_v3/fun_3_vehicle.json: reloaded at the same time, money and stage
+    ✓ polish5_v3/survival_3_vehicle.json loads
+    ✓ polish5_v3/survival_3_vehicle.json: the player moves (0.99 m)
+    ✓ polish5_v3/survival_3_vehicle.json: scooping picks up snow (30.0 L)
+[notify] Good morning.
+[notify] Game saved.
+    ✓ polish5_v3/survival_3_vehicle.json: sleep ends at 7:00 and autosaves (Dec 3 07:00)
+    ✓ polish5_v3/survival_3_vehicle.json: the autosave reloads
+    ✓ polish5_v3/survival_3_vehicle.json: reloaded at the same time, money and stage
+    ✓ res://tests/fixtures/polish5_v3/4_midwinter: a fixture for both modes
+    ✓ polish5_v3/fun_4_midwinter.json loads
+    ✓ polish5_v3/fun_4_midwinter.json: the player moves (2.71 m)
+    ✓ polish5_v3/fun_4_midwinter.json: scooping picks up snow (30.0 L)
+[notify] Severe weather advisory: blizzard expected around Jan 20 13:56.
+[notify] Good morning.
+[notify] Game saved.
+    ✓ polish5_v3/fun_4_midwinter.json: sleep ends at 7:00 and autosaves (Jan 20 07:00)
+    ✓ polish5_v3/fun_4_midwinter.json: the autosave reloads
+    ✓ polish5_v3/fun_4_midwinter.json: reloaded at the same time, money and stage
+    ✓ polish5_v3/survival_4_midwinter.json loads
+    ✓ polish5_v3/survival_4_midwinter.json: the player moves (2.71 m)
+    ✓ polish5_v3/survival_4_midwinter.json: scooping picks up snow (30.0 L)
+[notify] Severe weather advisory: blizzard expected around Jan 20 13:56.
+[notify] Good morning.
+[notify] Game saved.
+    ✓ polish5_v3/survival_4_midwinter.json: sleep ends at 7:00 and autosaves (Jan 20 07:00)
+    ✓ polish5_v3/survival_4_midwinter.json: the autosave reloads
+    ✓ polish5_v3/survival_4_midwinter.json: reloaded at the same time, money and stage
+    ✓ res://tests/fixtures/polish5_v3/5_evening: a fixture for both modes
+    ✓ polish5_v3/fun_5_evening.json loads
+    ✓ polish5_v3/fun_5_evening.json: the player moves (0.83 m)
+    ✓ polish5_v3/fun_5_evening.json: scooping picks up snow (30.0 L)
+[notify] Good morning.
+[notify] Game saved.
+    ✓ polish5_v3/fun_5_evening.json: sleep ends at 7:00 and autosaves (Dec 4 07:00)
+    ✓ polish5_v3/fun_5_evening.json: the autosave reloads
+    ✓ polish5_v3/fun_5_evening.json: reloaded at the same time, money and stage
+    ✓ polish5_v3/survival_5_evening.json loads
+    ✓ polish5_v3/survival_5_evening.json: the player moves (0.83 m)
+    ✓ polish5_v3/survival_5_evening.json: scooping picks up snow (30.0 L)
+[notify] Good morning.
+[notify] Game saved.
+    ✓ polish5_v3/survival_5_evening.json: sleep ends at 7:00 and autosaves (Dec 4 07:00)
+    ✓ polish5_v3/survival_5_evening.json: the autosave reloads
+    ✓ polish5_v3/survival_5_evening.json: reloaded at the same time, money and stage
+    ✓ res://tests/fixtures/polish5_v3/6_winter2: a fixture for both modes
+    ✓ polish5_v3/fun_6_winter2.json loads
+    ✓ polish5_v3/fun_6_winter2.json: the player moves (1.92 m)
+    ✓ polish5_v3/fun_6_winter2.json: scooping picks up snow (30.0 L)
+[notify] Good morning.
+[notify] Game saved.
+    ✓ polish5_v3/fun_6_winter2.json: sleep ends at 7:00 and autosaves (Dec 3 07:00)
+    ✓ polish5_v3/fun_6_winter2.json: the autosave reloads
+    ✓ polish5_v3/fun_6_winter2.json: reloaded at the same time, money and stage
+    ✓ polish5_v3/survival_6_winter2.json loads
+    ✓ polish5_v3/survival_6_winter2.json: the player moves (1.92 m)
+    ✓ polish5_v3/survival_6_winter2.json: scooping picks up snow (30.0 L)
+[notify] Good morning.
+[notify] Game saved.
+    ✓ polish5_v3/survival_6_winter2.json: sleep ends at 7:00 and autosaves (Dec 3 07:00)
+    ✓ polish5_v3/survival_6_winter2.json: the autosave reloads
+    ✓ polish5_v3/survival_6_winter2.json: reloaded at the same time, money and stage
+    ✓ res://tests/fixtures/polish5_v3/7_keys_pickup_plow_order: a fixture for both modes
+    ✓ polish5_v3/fun_7_keys_pickup_plow_order.json loads
+    ✓ polish5_v3/fun_7_keys_pickup_plow_order.json: the player moves (0.99 m)
+    ✓ polish5_v3/fun_7_keys_pickup_plow_order.json: scooping picks up snow (30.0 L)
+[notify] Good morning.
+[notify] Game saved.
+    ✓ polish5_v3/fun_7_keys_pickup_plow_order.json: sleep ends at 7:00 and autosaves (Dec 3 07:00)
+    ✓ polish5_v3/fun_7_keys_pickup_plow_order.json: the autosave reloads
+    ✓ polish5_v3/fun_7_keys_pickup_plow_order.json: reloaded at the same time, money and stage
+    ✓ polish5_v3/survival_7_keys_pickup_plow_order.json loads
+    ✓ polish5_v3/survival_7_keys_pickup_plow_order.json: the player moves (0.99 m)
+    ✓ polish5_v3/survival_7_keys_pickup_plow_order.json: scooping picks up snow (30.0 L)
+[notify] Good morning.
+[notify] Game saved.
+    ✓ polish5_v3/survival_7_keys_pickup_plow_order.json: sleep ends at 7:00 and autosaves (Dec 3 07:00)
+    ✓ polish5_v3/survival_7_keys_pickup_plow_order.json: the autosave reloads
+    ✓ polish5_v3/survival_7_keys_pickup_plow_order.json: reloaded at the same time, money and stage
+  PASS  test_polish5.gd::test_polish5_fixtures_load_and_play (63039 ms)
+
+==== 1 passed, 0 failed (68.8 s) ====

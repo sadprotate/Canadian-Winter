@@ -66,12 +66,12 @@ func _tap(action: String) -> void:
 
 
 ## Hold the primary action and sweep the aim point side to side through the snow in front.
-func _sweep_fill(frames: int, amp := 0.5) -> void:
+func _sweep_fill(frames: int, amp := 0.5, step := 0.12) -> void:
 	var pl: Player = world.player
 	var base := pl.yaw
 	Input.action_press("primary")
 	for k in range(frames):
-		pl.set_yaw(base + amp * sin(k * 0.12))
+		pl.set_yaw(base + amp * sin(k * step))
 		await _tree().physics_frame
 	pl.set_yaw(base)
 
@@ -292,11 +292,15 @@ func test_hands_sweep_fill_full_and_partial_throws() -> void:
 	await _frames(90)
 	Snow.relax_until_stable()
 	runner.near(Snow.volume_in_rect(region), before, 0.002, "Thrown snow lands; volume conserved")
-	# Partial load: a short sweep, then release early.
+	# Partial load: a short sweep, then release early. Polish 6 §8.1: a press cuts nothing by itself
+	# and a release sooner than min_scoop_hold_s throws nothing, so the short sweep sweeps and lasts
+	# that long (it used to be a 3-frame press that took the press's opening bite in place).
 	pl.set_yaw(PI)
 	await _frames(2)
 	Input.action_press("primary")
-	await _frames(3)
+	for k in range(ceili(Catalog.balance.min_scoop_hold_s * 60.0)):
+		pl.set_yaw(PI + 0.5 * sin(k * 0.12))
+		await _tree().physics_frame
 	var part := tc.load
 	runner.check(part > 0.0 and part < cap * 0.95, "A short sweep gives a partial load (%.1f L)" % (part * 1000.0))
 	pl.set_yaw(0.4)
@@ -780,7 +784,9 @@ func test_hidden_shovel_beside_truck() -> void:
 		around += Snow.depth_at(q.x, q.y) / 8.0
 	runner.check(over > around + 0.15, "An odd pile sits over the shovel (%.2f m vs %.2f m around)" % [over, around])
 	runner.check(sp.distance_to(tp) < 3.0, "The shovel lies right beside the truck (%.1f m)" % sp.distance_to(tp))
-	Snow.set_rect(Rect2(sp - Vector2(0.8, 0.8), Vector2(1.6, 1.6)), 0.1)
+	# Polish 6 §3: the shovel rests where it lies, on the ground (its blade hung 0.45 m up), so it is
+	# dug out down to the height it rests at (was: to 10 cm).
+	Snow.set_rect(Rect2(sp - Vector2(0.8, 0.8), Vector2(1.6, 1.6)), sh.global_position.y - Snow.ground_at(sp.x, sp.y))
 	await _frames(100)
 	sh.interact(world.player)
 	runner.check("small_shovel" in Game.slots, "Found the shovel")
@@ -1432,6 +1438,12 @@ func test_wading_speed_hips_and_banks() -> void:
 			runner.check(not crossed and pl.global_position.z > 78.8, "A %.1f m bank (above the hips) blocks the player" % h)
 
 
+## Bare hands' fill rate this test's sweep was tuned to (round 5's). Polish 6 §8.1b (the owner's
+## second decision) raised it ×1.3; the sweep turns that much faster, so the hands fill over the same
+## arc of it as before (at the old turn rate they fill near its far end, and this bot stalls 0.6 m out).
+const DIG_SWEEP_TUNED_FILL := 0.085
+
+
 func test_dig_out_by_hand_after_a_major_event() -> void:
 	await _load_world("survival", 2024, 10.0, 2)
 	var pl: Player = world.player
@@ -1456,10 +1468,11 @@ func test_dig_out_by_hand_after_a_major_event() -> void:
 	# Dig with bare hands: sweep-fill in front, turn, toss aside, step forward; repeat.
 	var base := pl.yaw
 	var free := false
+	var step := 0.12 * Catalog.tool(&"hands").fill_rate / DIG_SWEEP_TUNED_FILL
 	for k in range(320):
 		pl.set_yaw(base)
 		_look_at_snow_ahead()
-		await _sweep_fill(26, 0.35)
+		await _sweep_fill(26, 0.35, step)
 		pl.set_yaw(base + (1.4 if k % 2 == 0 else -1.4))
 		_look_down(-5.0)
 		await _frames(2)

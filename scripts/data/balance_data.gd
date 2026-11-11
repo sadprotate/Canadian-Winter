@@ -84,6 +84,12 @@ extends Resource
 @export var initial_road_depth_year1: float = 0.55
 @export var initial_depth_later: float = 0.35
 @export var repose_max_diff: float = 0.23
+## Polish 6 §9: loose snow the player moved (pushed, plowed, shoved, thrown) settles at this step
+## per 25 cm cell (≈ 37°, a little lower than repose_max_diff's 43°) …
+@export var moved_repose_max_diff: float = 0.19
+## … and a cell of it stands at most this far (m) above the mean of its two neighbours along an
+## axis: piles and berms round off at their tops instead of peaking.
+@export var moved_crest_max_diff: float = 0.08
 ## Compaction of deep untouched snow per day (fraction of the depth above settle_threshold).
 ## 0 = off: every snowfall stays on top of the snow already on the ground.
 @export var settle_rate_per_day: float = 0.0
@@ -179,6 +185,9 @@ extends Resource
 ## vehicle tool key) are capped at this many per second per action; presses beyond it are ignored,
 ## not queued. Holding a button, UI clicks and F1 aren't limited. 0 = no cap.
 @export var input_max_presses_per_s: float = 6.0
+## Polish 6 §8.1: hands and shovel-type tools: a release sooner than this after its press throws
+## nothing (the load stays in the tool), so a click never throws.
+@export var min_scoop_hold_s: float = 0.25
 
 @export_group("Pickup truck")
 ## Polish 5 §12: the pickup in snow (the plain pickup only; every other vehicle keeps its own
@@ -214,6 +223,12 @@ extends Resource
 @export var upgrade_price_ref_machine: float = 790.0
 @export var upgrade_price_ref_vehicle: float = 14000.0
 @export var upgrade_hands_price: float = 12.0
+## Polish 6 §8.2: each of bare hands' capacity levels multiplies their load and fill speed by this
+## (the hand tools' levels keep the old upgrades' +25 %). The six shovel-type tools' loads doubled
+## and bare hands' didn't, so with +25 % levels fully upgraded hands reached half the small shovel's
+## base; with this they reach about all of it, as the ladder asks. (§8.1b, the owner's decision: bare
+## hands fill ×1.3 faster, so the ladder sells one of the two levels; an old save keeps both.)
+@export var upgrade_hands_capacity_step: float = 1.75
 ## The heated cab (vehicles without a cab): its price for a vehicle at the vehicle reference price.
 @export var upgrade_cab_price: float = 1500.0
 ## The ladder: a track's levels stop where the item would pass the next item's base value of what

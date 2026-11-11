@@ -13,6 +13,7 @@ description = "Two-stage blower with a wide intake and long throw."
 width = 0.78
 reach = 0.4
 throw_distance = 12.5
+throw_recovery_s = 0.18
 scrape_floor = 0.006
 rate = 0.14
 engaged_speed_mult = 0.4

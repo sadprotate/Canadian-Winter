@@ -25,6 +25,11 @@ extends Node
 ## Cohesion: undisturbed snow (fallen and settled) holds steep, clean cut walls; snow that was
 ## thrown, pushed or has slid ("loose") slumps to the angle of repose. Cells of completed
 ## clearing boxes ("held") act as a retaining wall for slumping snow, like the curb.
+##
+## Smooth piles (polish 6 §9): loose snow the player moved ("soft": pushed, plowed, shoved, thrown)
+## lands spread over a band ahead of a blade, settles a little lower (moved_repose) and rounds off
+## at its tops (moved_crest), so piles and berms come out as rounded mounds; the face a blade leaves
+## behind settles once the blade has gone. The city's windrows settle as before.
 
 signal reset_done
 
@@ -58,6 +63,17 @@ var surf := PackedByteArray()
 var fall_mult := PackedFloat32Array()
 var loose := PackedFloat32Array()     # depth (m) of loose snow (thrown / pushed / slid) on top of each cell
 var hold := PackedByteArray()         # 1 = inside a completed clearing box (no slump inflow)
+## Polish 6 §9: 1 = the loose snow on this cell was moved by the player (pushed by a hand tool or a
+## blade, shoved, thrown or dumped) or slid off such snow. It settles at moved_repose instead of
+## repose and its tops round off (moved_crest): player-moved piles come out as rounded mounds and
+## berms. The city's windrows and the sidewalk crew's mounds aren't marked and settle as before.
+## Cleared once the cell holds no more than 2 mm of loose snow, whatever took it (hardening, a box's
+## snap, melting, a scrape): at its chunk's next sync, at once where set_rect clears it. Saved
+## (serialize_pending "soft"). Every write goes through _set_soft / _clear_soft, which keep
+## soft_tiles (the count of soft cells in each relaxation tile, derived on load) exact: a tile
+## without any relaxes exactly as before §9.
+var soft := PackedByteArray()
+var soft_tiles := PackedInt32Array()
 
 var fall_total := 0.0          # cumulative snowfall (m) since the winter started
 var settle_clock := 0.0        # game minutes elapsed (for settling)
@@ -79,6 +95,16 @@ var relax_hot: PackedInt32Array = PackedInt32Array()       # hot queue (player o
 var hot_head := 0                # read index into relax_hot (FIFO without O(n) pops)
 var hot_mode := true   # ops queue into the hot list unless a batch op disables it
 var relax_ops_last_frame := 0
+## Polish 6 §3: the queue is saved (serialize_pending "relax"), so a reload settles what was still
+## pending. A save without it (older saves) is settled once on load: deserialize sets this and
+## Saves.load_game settles the map once the boxes' held cells are back (settle_all, or settle_begin
+## for the main menu's loading screen to step through).
+var settle_on_load := false
+## Polish 6 §3: blade_push's own random stream (how far past the blade each cell's snow lands), so
+## a push no longer depends on draws from the engine's global generator. Seeded per winter
+## (reset_for_winter), its state saved (serialize_pending "push_rng").
+var push_rng := RandomNumberGenerator.new()
+const PUSH_SEED := 7703
 # Blade guard: the strip just cleared behind an engaged blade acts as a wall for slumping, so a
 # tall berm can't spill back over the blade (cell-space AABB, expires after a couple of frames).
 var guard_x0 := 0
@@ -86,8 +112,23 @@ var guard_z0 := 0
 var guard_x1 := -1
 var guard_z1 := -1
 var guard_ttl := 0
+## Polish 6 §9: the tiles a guard has held back (its strip and the cells beside it), queued again
+## once the guard no longer covers them, or GUARD_SETTLE_STEPS relaxation steps (0.75 s at 1×) after
+## it has expired without being set again: the face a blade leaves behind settles then. Before,
+## those tiles had been relaxed while guarded, found nothing to move and were never looked at
+## again, so a pushed pile kept a cliff on its blade side until it hardened. The wait keeps a push
+## made of quick presses (RMB clicked) like a held one: the berm doesn't slump back onto the
+## cleared strip between presses, to be pushed again by the next.
+var guard_tiles: Dictionary = {}
+var guard_settle := 0
+const GUARD_SETTLE_STEPS := 45
 
 var repose := 0.23
+## Polish 6 §9: player-moved loose snow (soft): its steepest step per cell (lower than repose), and
+## the most a cell of it may stand above the mean of its two neighbours along an axis (its tops and
+## shoulders round off into domes and rounded berms instead of peaks).
+var moved_repose := 0.19
+var moved_crest := 0.08
 var repose_cut := 1.6          # undisturbed snow: max height step per cell (near-vertical cut walls)
 var settle_rate := 0.0
 var loose_harden_min := 1800.0   # time constant of loose → cohesive (game minutes)
@@ -105,6 +146,7 @@ var auto_process := true         # world calls tick(); tests can drive manually
 
 
 func _ready() -> void:
+	push_rng.seed = PUSH_SEED
 	_noise.seed = 1337
 	_noise.frequency = 0.045
 	_noise.fractal_octaves = 3
@@ -115,6 +157,8 @@ func _ready() -> void:
 	fall_mult.resize(n)
 	loose.resize(n)
 	hold.resize(n)
+	soft.resize(n)
+	soft_tiles.resize(TW * TH)
 	chunk_fall.resize(CW * CH)
 	chunk_settle.resize(CW * CH)
 	dirty_x0.resize(CW * CH)
@@ -129,6 +173,8 @@ func _apply_balance() -> void:
 	var b: BalanceData = Catalog.balance
 	if b:
 		repose = b.repose_max_diff
+		moved_repose = b.moved_repose_max_diff
+		moved_crest = b.moved_crest_max_diff
 		settle_rate = b.settle_rate_per_day
 		settle_threshold = b.settle_threshold
 		ceiling = b.snow_ceiling
@@ -285,6 +331,10 @@ func reset_for_winter(year: int) -> void:
 			depth[i] = clampf(d, 0.0, maxf(ceiling - ground[i], 0.0))
 	loose.fill(0.0)
 	hold.fill(0)
+	soft.fill(0)
+	soft_tiles.fill(0)
+	guard_tiles.clear()
+	guard_settle = 0
 	# The tutorial neighbor stands on his porch: a small trampled spot.
 	if year <= 1 and not Layout.neighbor_lot.is_empty():
 		var hi := Layout.house_info(Layout.neighbor_lot)
@@ -301,6 +351,9 @@ func reset_for_winter(year: int) -> void:
 	relax_list.clear()
 	relax_hot.clear()
 	hot_head = 0
+	settle_on_load = false
+	settling = false
+	push_rng.seed = PUSH_SEED + year
 	stat_player_moved = 0.0
 	_mark_all_dirty()
 	initialized = true
@@ -376,6 +429,8 @@ func sync_chunk(ci: int) -> void:
 			if harden < 1.0 and loose[i] > 0.0:
 				var lz := loose[i] * harden
 				loose[i] = lz if lz > 0.002 else 0.0
+				if lz <= 0.002 and soft[i] == 1:
+					_clear_soft(i)     # polish 6 §9: hardened, it is no longer moved snow
 			var m := fall_mult[i]
 			if m <= 0.0:
 				continue
@@ -387,6 +442,24 @@ func sync_chunk(ci: int) -> void:
 			# New snow lands on top of whatever is there, up to the lamp-height ceiling.
 			var top := ceil_h - ground[i]
 			depth[i] = minf(d + df * m, maxf(top, d))
+	# Polish 6 §9: a mark stays only while its cell holds more than 2 mm of loose snow, whatever took
+	# the rest (a box's snap, melting, a scrape, a slump, the save's rounding): the tiles of this
+	# chunk that hold marks (soft_tiles) drop the others. A pass of its own, so the loop above costs
+	# what it did for every chunk.
+	@warning_ignore("integer_division")
+	var t0 := (cz / TILE) * TW + cx / TILE
+	@warning_ignore("integer_division")
+	var tn := CHUNK / TILE
+	for tz in range(tn):
+		for tx in range(tn):
+			if soft_tiles[t0 + tz * TW + tx] <= 0:
+				continue
+			for z in range(cz + tz * TILE, cz + tz * TILE + TILE):
+				var row := z * W
+				for x in range(cx + tx * TILE, cx + tx * TILE + TILE):
+					var i := row + x
+					if soft[i] == 1 and loose[i] <= 0.002:
+						_clear_soft(i)
 	dirty_x0[ci] = 0
 	dirty_z0[ci] = 0
 	dirty_x1[ci] = CHUNK
@@ -748,6 +821,41 @@ func set_blade_guard(r: Rect2) -> void:
 	guard_x1 = clampi(int(floor(r.end.x * INV_CELL)), 0, W - 1)
 	guard_z1 = clampi(int(floor(r.end.y * INV_CELL)), 0, H - 1)
 	guard_ttl = 3
+	guard_settle = 0
+	# Polish 6 §9: the tiles the guard has left since the last frame settle now; the ones it covers
+	# (with a cell's margin: their slumps into it were held back) are noted.
+	for t in guard_tiles.keys():
+		if not _tile_by_guard(t):
+			guard_tiles.erase(t)
+			_push_tile(t)
+	@warning_ignore("integer_division")
+	var t0x := maxi(guard_x0 - 1, 0) / TILE
+	@warning_ignore("integer_division")
+	var t1x := mini(guard_x1 + 1, W - 1) / TILE
+	@warning_ignore("integer_division")
+	var t0z := maxi(guard_z0 - 1, 0) / TILE
+	@warning_ignore("integer_division")
+	var t1z := mini(guard_z1 + 1, H - 1) / TILE
+	for tz in range(t0z, t1z + 1):
+		for tx in range(t0x, t1x + 1):
+			guard_tiles[tz * TW + tx] = true
+
+
+## Polish 6 §9: whether tile t's cells (and the cell beyond its +x / +z edges, which it compares
+## with) reach the guard's strip or the cell around it.
+func _tile_by_guard(t: int) -> bool:
+	var x0 := (t % TW) * TILE
+	@warning_ignore("integer_division")
+	var z0 := (t / TW) * TILE
+	return x0 <= guard_x1 + 1 and x0 + TILE >= guard_x0 - 1 and z0 <= guard_z1 + 1 and z0 + TILE >= guard_z0 - 1
+
+
+## Polish 6 §9: the guard is gone (GUARD_SETTLE_STEPS after it expired): every tile it held back is
+## queued to settle.
+func _release_guard() -> void:
+	for t in guard_tiles.keys():
+		_push_tile(t)
+	guard_tiles.clear()
 
 
 func _guarded(i: int) -> bool:
@@ -760,6 +868,12 @@ func _guarded(i: int) -> bool:
 func process_relax(max_tiles: int = 48, max_usec: int = 0) -> int:
 	if guard_ttl > 0:
 		guard_ttl -= 1
+		if guard_ttl == 0:
+			guard_settle = GUARD_SETTLE_STEPS     # polish 6 §9
+	elif guard_settle > 0:
+		guard_settle -= 1
+		if guard_settle == 0:
+			_release_guard()
 	var processed := 0
 	relax_ops_last_frame = 0
 	var t0 := Time.get_ticks_usec()
@@ -790,6 +904,102 @@ func relax_until_stable(limit := 200000) -> void:
 		n += process_relax(256)
 
 
+## Polish 6 §3: a saved tile back in its queue (deserialize), in the saved order.
+func _restore_tile(t: int, hot: bool) -> void:
+	if t < 0 or t >= TW * TH or relax_queue.has(t):
+		return
+	relax_queue[t] = true
+	if hot:
+		relax_hot.append(t)
+	else:
+		relax_list.append(t)
+
+
+## Polish 6 §3: settle the whole map — every tile queued and relaxed until nothing moves. For a
+## save written before the relaxation queue was saved (settle_on_load): whatever its last operations
+## had left pending (the city's pass during a sleep, above all) was lost with the queue, and would
+## otherwise collapse at the first snow work nearby. The relaxation's own rule, queue and order;
+## only a tile that moved more than SETTLE_MOVED_MIN (summed over its cells, m) queues its
+## neighbours again, so the long tail of sub-millimetre adjustments is left to the game's
+## relaxation (it finds nothing over a millimetre afterwards). settle_begin() queues the map;
+## settle_step(max_usec) works through it (the main menu's loading screen, a frame at a time) and
+## returns true while there is more; settle_all() does it at once and returns the tiles visited.
+const SETTLE_MOVED_MIN := 0.001
+var settling := false
+var settle_visits := 0
+
+
+func settle_begin() -> void:
+	settle_on_load = false
+	settling = true
+	settle_visits = 0
+	for t in range(TW * TH):
+		if not relax_queue.has(t):
+			relax_queue[t] = true
+			relax_list.append(t)
+
+
+func settle_step(max_usec: int) -> bool:
+	if not settling:
+		return false
+	var t0 := Time.get_ticks_usec()
+	while relax_pending() > 0:
+		if max_usec > 0 and Time.get_ticks_usec() - t0 > max_usec:
+			return true
+		var t: int = _pop_tile()
+		relax_queue.erase(t)
+		var tx := t % TW
+		@warning_ignore("integer_division")
+		var tz := t / TW
+		var moved := _relax_tile(tx, tz)
+		settle_visits += 1
+		if moved > SETTLE_MOVED_MIN:
+			for dz in range(-1, 2):
+				for dx in range(-1, 2):
+					var nx := tx + dx
+					var nz := tz + dz
+					if nx >= 0 and nz >= 0 and nx < TW and nz < TH:
+						_push_tile(nz * TW + nx)
+	settling = false
+	return false
+
+
+func settle_all() -> int:
+	settle_begin()
+	settle_step(0)
+	return settle_visits
+
+
+## Polish 6 §9: mark cell i (not yet soft) player-moved, and count it in its tile.
+func _set_soft(i: int) -> void:
+	soft[i] = 1
+	@warning_ignore("integer_division")
+	soft_tiles[((i / W) / TILE) * TW + (i % W) / TILE] += 1
+
+
+## Polish 6 §9: unmark cell i (soft).
+func _clear_soft(i: int) -> void:
+	soft[i] = 0
+	@warning_ignore("integer_division")
+	soft_tiles[((i / W) / TILE) * TW + (i % W) / TILE] -= 1
+
+
+## Polish 6 §9: soft_tiles recounted from soft (after a load; rows without any skipped natively).
+func _count_soft_tiles() -> void:
+	soft_tiles.fill(0)
+	if not soft.has(1):
+		return
+	for z in range(H):
+		if not soft.slice(z * W, z * W + W).has(1):
+			continue
+		@warning_ignore("integer_division")
+		var trow := (z / TILE) * TW
+		for x in range(W):
+			if soft[z * W + x] == 1:
+				@warning_ignore("integer_division")
+				soft_tiles[trow + x / TILE] += 1
+
+
 ## Move snow from the higher cell hi_i down to lo_i across a height step `diff`. Loose snow on top
 ## slides at the angle of repose; the undisturbed snow below only gives way past a near-vertical
 ## step (repose_cut). Whatever slides becomes loose snow on the lower cell. Returns the amount.
@@ -807,6 +1017,8 @@ func _slump(hi_i: int, lo_i: int, diff: float, maxd: float, rc: float) -> float:
 	loose[hi_i] = maxf(0.0, minf(lz - amt, depth[hi_i]))
 	depth[lo_i] += amt
 	loose[lo_i] += amt
+	if soft[hi_i] == 1 and soft[lo_i] == 0:
+		_set_soft(lo_i)     # polish 6 §9: what slides off moved snow settles as moved snow
 	return amt
 
 
@@ -833,6 +1045,13 @@ func _relax_tile(tx: int, tz: int) -> float:
 				hmin = hh
 			if hh > hmax:
 				hmax = hh
+	# Polish 6 §9: a tile holding player-moved snow (its own cells or the +x / +z border it compares
+	# with) takes _relax_tile_soft's pass; every other tile this one, exactly as before.
+	var t := tz * TW + tx
+	if soft_tiles[t] > 0 or (tx + 1 < TW and soft_tiles[t + 1] > 0) or (tz + 1 < TH and soft_tiles[t + TW] > 0):
+		if hmax - hmin <= minf(maxd, minf(moved_repose, moved_crest)):
+			return 0.0
+		return _relax_tile_soft(x0, z0, x1, z1)
 	if hmax - hmin <= maxd:
 		return 0.0
 	var g := guard_ttl > 0 and x1 >= guard_x0 and x0 <= guard_x1 and z1 >= guard_z0 and z0 <= guard_z1
@@ -878,6 +1097,102 @@ func _relax_tile(tx: int, tz: int) -> float:
 				elif -diff2 > maxd:
 					if not (si == S_ROAD and sn != S_ROAD) and not (g and _guarded(i)) and not (hold[i] == 1 and hold[n] == 0):
 						moved += _slump(n, i, -diff2, maxd, rc)
+	if moved > 1e-6:
+		mark_dirty(x0 - 1, z0 - 1, x1 + 1, z1 + 1)
+	return moved
+
+
+## Polish 6 §9: _relax_tile's pass for a tile holding player-moved snow. Cells that aren't soft
+## slump exactly as there. A soft higher cell slumps onto its lower neighbour past `lim`:
+## moved_repose, less where it is a top or a shoulder — no more than 2 × moved_crest above what it
+## stands below its other neighbour b along that axis (so never more than moved_crest above the
+## two's mean). Whatever stops snow sliding from it onto b supports it there as a wall does: a
+## wall, the map's edge, the curb from the property side, a completed box from outside it, the
+## guarded strip behind a blade. (Written out at each of the four pairs: this is the hot loop.)
+func _relax_tile_soft(x0: int, z0: int, x1: int, z1: int) -> float:
+	var maxd := repose
+	var ms := moved_repose
+	var c2 := 2.0 * moved_crest
+	var pre := minf(maxd, minf(ms, moved_crest))
+	var g := guard_ttl > 0 and x1 >= guard_x0 and x0 <= guard_x1 and z1 >= guard_z0 and z0 <= guard_z1
+	var rc := repose_cut
+	var moved := 0.0
+	for z in range(z0, z1):
+		var row := z * W
+		for x in range(x0, x1):
+			var i := row + x
+			var si := surf[i]
+			if si == S_BLOCKED:
+				continue
+			var hi := ground[i] + depth[i]
+			# +x neighbour
+			var n := i + 1
+			var sn := surf[n]
+			if sn != S_BLOCKED:
+				var hn := ground[n] + depth[n]
+				var diff := hi - hn
+				if diff > pre:
+					var fi := soft[i] == 1
+					if (fi or diff > maxd) and not (sn == S_ROAD and si != S_ROAD) and not (hold[n] == 1 and hold[i] == 0) and not (g and _guarded(n)):
+						var lim := maxd
+						if fi:
+							lim = ms
+							if x > 0:
+								var b := i - 1
+								var sb := surf[b]
+								if sb != S_BLOCKED and not (sb == S_ROAD and si != S_ROAD) and not (hold[b] == 1 and hold[i] == 0) and not (g and _guarded(b)):
+									lim = clampf(ground[b] + depth[b] - hi + c2, 0.0, ms)
+						if diff > lim:
+							var amt := _slump(i, n, diff, lim, rc)
+							hi -= amt
+							moved += amt
+				elif -diff > pre:
+					var fn := soft[n] == 1
+					if (fn or -diff > maxd) and not (si == S_ROAD and sn != S_ROAD) and not (hold[i] == 1 and hold[n] == 0) and not (g and _guarded(i)):
+						var lim2 := maxd
+						if fn:
+							lim2 = ms
+							if x + 2 < W:
+								var b2 := n + 1
+								var sb2 := surf[b2]
+								if sb2 != S_BLOCKED and not (sb2 == S_ROAD and sn != S_ROAD) and not (hold[b2] == 1 and hold[n] == 0) and not (g and _guarded(b2)):
+									lim2 = clampf(ground[b2] + depth[b2] - hn + c2, 0.0, ms)
+						if -diff > lim2:
+							var amt2 := _slump(n, i, -diff, lim2, rc)
+							hi += amt2
+							moved += amt2
+			# +z neighbour
+			n = i + W
+			sn = surf[n]
+			if sn != S_BLOCKED:
+				var hn2 := ground[n] + depth[n]
+				var diff2 := hi - hn2
+				if diff2 > pre:
+					var fi2 := soft[i] == 1
+					if (fi2 or diff2 > maxd) and not (sn == S_ROAD and si != S_ROAD) and not (hold[n] == 1 and hold[i] == 0) and not (g and _guarded(n)):
+						var lim3 := maxd
+						if fi2:
+							lim3 = ms
+							if z > 0:
+								var b3 := i - W
+								var sb3 := surf[b3]
+								if sb3 != S_BLOCKED and not (sb3 == S_ROAD and si != S_ROAD) and not (hold[b3] == 1 and hold[i] == 0) and not (g and _guarded(b3)):
+									lim3 = clampf(ground[b3] + depth[b3] - hi + c2, 0.0, ms)
+						if diff2 > lim3:
+							moved += _slump(i, n, diff2, lim3, rc)
+				elif -diff2 > pre:
+					var fn2 := soft[n] == 1
+					if (fn2 or -diff2 > maxd) and not (si == S_ROAD and sn != S_ROAD) and not (hold[i] == 1 and hold[n] == 0) and not (g and _guarded(i)):
+						var lim4 := maxd
+						if fn2:
+							lim4 = ms
+							if z + 2 < H:
+								var b4 := n + W
+								var sb4 := surf[b4]
+								if sb4 != S_BLOCKED and not (sb4 == S_ROAD and sn != S_ROAD) and not (hold[b4] == 1 and hold[n] == 0) and not (g and _guarded(b4)):
+									lim4 = clampf(ground[b4] + depth[b4] - hn2 + c2, 0.0, ms)
+						if -diff2 > lim4:
+							moved += _slump(n, i, -diff2, lim4, rc)
 	if moved > 1e-6:
 		mark_dirty(x0 - 1, z0 - 1, x1 + 1, z1 + 1)
 	return moved
@@ -1092,8 +1407,10 @@ func set_hold_rect(r: Rect2, on: bool) -> void:
 ## Deposit volume (m3) around a point with a cone profile. Road cells only receive snow if
 ## allow_road is true (snow that came from the road, graders, debug). Cells never rise above the
 ## ceiling: the excess spills outward into the nearest cells with room (volume is conserved).
+## Polish 6 §9: the snow is player-moved (soft: thrown, dumped) unless `moved` is false (wading's
+## flanks).
 ## Returns the deposited volume (always vol unless the whole map is full).
-func deposit(p: Vector2, vol: float, radius: float, allow_road := false) -> float:
+func deposit(p: Vector2, vol: float, radius: float, allow_road := false, moved := true) -> float:
 	if vol <= 0.0:
 		return 0.0
 	radius = maxf(radius, CELL * 0.75)
@@ -1135,16 +1452,19 @@ func deposit(p: Vector2, vol: float, radius: float, allow_road := false) -> floa
 			if add > 0.0:
 				depth[i2] += add
 				loose[i2] += add
+				if moved and soft[i2] == 0:
+					_set_soft(i2)
 		mark_dirty(x0, z0, x1, z1)
 		_queue_relax(x0, z0, x1, z1)
 	if left > 1e-9:
-		left = _spill(p, left, allow_road)
+		left = _spill(p, left, allow_road, moved)
 	return vol - left * CELL_AREA
 
 
 ## Put `amount` (depth units, i.e. m3 / CELL_AREA) into the cells nearest to p that still have room
-## under the ceiling, searching outward ring by ring. Returns what could not be placed.
-func _spill(p: Vector2, amount: float, allow_road := false) -> float:
+## under the ceiling, searching outward ring by ring. Returns what could not be placed. Polish 6 §9:
+## `moved` marks the snow player-moved (soft): a deposit's overflow, not the city grader's.
+func _spill(p: Vector2, amount: float, allow_road := false, moved := false) -> float:
 	var cx := cell_x(p.x)
 	var cz := cell_z(p.y)
 	var r := 0
@@ -1183,6 +1503,8 @@ func _spill(p: Vector2, amount: float, allow_road := false) -> float:
 				var add := (ceiling - ground[i] - depth[i]) * f
 				depth[i] += add
 				loose[i] += add
+				if moved and soft[i] == 0:
+					_set_soft(i)
 				amount -= add
 			mark_dirty(bx0, bz0, bx1, bz1)
 			_queue_relax(bx0, bz0, bx1, bz1)
@@ -1193,7 +1515,16 @@ func _spill(p: Vector2, amount: float, allow_road := false) -> float:
 ## Blade push step (pushers, scrapers, plows). The blade is a segment centred at `center`
 ## with face normal `face_n` (the direction snow is pushed) and tangent across the blade.
 ## Snow under/behind the face within `band` is moved ahead of the face along the face normal.
+## Polish 6 §9: each cell's snow lands spread over a short band along the face normal (PUSH_BAND:
+## five points PUSH_BAND_STEP apart at most, a third of push_dist for short pushes, centred where it
+## all landed before: push_dist plus the cell's 0–12 cm draw), not on one line, so the berm grows
+## rounded instead of as a one-cell ridge. Still one draw per moved cell from push_rng. The snow it
+## moves is marked soft (player-moved).
 ## Returns {moved, berm, blocked_volume}.
+const PUSH_BAND := [1.0 / 12.0, 3.0 / 12.0, 4.0 / 12.0, 3.0 / 12.0, 1.0 / 12.0]
+const PUSH_BAND_STEP := 0.2
+
+
 func blade_push(center: Vector2, face_n: Vector2, half_w: float, band: float, floor_d: float, player_rule := true, push_dist := 0.4) -> Dictionary:
 	face_n = face_n.normalized()
 	var tang := Vector2(-face_n.y, face_n.x)
@@ -1208,6 +1539,12 @@ func blade_push(center: Vector2, face_n: Vector2, half_w: float, band: float, fl
 	var moved := 0.0
 	var kept := 0.0
 	var berm := 0.0
+	var step := minf(PUSH_BAND_STEP, push_dist / 3.0)
+	# Polish 6 §9: the cells the band reaches (the pickup's long cast can land past the rect below).
+	var ex0 := x0
+	var ez0 := z0
+	var ex1 := x1
+	var ez1 := z1
 	for z in range(z0, z1 + 1):
 		for x in range(x0, x1 + 1):
 			var i := z * W + x
@@ -1226,36 +1563,51 @@ func blade_push(center: Vector2, face_n: Vector2, half_w: float, band: float, fl
 			var d := depth[i] - floor_d
 			if d <= 0.0:
 				continue
-			# Target: pushed out ahead of the face along its normal.
-			var tp := center + tang * along + face_n * (push_dist + randf() * 0.12)
-			if not in_map(tp.x, tp.y):
+			# Target: pushed out ahead of the face along its normal, spread over the band (polish 6
+			# §9). What can't land at a point (off the map, its own cell) stays where it is.
+			var reach_d := push_dist + push_rng.randf() * 0.12
+			var from := center + tang * along
+			var took := 0.0
+			for k in range(PUSH_BAND.size()):
+				var share: float = d * PUSH_BAND[k]
+				var tp := from + face_n * (reach_d + (k - 2) * step)
+				if not in_map(tp.x, tp.y):
+					continue
+				var tx := cell_x(tp.x)
+				var tz := cell_z(tp.y)
+				var t := tz * W + tx
+				if t == i:
+					continue
+				var ts := surf[t]
+				if ts == S_BLOCKED:
+					kept += share
+					continue
+				if player_rule and ts == S_ROAD and s != S_ROAD:
+					kept += share   # curb acts as a wall: snow stays on the property side
+					continue
+				# The berm can't rise above the ceiling: whatever doesn't fit stays in front of the blade.
+				var mv := minf(share, maxf(ceiling - ground[t] - depth[t], 0.0))
+				if mv < share:
+					kept += share - mv
+				if mv <= 0.0:
+					continue
+				depth[t] += mv
+				loose[t] += mv
+				if soft[t] == 0:
+					_set_soft(t)
+				took += mv
+				ex0 = mini(ex0, tx)
+				ez0 = mini(ez0, tz)
+				ex1 = maxi(ex1, tx)
+				ez1 = maxi(ez1, tz)
+			if took <= 0.0:
 				continue
-			var tx := cell_x(tp.x)
-			var tz := cell_z(tp.y)
-			var t := tz * W + tx
-			if t == i:
-				continue
-			var ts := surf[t]
-			if ts == S_BLOCKED:
-				kept += d
-				continue
-			if player_rule and ts == S_ROAD and s != S_ROAD:
-				kept += d   # curb acts as a wall: snow stays on the property side
-				continue
-			# The berm can't rise above the ceiling: whatever doesn't fit stays in front of the blade.
-			var mv := minf(d, maxf(ceiling - ground[t] - depth[t], 0.0))
-			if mv < d:
-				kept += d - mv
-			if mv <= 0.0:
-				continue
-			depth[i] -= mv
-			depth[t] += mv
-			loose[t] += mv
+			depth[i] -= took
 			loose[i] = minf(loose[i], depth[i])
-			moved += mv
+			moved += took
 	if moved > 0.0:
-		mark_dirty(x0, z0, x1, z1)
-		_queue_relax(x0, z0, x1, z1)
+		mark_dirty(ex0, ez0, ex1, ez1)
+		_queue_relax(ex0, ez0, ex1, ez1)
 	return {"moved": moved * CELL_AREA, "berm": berm * CELL_AREA, "kept": kept * CELL_AREA}
 
 
@@ -1309,12 +1661,14 @@ func set_rect(r: Rect2, d: float, only_above := false) -> float:
 			var i := z * W + x
 			if surf[i] == S_BLOCKED:
 				continue
-			if only_above and depth[i] <= d:
-				continue
-			removed += depth[i] - d
-			depth[i] = d
-			# Setting a depth lays settled (cohesive) snow; trimming only the top keeps what's left.
-			loose[i] = minf(loose[i], d) if only_above else 0.0
+			if not only_above or depth[i] > d:
+				removed += depth[i] - d
+				depth[i] = d
+				# Setting a depth lays settled (cohesive) snow; trimming only the top keeps what's left.
+				loose[i] = minf(loose[i], d) if only_above else 0.0
+			# Polish 6 §9: a mark goes with the loose snow, here at once (as at a sync: sync_chunk).
+			if soft[i] == 1 and loose[i] <= 0.002:
+				_clear_soft(i)
 	mark_dirty(c.position.x, c.position.y, c.end.x, c.end.y)
 	_queue_relax(c.position.x, c.position.y, c.end.x, c.end.y)
 	return removed * CELL_AREA
@@ -1433,9 +1787,9 @@ func wade(p: Vector2, dir: Vector2, radius := 0.26, max_top := INF, keep_frac :=
 	for s in [1.0, -1.0]:
 		var at: Vector2 = p + side * float(s) * (radius + 0.3)
 		if yard > 0.0:
-			deposit(at, yard * 0.5 * CELL_AREA, 0.22, false)
+			deposit(at, yard * 0.5 * CELL_AREA, 0.22, false, false)
 		if road > 0.0:
-			deposit(at, road * 0.5 * CELL_AREA, 0.22, true)
+			deposit(at, road * 0.5 * CELL_AREA, 0.22, true, false)
 	return moved * CELL_AREA
 
 
@@ -1673,6 +2027,19 @@ func serialize() -> Dictionary:
 		"loose": lcomp, "melted": melted}
 
 
+## Polish 6 §3 (version 3, optional keys of the save's snow, beside serialize()): the relaxation
+## still pending, in the order it would run — the hot list from its read index, then the cold
+## stack — and blade_push's stream (its state as text: a 64-bit value, which a JSON number can't
+## hold exactly). Polish 6 §9: "soft", the player-moved marks (zstd-compressed bytes as base64;
+## a save without it has none). deserialize() reads them back.
+func serialize_pending() -> Dictionary:
+	var hot := []
+	for k in range(hot_head, relax_hot.size()):
+		hot.append(relax_hot[k])
+	return {"relax": {"hot": hot, "cold": Array(relax_list)}, "push_rng": str(push_rng.state),
+		"soft": Marshalls.raw_to_base64(soft.compress(FileAccess.COMPRESSION_ZSTD))}
+
+
 func deserialize(d: Dictionary) -> bool:
 	if int(d.get("w", 0)) != W or int(d.get("h", 0)) != H:
 		return false
@@ -1707,12 +2074,38 @@ func deserialize(d: Dictionary) -> bool:
 			for i in range(W * H):
 				loose[i] = li[i] / 1000.0
 	hold.fill(0)
+	# Polish 6 §9: the player-moved marks (an older save has none: its loose snow settles as before).
+	soft.fill(0)
+	var sf = d.get("soft", "")
+	if sf is String and (sf as String) != "":
+		var sr := Marshalls.base64_to_raw(sf).decompress(W * H, FileAccess.COMPRESSION_ZSTD)
+		if sr.size() == W * H:
+			soft = sr
+	_count_soft_tiles()
 	chunk_fall.fill(fall_total)
 	chunk_settle.fill(settle_clock)
 	relax_queue.clear()
 	relax_list.clear()
 	relax_hot.clear()
 	hot_head = 0
+	guard_ttl = 0
+	guard_tiles.clear()
+	guard_settle = 0
+	# Polish 6 §3: the pending relaxation as saved; a save without it is settled once on load
+	# (Saves.load_game → settle_all, after the boxes' held cells are restored).
+	var rq = d.get("relax", null)
+	settle_on_load = not (rq is Dictionary)
+	settling = false
+	if rq is Dictionary:
+		for v in (rq as Dictionary).get("hot", []):
+			_restore_tile(int(v), true)
+		for v in (rq as Dictionary).get("cold", []):
+			_restore_tile(int(v), false)
+	var ps := str(d.get("push_rng", ""))
+	if ps.is_valid_int():
+		push_rng.state = ps.to_int()
+	else:
+		push_rng.seed = PUSH_SEED
 	_mark_all_dirty()
 	initialized = true
 	reset_done.emit()

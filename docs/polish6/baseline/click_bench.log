@@ -1,0 +1,34 @@
+# command: godot --headless --fixed-fps 60 --path . res://tests/click_bench.tscn
+# cwd: /c/Users/orsin/OneDrive/Desktop/Canadian Winter/Canadian-Winter (at 1b38f4a, game code = polish6-baseline)
+# exit code: 0   wall time: 98 s   finished: 2026-11-05 09:32
+# Godot: 4.7.2.stable.official.ed1daf0bf
+
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+click_bench: cap 6.0 presses/s, 30 s per run, events batched every 1 frame(s); keys: primary Left Mouse, secondary Right Mouse, interact E, drop G
+
+LMB hold + sweep (grind_bench bot)       removed 0.0413 m3/s  scooped/pushed 0.0553 m3/s  strokes 58
+LMB hold in place, release when full     removed 0.0290 m3/s  scooped/pushed 0.0267 m3/s  throws 30
+LMB auto-click 5/s                       removed 0.0599 m3/s  scooped/pushed 0.0596 m3/s  presses 123 sent, 123 registered (4.1/s)  throws 123  14.5 L per press
+LMB auto-click 10/s                      removed 0.0756 m3/s  scooped/pushed 0.0716 m3/s  presses 229 sent, 149 registered (5.0/s)  throws 149  14.4 L per press
+LMB auto-click 20/s                      removed 0.0782 m3/s  scooped/pushed 0.0767 m3/s  presses 458 sent, 160 registered (5.3/s)  throws 160  14.4 L per press
+LMB auto-click 50/s                      removed 0.0768 m3/s  scooped/pushed 0.0746 m3/s  presses 1143 sent, 154 registered (5.1/s)  throws 154  14.5 L per press
+
+RMB hold, walking up the path            removed -0.0000 m3/s  scooped/pushed 0.0066 m3/s
+RMB auto-click 5/s, walking              removed -0.0000 m3/s  scooped/pushed 0.0066 m3/s  presses 75 sent, 75 registered (5.0/s)
+RMB auto-click 10/s, walking             removed -0.0000 m3/s  scooped/pushed 0.0066 m3/s  presses 150 sent, 90 registered (6.0/s)
+RMB auto-click 20/s, walking             removed -0.0000 m3/s  scooped/pushed 0.0066 m3/s  presses 300 sent, 90 registered (6.0/s)
+RMB auto-click 50/s, walking             removed -0.0000 m3/s  scooped/pushed 0.0066 m3/s  presses 750 sent, 90 registered (6.0/s)
+
+E   x100 at  5/s on a shovel on the ground: registered 1 pickups+drops, tools 2 -> 2 (in slots 1, on the ground 1)
+E   x100 at 10/s on a shovel on the ground: registered 1 pickups+drops, tools 2 -> 2 (in slots 1, on the ground 1)
+E   x100 at 20/s on a shovel on the ground: registered 1 pickups+drops, tools 2 -> 2 (in slots 1, on the ground 1)
+E   x100 at 50/s on a shovel on the ground: registered 1 pickups+drops, tools 2 -> 2 (in slots 1, on the ground 1)
+G   x100 at  5/s with a shovel in hand: registered 1 drops, tools 2 -> 2 (in slots 0, on the ground 2)
+G   x100 at 10/s with a shovel in hand: registered 1 drops, tools 2 -> 2 (in slots 0, on the ground 2)
+G   x100 at 20/s with a shovel in hand: registered 1 drops, tools 2 -> 2 (in slots 0, on the ground 2)
+G   x100 at 50/s with a shovel in hand: registered 1 drops, tools 2 -> 2 (in slots 0, on the ground 2)
+E+G x100 each at  5/s, alternating, at the shovel: registered 199 changes, tools 2 -> 2 (in slots 0, on the ground 2)
+E+G x100 each at 10/s, alternating, at the shovel: registered 120 changes, tools 2 -> 2 (in slots 0, on the ground 2)
+E+G x100 each at 20/s, alternating, at the shovel: registered 40 changes, tools 2 -> 2 (in slots 0, on the ground 2)
+E+G x100 each at 50/s, alternating, at the shovel: registered 12 changes, tools 2 -> 2 (in slots 0, on the ground 2)

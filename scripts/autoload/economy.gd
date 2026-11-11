@@ -6,6 +6,11 @@ extends Node
 signal orders_changed
 signal bills_changed
 
+# Polish 6 §2: classes added in polish 5, by path rather than global name, so this script still
+# loads when the editor's class cache predates a pull.
+const _Equipment := preload("res://scripts/data/equipment.gd")
+const _ItemUpgrades := preload("res://scripts/data/item_upgrades.gd")
+
 var orders: Array = []        # {id, item, kind, price, placed, ready_at, status}
 var bills: Array = []         # {month, amount, issued_day, due_day, paid}
 var transactions: Array = []  # {time, text, amount}
@@ -85,7 +90,7 @@ func price_of(item_id: String) -> int:
 	if Catalog.UTILITY.has(sid):
 		return Catalog.UTILITY[sid]["price"]
 	if Catalog.EQUIPMENT.has(sid):
-		return Equipment.price(sid)
+		return _Equipment.price(sid)
 	return 0
 
 
@@ -103,18 +108,18 @@ func can_buy(item_id: String) -> String:
 	if kind == "vehicle" and not Catalog.store_vehicles().has(Catalog.vehicle(StringName(item_id))):
 		return "Not sold in the store."
 	if kind == "equipment":
-		var why_e := Equipment.why_not(item_id)
+		var why_e := _Equipment.why_not(item_id)
 		if why_e != "":
 			return why_e
 	if kind == "upgrade":
 		var u: UpgradeData = Catalog.upgrade(StringName(item_id))
-		if ItemUpgrades.is_legacy(u.id) or Catalog.RETIRED_UPGRADE_IDS.has(u.id):
+		if _ItemUpgrades.is_legacy(u.id) or Catalog.RETIRED_UPGRADE_IDS.has(u.id):
 			return "No longer sold."
 		if Game.has_upgrade(u.id) or has_open_order(item_id):
 			return "Already owned."
 		if u.item != &"":
 			# An item's own level: you own the item, the ladder allows it, the level before it is in.
-			var why := ItemUpgrades.why_not(u)
+			var why := _ItemUpgrades.why_not(u)
 			if why != "":
 				return why
 		elif u.requires != &"" and not Game.has_upgrade(u.requires):
@@ -292,7 +297,7 @@ func deserialize(d: Dictionary) -> void:
 		# Polish 5 §13: the pickup's plow was ordered under the plowed pickup's vehicle id (sold as a
 		# vehicle). Now the pickup's upgrade: an open order delivers the plow, never another truck.
 		if str(o.get("item", "")) == "pickup_plow":
-			o["item"] = String(ItemUpgrades.PLOW_ID)
+			o["item"] = String(_ItemUpgrades.PLOW_ID)
 			o["kind"] = "upgrade"
 	bills = d.get("bills", [])
 	for bl in bills:

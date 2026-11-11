@@ -1,0 +1,82 @@
+# command: godot --headless --path . res://tests/forecast_audit.tscn
+# cwd: /c/Users/orsin/OneDrive/Desktop/Canadian Winter/Canadian-Winter (at 1b38f4a, game code = polish6-baseline)
+# exit code: 0   wall time: 57 s   finished: 2026-11-05 09:47
+# Godot: 4.7.2.stable.official.ed1daf0bf
+
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+fc_error_base 0.060, fc_error_per_day 0.120, fc_timing_h_per_day 0.250, radio_surprise_horizon_h 3.0
+Forecast audit — seeds [2024, 1, 7, 42, 99] × winters [1, 2, 3]
+
+**A. Strength named on the TV's card** (days a forecast event drops ≥ 1 cm on; issued every few hours of the issuing day)
+
+| Days out | Cards | Wrong strength | Naming a system that starts or ends within an hour of the day |
+|---|---|---|---|
+| 3 | 3056 | 0 (0.0 %) | 0 |
+| 2 | 3064 | 0 (0.0 %) | 0 |
+| 1 | 3184 | 0 (0.0 %) | 0 |
+| 0 | 3184 | 0 (0.0 %) | 0 |
+
+**B/C. A forecast event's start time and total** (issued every hour of the issuing day, before it starts)
+
+| Days out | Forecasts | Start: mean error | Start: worst | Shown start: worst | Total: mean error | Total: worst |
+|---|---|---|---|---|---|---|
+| 3 | 8952 | 0.38 h | 0.99 h | 1.42 h | 20.1 % | 53.6 % |
+| 2 | 8976 | 0.25 h | 0.74 h | 1.13 h | 14.4 % | 41.7 % |
+| 1 | 9384 | 0.13 h | 0.49 h | 0.79 h | 8.7 % | 29.8 % |
+| 0 | 4762 | 0.04 h | 0.24 h | 0.69 h | 4.8 % | 17.8 % |
+
+**D. A card's day total** (the range shown vs the snow that falls that day)
+
+| Days out | Days (forecast events only) | Range contains it | Range width / day total | All snowy days | Range contains it | Mean error of the middle |
+|---|---|---|---|---|---|---|
+| 3 | 3024 | 92.5 % | 112 % | 3667 | 82.2 % | 30 % |
+| 2 | 3032 | 97.5 % | 88 % | 3662 | 86.9 % | 23 % |
+| 1 | 3144 | 99.7 % | 64 % | 3753 | 90.8 % | 15 % |
+| 0 | 3144 | 100.0 % | 37 % | 3740 | 97.5 % | 5 % |
+
+**E. The radio's next three hours**
+
+| Calls | Condition right | Snowy calls | Condition right | +1 h | +2 h | +3 h | Rate within ±25 % | Mean rate error |
+|---|---|---|---|---|---|---|---|---|
+| 129420 | 99.2 % | 10596 | 99.9 % | 100.0 % | 100.0 % | 99.7 % | 99.8 % | 3.6 % |
+
+**F. Hours where displays disagree** (43500 hours, 4688 with snow falling or on the radio; 37 of those inside an unforecast major event's radio lead)
+
+| Radio snow, TV card none | …at another time | Radio heavier than the TV's strength | Radio's start-to-end strength above the TV's | "Snow has ended" with snow due | Falling, TV today none | Falling, radio silent | HUD vs falling | Radio "right now" vs HUD |
+|---|---|---|---|---|---|---|---|---|
+| 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+
+Examples — strength:
+- 
+
+Examples — range:
+- 2024/1 Jan 7, 2 d out, issued Jan 5 00:00: shown 3–8 cm, fell 8.5 cm
+- 2024/1 Jan 7, 2 d out, issued Jan 5 03:00: shown 4–8 cm, fell 8.5 cm
+- 2024/1 Jan 7, 2 d out, issued Jan 5 06:00: shown 3–8 cm, fell 8.5 cm
+- 2024/1 Jan 7, 2 d out, issued Jan 5 09:00: shown 4–8 cm, fell 8.5 cm
+- 2024/1 Jan 7, 3 d out, issued Jan 4 00:00: shown 2–8 cm, fell 8.5 cm
+- 2024/1 Jan 7, 3 d out, issued Jan 4 03:00: shown 2–8 cm, fell 8.5 cm
+- 2024/1 Jan 7, 3 d out, issued Jan 4 06:00: shown 3–8 cm, fell 8.5 cm
+- 2024/1 Jan 7, 3 d out, issued Jan 4 09:00: shown 3–8 cm, fell 8.5 cm
+- 2024/1 Jan 7, 3 d out, issued Jan 4 12:00: shown 3–8 cm, fell 8.5 cm
+- 2024/1 Jan 7, 3 d out, issued Jan 4 15:00: shown 3–8 cm, fell 8.5 cm
+- 2024/1 Jan 7, 3 d out, issued Jan 4 18:00: shown 3–8 cm, fell 8.5 cm
+- 2024/1 Jan 7, 3 d out, issued Jan 4 21:00: shown 3–8 cm, fell 8.5 cm
+
+Examples — radio:
+- 2024/2 issued Feb 3 13:00, +3 h: radio Cloudy, fell Moderate snow (0.00 vs 0.74 cm/h)
+- 1/1 issued Dec 17 21:00, +3 h: radio Clear, fell Moderate snow (0.00 vs 0.55 cm/h)
+- 1/2 issued Dec 17 10:00, +3 h: radio Cloudy, fell Light snow (0.00 vs 0.35 cm/h)
+- 1/3 issued Dec 12 10:00, +3 h: radio Cloudy, fell Moderate snow (0.00 vs 0.62 cm/h)
+- 1/3 issued Jan 24 23:00, +3 h: radio Clear, fell Light snow (0.00 vs 0.26 cm/h)
+- 7/2 issued Jan 18 07:00, +3 h: radio Cloudy, fell Light snow (0.00 vs 0.50 cm/h)
+- 7/3 issued Mar 3 21:00, +3 h: radio Clear, fell Light snow (0.00 vs 0.12 cm/h)
+- 42/1 issued Dec 29 19:00, +3 h: radio Cloudy, fell Light snow (0.00 vs 0.28 cm/h)
+- 42/3 issued Jan 25 19:00, +3 h: radio Clear, fell Moderate snow (0.00 vs 0.68 cm/h)
+- 99/2 issued Feb 1 20:00, +3 h: radio Clear, fell Light snow (0.00 vs 0.03 cm/h)
+
+Examples — sync:
+- 
+
+(cards 39372 ms, events + radio 3760 ms, sync 7439 ms)

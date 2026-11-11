@@ -1,0 +1,37 @@
+# command: godot --headless --fixed-fps 60 --path . res://tests/run_log.tscn -- --mode=survival
+# cwd: /c/Users/orsin/OneDrive/Desktop/Canadian Winter/Canadian-Winter (at 1b38f4a, game code = polish6-baseline)
+# exit code: 0   wall time: 26 s   finished: 2026-11-05 09:48
+# Godot: 4.7.2.stable.official.ed1daf0bf
+
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+[run_log] start: mode survival, 60 s of play, headless (display server headless), buttons clicked
+[run_log] == main menu (game -)
+[run_log] == PLAY → survival → New Game (game -)
+[run_log] clicked "PLAY"
+[run_log] clicked "New Game"
+[run_log] == in game (game Dec 1 07:30)
+[run_log] the mouse can't be captured on this display (headless): Game.force_input on, as in the tests
+[run_log] == play: a few steps in the bedroom (game Dec 1 07:31)
+[run_log] walked 4.96 m in the bedroom (state foot)
+[run_log] == play: out of the front door (game Dec 1 07:32)
+[run_log] facing the front door: "[E] Open front door"
+[run_log] front door open: true
+[run_log] outside: 16 Maple Street, in the house false, snow here 0.47 m
+[run_log] == play: scoops (game Dec 1 07:36)
+[run_log] scoop: 30.0 L in the hands, released
+[run_log] scoop: 30.0 L in the hands, released
+[run_log] == play: about the yard (game Dec 1 07:38)
+[run_log] played 60.0 s (48.0 game minutes)
+[run_log] == sleep: to the bed (game Dec 1 08:19)
+[run_log] at the bed: "[E] Go to sleep" (0 steps)
+[run_log] == sleep: Sleep until 7:00 a.m. (game Dec 1 08:19)
+[run_log] clicked "Sleep until 7:00 a.m."
+[notify] Good morning.
+[notify] Game saved.
+[run_log] woke at Dec 2 07:00, saved
+[run_log] == pause → EXIT TO MAIN MENU (game Dec 2 07:02)
+[run_log] clicked "EXIT TO MAIN MENU"
+[run_log] == EXIT (game -)
+[run_log] pressing EXIT (the menu's AudioMgr.quit())
+[run_log] clicked "EXIT"

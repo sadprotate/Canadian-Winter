@@ -8,6 +8,10 @@ extends RefCounted
 ## outside — the landing is there, so the indicator shows it and the volume lands in the snow.
 ## The road rule is gone (Decision 12): a landing on the street is like any other.
 
+# Polish 6 §2: classes added in polish 5, by path rather than global name, so this script still
+# loads when the editor's class cache predates a pull.
+const _Buildings := preload("res://scripts/world/buildings.gd")
+
 const G := 9.8
 const MASK := 1 | (1 << 6) | (1 << 7)   # world, roof catchers, dump-truck beds
 
@@ -28,12 +32,12 @@ static func compute(world: World3D, start: Vector3, dir2: Vector2, dist: float, 
 	var t_fall := (vy + sqrt(vy * vy + 2.0 * G * maxf(start.y + 1.0, 0.0))) / G
 	var s2 := Vector2(start.x, start.z)
 	var d2n := Vector2(dir.x, dir.z)
-	var blds := Buildings.along(s2, s2 + d2n * (cos(th) * v0 * t_fall + 0.5), Buildings.SKIN + 0.5)
+	var blds := _Buildings.along(s2, s2 + d2n * (cos(th) * v0 * t_fall + 0.5), _Buildings.SKIN + 0.5)
 	for i in range(160):
 		var np := p + vel * dt
 		vel.y -= G * dt
 		t += dt
-		var be := Buildings.entry(p, np, blds) if not blds.is_empty() else {}
+		var be := _Buildings.entry(p, np, blds) if not blds.is_empty() else {}
 		if space:
 			var q := PhysicsRayQueryParameters3D.create(p, np, MASK)
 			q.collide_with_areas = true
@@ -58,7 +62,7 @@ static func compute(world: World3D, start: Vector3, dir2: Vector2, dist: float, 
 					pass
 				else:
 					# A building's wall (or anything within its walls' skin): stopped at its face.
-					var wb := Buildings.at(Vector2(hp.x, hp.z), Buildings.SKIN)
+					var wb := _Buildings.at(Vector2(hp.x, hp.z), _Buildings.SKIN)
 					if not wb.is_empty() and hp.y < float(wb["top"]) + 0.5:
 						return _at_building(wb, start, dir2, v0, angle_deg)
 					# Hit a tree / vehicle / fence: the snow drops at its base.
@@ -87,7 +91,7 @@ static func compute(world: World3D, start: Vector3, dir2: Vector2, dist: float, 
 static func _building_of(p: Vector2) -> Dictionary:
 	var best := {}
 	var bd := INF
-	for b in Buildings.near(p, 1.0):
+	for b in _Buildings.near(p, 1.0):
 		var r: Rect2 = b["rect"]
 		var q := Vector2(clampf(p.x, r.position.x, r.end.x), clampf(p.y, r.position.y, r.end.y))
 		var d := q.distance_to(p)
@@ -103,7 +107,7 @@ static func _building_of(p: Vector2) -> Dictionary:
 ## show the stop and the fall.
 static func _at_building(bl: Dictionary, start: Vector3, dir2: Vector2, v0: float, angle_deg: float) -> Dictionary:
 	var th := deg_to_rad(angle_deg)
-	var f := Buildings.foot(bl, Vector2(start.x, start.z), dir2)
+	var f := _Buildings.foot(bl, Vector2(start.x, start.z), dir2)
 	var ft: Vector2 = f["foot"]
 	var gy := Snow.surface_height(ft.x, ft.y)
 	var ts := float(f["s"]) / maxf(v0 * cos(th), 0.01)

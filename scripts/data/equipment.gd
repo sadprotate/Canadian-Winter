@@ -12,6 +12,10 @@ extends RefCounted
 ## Owning one follows the pattern of ItemUpgrades.owns: picked up, a crate waiting at the store, or
 ## on order. The coat replaces the old jacket and parka upgrades (migrate()).
 
+# Polish 6 §2: classes added in polish 5, by path rather than global name, so this script still
+# loads when the editor's class cache predates a pull.
+const _Buildings := preload("res://scripts/world/buildings.gd")
+
 const IDS: Array[StringName] = [&"insulated_coat", &"snowshoes", &"heated_pad"]
 const COAT := &"insulated_coat"
 const SHOES := &"snowshoes"
@@ -236,7 +240,7 @@ static func pad_spot_problem(r: Rect2) -> String:
 			if s == Snow.S_BLOCKED or s == Snow.S_STAIRS:
 				return "There's no room for the pad there."
 	for p in pts:
-		if not Buildings.at(p as Vector2).is_empty():
+		if not _Buildings.at(p as Vector2).is_empty():
 			return "There's no room for the pad there."
 	return ""
 
@@ -255,7 +259,7 @@ static func pad_spot(pl: Node3D, fwd: Vector2, yaw: float) -> Dictionary:
 static func put_down_pad(pl: Node3D, fwd: Vector2, yaw: float) -> String:
 	if not pad_carried():
 		return "You aren't carrying the pad."
-	if Buildings.indoors(pl.global_position):
+	if _Buildings.indoors(pl.global_position):
 		return "Put the pad down outside, on your own lot."
 	var sp := pad_spot(pl, fwd, yaw)
 	var why := pad_spot_problem(sp["rect"])

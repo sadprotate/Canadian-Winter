@@ -2,6 +2,11 @@ class_name Icons
 extends Control
 ## Procedurally drawn icons (weather conditions and tools). No image assets needed.
 
+# Polish 6 §2: classes added in polish 5, by path rather than global name, so this script still
+# loads when the editor's class cache predates a pull.
+const _Equipment := preload("res://scripts/data/equipment.gd")
+const _ToolIcons := preload("res://scripts/ui/tool_icons.gd")
+
 var kind := "weather"
 var code := 0           # weather condition
 var tool_id := ""
@@ -122,7 +127,7 @@ static func backdrop() -> GradientTexture2D:
 func _draw_tool(c: Vector2, s: float) -> void:
 	if not tool_id.begins_with("crate:"):
 		draw_texture_rect(backdrop(), Rect2(c - Vector2(s, s) * 0.5, Vector2(s, s)), false)
-		var tex: Texture2D = ToolIcons.texture(tool_id)
+		var tex: Texture2D = _ToolIcons.texture(tool_id)
 		if tex != null:
 			draw_texture_rect(tex, Rect2(c - Vector2(s, s) * 0.5, Vector2(s, s)), false)
 			return
@@ -137,7 +142,7 @@ func _draw_tool(c: Vector2, s: float) -> void:
 	if tool_id.begins_with("crate:"):
 		draw_rect(Rect2(c - Vector2(0.25, 0.22) * s, Vector2(0.5, 0.44) * s), Color(0.7, 0.55, 0.35))
 		return
-	if Equipment.is_equipment(tool_id):
+	if _Equipment.is_equipment(tool_id):
 		_draw_equipment(c, s)
 		return
 	var t: ToolData = Catalog.tool(StringName(tool_id))

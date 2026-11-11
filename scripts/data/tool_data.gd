@@ -33,6 +33,10 @@ enum Kind { HANDS, SHOVEL, PUSHER, SCRAPER, SLEIGH, ELECTRIC_SHOVEL, WALK_BLOWER
 @export var cycle_time: float = 0.5
 ## Maximum throw distance (m). Blowers throw automatically through the chute.
 @export var throw_distance: float = 3.0
+## Polish 6 §8.1: the throw rhythm (s). Hands and shovel-type tools: after a throw, no scoop can
+## start for this long (the follow-through plays out). The electric shovel and the blowers: the
+## chute throws what it took in at most this often.
+@export var throw_recovery_s: float = 0.5
 ## Residual depth (m) left behind by a blade or scoop.
 @export var scrape_floor: float = 0.01
 ## Continuous intake rate (m3/s) for electric shovels and blowers.
@@ -59,3 +63,10 @@ enum Kind { HANDS, SHOVEL, PUSHER, SCRAPER, SLEIGH, ELECTRIC_SHOVEL, WALK_BLOWER
 ## Hands and every shovel-type tool use the hold-to-fill / release-to-throw / push scheme.
 func is_shovel_type() -> bool:
 	return kind == Kind.HANDS or kind == Kind.SHOVEL or kind == Kind.PUSHER or kind == Kind.SCRAPER or kind == Kind.SLEIGH
+
+
+## Polish 6 §3: the store's text for this tool — the description with the blade width read from
+## this profile ({width}: "1.0 m") and the bound keys ({tool_angle} …, Settings.with_keys).
+func store_description() -> String:
+	var w := "%.1f m" % width if is_equal_approx(snappedf(width, 0.1), width) else "%.2f m" % width
+	return Settings.with_keys(description.replace("{width}", w))

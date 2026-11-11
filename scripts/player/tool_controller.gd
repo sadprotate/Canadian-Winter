@@ -12,9 +12,24 @@ extends Node
 ## Scrapers angle their blade with the tool_angle action (R). The electric shovel keeps its hold-to-
 ## throw intake (LMB) and also pushes (RMB). Walk-behind blowers are separate machines.
 
+# Polish 6 §2: classes added in polish 5, by path rather than global name, so this script still
+# loads when the editor's class cache predates a pull.
+const _Buildings := preload("res://scripts/world/buildings.gd")
+const _Equipment := preload("res://scripts/data/equipment.gd")
+const _HeatedPad := preload("res://scripts/world/heated_pad.gd")
+const _ItemUpgrades := preload("res://scripts/data/item_upgrades.gd")
+
 const RECUT_S := 0.3              # a cell can be cut again by the same stroke after this long
 const SWEEP_MAX := 4.0            # m/s: fastest the scoop can travel through the snow
 const GRIP_IN_HAND := Vector3(0.0, -0.05, -0.06)   # where a closed mitten's fist holds a bar
+# Polish 6 §8.2: a full load's mound on a blade. Its height follows round 5's rule, sqrt(capacity ÷
+# tray), between HEAP_MIN and HEAP_MAX (round 5: 0.8 and 1.4, both ×√2 with Decision 1's doubled
+# loads), and it runs LOAD_LENGTH (√2) × round 5's length along the blade: twice round 5's mound for
+# twice its load, on every tool.
+const HEAP_MIN := 1.131
+const HEAP_MAX := 1.98
+const LOAD_LENGTH := 1.414
+const LOAD_HALF_LEN := 0.1663     # the mound mesh's half-length along the blade (0.18 × cos 22.5°)
 
 var player: Player
 var tool_id := "__none__"
@@ -34,6 +49,7 @@ var blade_fp: MeshInstance3D       # first-person blade, posed separately so it 
 var _blade_body := Basis()         # blade orientation in body space (set by _tool_body_xform)
 var load_tp: MeshInstance3D
 var load_fp: MeshInstance3D
+var _load_at := Vector3.ZERO      # where round 5's mound sat on the first-person blade
 var arms: FPArms
 var vm_root: Node3D
 var loop_player: AudioStreamPlayer3D
@@ -56,6 +72,29 @@ var _msg_timer := 0.0
 var _loop_vol := -80.0
 var _fill_pressed := false
 var _was_down := false
+## Polish 6 §8.1: the throw rhythm. Seconds left of the last throw's recovery (ToolData
+## throw_recovery_s). §8.1b (the owner's decision): it spaces throws, it doesn't block the scoop. A
+## press during it scoops at once; a release during it (past min_scoop_hold_s) throws when it ends
+## (throw_waiting), where the release aimed, unless the button is pressed again first: then the load
+## stays and goes on filling.
+var recovery := 0.0
+var throw_waiting := false         # a release during the recovery: the throw goes when it ends
+## §8.1b review: a waiting throw goes where its release aimed (the facing, the aim and the distance
+## the pitch gave then), and its ring stays there: turning back to the snow before it goes doesn't
+## throw the load back in.
+var _wait_fwd := Vector2.ZERO
+var _wait_aim := Vector2.ZERO
+var _wait_dist := 0.0
+var _hold_t := 0.0                 # seconds the primary action has been held (min_scoop_hold_s)
+var _toss_len := 0.42              # seconds the throw's follow-through takes (toss_t 0 → 1)
+## Polish 6 §8.1b: a scoop started during the follow-through takes over once the throw's toss has
+## played this long (round 5's toss: before §8.1 a press could scoop during it too).
+const TOSS_MIN_S := 0.42
+var _toss_cut := false             # §8.1b: a scoop took over from the last throw's follow-through
+var _cycle_swept := 0.0            # m3 the sweep took since the last in-place bite (one bite per cycle)
+var _foot_cells := PackedInt32Array()  # the footprint the fallback last cut from (where the scoop was)
+var _foot_left := 0.0              # m3 the footprint fallback may still take (the opening bite's share, once a load)
+var _kept_short := false           # the load was kept by a release sooner than min_scoop_hold_s
 var _held_ok: Dictionary = {}     # polish 5 §2: a held action whose press was accepted
 var _held_was: Dictionary = {}
 ## Screenshot / debug helper: freeze the viewmodel in a pose ("hold", "scoop", "push", "toss").
@@ -124,7 +163,10 @@ func setup(p: Player) -> void:
 	for which in [0, 1]:
 		var lm := MeshInstance3D.new()
 		var kit := MeshKit.new()
-		kit.sphere(Mats.snow_soft(), Transform3D(Basis().scaled(Vector3(1.2, 0.62, 1.0)), Vector3.ZERO), 0.18, 4, 8)
+		# Polish 6 §8.2: turned half a segment, so a flat side, not a corner, faces the blade's edges:
+		# at its widest the mound is the blade's width (the corner poked 8 % past it, and through the
+		# sleigh tub's walls). The same volume.
+		kit.sphere(Mats.snow_soft(), Transform3D(Basis().scaled(Vector3(1.2, 0.62, 1.0)) * Basis(Vector3.UP, PI / 8.0), Vector3.ZERO), 0.18, 4, 8)
 		kit.sphere(Mats.snow_soft(), Transform3D(Basis().scaled(Vector3(0.8, 0.5, 0.7)), Vector3(0.06, 0.06, -0.03)), 0.12, 4, 7)
 		lm.mesh = kit.commit()
 		lm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -174,18 +216,19 @@ func _carrying() -> bool:
 
 func refresh_visuals() -> void:
 	var id := Game.carried if _carrying() else Game.current_tool_id()
-	var equip := Equipment.is_equipment(id)
+	var equip := _Equipment.is_equipment(id)
 	# Polish 5 §13: the heated pad is carried rolled up (it isn't a tool).
-	var mesh: Mesh = (HeatedPad.carry_mesh() if equip else ToolModels.mesh_for(id)) if id != "" else null
+	var mesh: Mesh = (_HeatedPad.carry_mesh() if equip else ToolModels.mesh_for(id)) if id != "" else null
 	held_tp.mesh = mesh
-	held_fp.mesh = (HeatedPad.carry_mesh() if equip else ToolModels.handle_mesh(id)) if mesh != null else null
+	held_fp.mesh = (_HeatedPad.carry_mesh() if equip else ToolModels.handle_mesh(id)) if mesh != null else null
 	blade_fp.mesh = ToolModels.blade_mesh(id) if mesh != null and not equip else null
 	held_tp.visible = mesh != null and player.third_person
 	held_fp.visible = mesh != null and not player.third_person
 	blade_fp.visible = held_fp.visible
 	arms.visible = not player.third_person
 	if id != "" and mesh != null and not equip:
-		load_fp.position = ToolModels.blade_offset(id) - ToolModels.tip(id)
+		_load_at = ToolModels.blade_offset(id) - ToolModels.tip(id)
+		load_fp.position = _load_at
 	_update_load_visual()
 
 
@@ -199,12 +242,20 @@ func _update_load_visual() -> void:
 	load_fp.visible = vis and not on_hands and held_fp.visible
 	var s := lerpf(0.22, 1.0, pow(frac, 0.6))
 	# A bigger load for the blade's size heaps higher (polish 2 §2: the full load reads as full).
+	# Polish 6 §8.2: twice round 5's load heaps √2 higher and runs √2 longer (HEAP_MIN, HEAP_MAX,
+	# LOAD_LENGTH), as wide as round 5's (about the blade's width). On a blade it grows forward from
+	# where round 5's began (a shovel's back wall, a pusher's or a scraper's face), away from the
+	# handle and the camera; in the sleigh's long tub, both ways.
 	var heap := 1.0
+	var ahead := 0.0
 	if data:
 		var tray := maxf(data.width * 0.36 * 0.25, 0.01)
-		heap = clampf(sqrt(_capacity() / tray), 0.8, 1.4)
+		heap = clampf(sqrt(_capacity() / tray), HEAP_MIN, HEAP_MAX)
+		ahead = 0.0 if data.kind == ToolData.Kind.SLEIGH else LOAD_HALF_LEN * s * (LOAD_LENGTH - 1.0)
+		var lz := 1.6 if data.kind == ToolData.Kind.SLEIGH else 1.0
 		var w := clampf(data.width / 0.4, 0.8, 2.2)
-		load_fp.scale = Vector3(w * s, s * heap, s * (1.6 if data.kind == ToolData.Kind.SLEIGH else 1.0))
+		load_fp.scale = Vector3(w * s, s * heap, s * lz * LOAD_LENGTH)
+		load_fp.position = _load_at + Vector3(0, 0, -ahead * lz)
 	# Third person: on the blade, or held in front of the chest with bare hands.
 	load_tp.visible = vis and player.third_person and player.state == "foot"
 	if load_tp.visible:
@@ -215,9 +266,9 @@ func _update_load_visual() -> void:
 			load_tp.global_position = mid + f * 0.22 + Vector3(0, -0.12, 0)
 			load_tp.scale = Vector3.ONE * lerpf(0.25, 0.9, pow(frac, 0.6))
 		else:
-			load_tp.global_transform = held_tp.global_transform * Transform3D(Basis(), ToolModels.blade_offset(tool_id))
+			load_tp.global_transform = held_tp.global_transform * Transform3D(Basis(), ToolModels.blade_offset(tool_id) + Vector3(0, 0, -ahead))
 			var w2 := clampf(data.width / 0.4, 0.8, 2.2)
-			load_tp.scale = Vector3(w2 * s, s * heap, s)
+			load_tp.scale = Vector3(w2 * s, s * heap, s * LOAD_LENGTH)
 
 
 # -----------------------------------------------------------------------------
@@ -229,27 +280,27 @@ func _capacity() -> float:
 		return 0.01
 	var c := data.capacity
 	if data.is_shovel_type():
-		c *= ItemUpgrades.mult(data.id, &"shovel_capacity")
+		c *= _ItemUpgrades.mult(data.id, &"shovel_capacity")
 	return c
 
 
 func _fill_rate() -> float:
-	return data.fill_rate * ItemUpgrades.mult(data.id, &"shovel_capacity")
+	return data.fill_rate * _ItemUpgrades.mult(data.id, &"shovel_capacity")
 
 
 func _throw_dist() -> float:
 	var d := data.throw_distance
 	if data.is_shovel_type() or data.kind == ToolData.Kind.ELECTRIC_SHOVEL:
-		d *= ItemUpgrades.mult(data.id, &"throw_distance")
+		d *= _ItemUpgrades.mult(data.id, &"throw_distance")
 	return d
 
 
 func _push_half_width() -> float:
-	return data.push_width * ItemUpgrades.mult(data.id, &"blade_width") * 0.5
+	return data.push_width * _ItemUpgrades.mult(data.id, &"blade_width") * 0.5
 
 
 func _push_strength() -> float:
-	return data.push_strength * ItemUpgrades.mult(data.id, &"push_speed")
+	return data.push_strength * _ItemUpgrades.mult(data.id, &"push_speed")
 
 
 func _sync_tool() -> void:
@@ -261,6 +312,10 @@ func _sync_tool() -> void:
 	# Switching tools with a load: the load drops at your feet (volume is never lost).
 	if load > 0.0:
 		dump_at_feet(true)
+	# Polish 6 §8.1: what the electric shovel's chute still holds goes out now (it throws on a
+	# rhythm, so a little can be waiting when you switch).
+	_flush_stream()
+	throw_waiting = false
 	tool_id = id
 	data = Catalog.tool(StringName(id)) if id != "" and id != "__carry__" else Catalog.tool(&"hands")
 	# Polish 5 §3: a new tool works out its own landing at once (the electric shovel used to throw its
@@ -273,7 +328,13 @@ func _sync_tool() -> void:
 	engaged = false
 	_stroke_valid = false
 	_was_down = Input.is_action_pressed("primary")
-	toss_t = 1.0
+	# Polish 6 §8.1: the recovery runs on across the switch (the new tool's next throw waits for it),
+	# and a hand or shovel-type tool shows the rest of the follow-through (toss_t reaches 1 as the
+	# recovery ends). §8.1b: a throw that was waiting went with the load, dropped at your feet above.
+	if recovery > 0.0 and not _toss_cut and id != "__carry__" and data.is_shovel_type():
+		toss_t = clampf(1.0 - recovery / _toss_len, 0.0, 1.0)
+	else:
+		toss_t = 1.0
 	_set_loop("")
 	refresh_visuals()
 	arms.snap(_hand_targets())
@@ -314,7 +375,8 @@ func _physics_process(delta: float) -> void:
 	_sync_tool()
 	_clock += delta
 	cooldown -= delta
-	toss_t = minf(toss_t + delta / 0.42, 1.0)
+	recovery = maxf(recovery - delta, 0.0)
+	toss_t = minf(toss_t + delta / _toss_len, 1.0)
 	last_fill = 0.0
 	_msg_timer -= delta
 	if _msg_timer <= 0.0:
@@ -323,6 +385,14 @@ func _physics_process(delta: float) -> void:
 	var travel := (pos2 - _prev_pos)
 	_prev_pos = pos2
 	if player.state != "foot":
+		# Polish 6 §8.1: what the electric shovel's chute still holds (it throws on a rhythm) goes
+		# out where it was going as the player gets into a vehicle or onto a blower.
+		_flush_stream()
+		# Polish 6 §8.1b: a throw waiting for the recovery to end doesn't go off foot: the load stays
+		# in the tool, kept (its ring follows the aim again on foot; the next release throws it).
+		if throw_waiting:
+			throw_waiting = false
+			_kept_short = true
 		# Polish 5 §3: a walk-behind blower shows its chute's landing on this indicator (it runs
 		# before the player each frame, so hiding it here used to hide the blower's ring too).
 		if player.state != "machine":
@@ -373,8 +443,8 @@ func _physics_process(delta: float) -> void:
 	var ui_block := not Game.input_captured()
 	var fwd := player.forward2()
 	# Polish 5 §3: indoors (in any building) the tools don't touch the snow.
-	_near_bld = Buildings.near(pos2, 4.0)
-	work_ok = not Buildings.indoors(player.global_position)
+	_near_bld = _Buildings.near(pos2, 4.0)
+	work_ok = not _Buildings.indoors(player.global_position)
 	if pose_override != "":
 		filling = pose_override == "scoop" or pose_override == "hold"
 		pushing = pose_override == "push"
@@ -413,14 +483,17 @@ func _held(action: String, down: bool) -> bool:
 
 
 ## Where thrown snow leaves the hands. Standing in a trench, the load is lifted up over the walls
-## (up to arms overhead) so it can land on top instead of sliding back in.
-func _hand_pos() -> Vector3:
-	var f := Vector3(player.forward2().x, 0, player.forward2().y)
+## (up to arms overhead) so it can land on top instead of sliding back in. Polish 6 §8.1b: a waiting
+## throw passes the facing and aim of its release (fwd2, aim2); otherwise they are the player's now.
+func _hand_pos(fwd2 := Vector2.ZERO, aim2 := Vector2.ZERO) -> Vector3:
+	var fw := player.forward2() if fwd2 == Vector2.ZERO else fwd2
+	var ad := player.aim_dir() if aim2 == Vector2.ZERO else aim2
+	var f := Vector3(fw.x, 0, fw.y)
 	var feet := player.feet_y()     # polish 5 §13: on snowshoes, on the snow
 	var h := feet + 1.15
 	var top := 0.0
 	var p := player.global_position + f * 0.6
-	for a in [Vector2.ZERO, player.aim_dir() * 0.4, Vector2(-player.aim_dir().y, player.aim_dir().x) * 0.4, -Vector2(-player.aim_dir().y, player.aim_dir().x) * 0.4]:
+	for a in [Vector2.ZERO, ad * 0.4, Vector2(-ad.y, ad.x) * 0.4, -Vector2(-ad.y, ad.x) * 0.4]:
 		var q: Vector2 = Vector2(p.x, p.z) + (a as Vector2)
 		top = maxf(top, Snow.surface_height(q.x, q.y))
 	h = clampf(maxf(h, top + 0.3), feet + 1.15, feet + 2.05)
@@ -430,6 +503,12 @@ func _hand_pos() -> Vector3:
 func _landing(dist: float, angle: float) -> Dictionary:
 	var d2 := player.aim_dir()
 	return Throw.compute(player.get_world_3d(), _hand_pos(), d2, dist, angle, [player.get_rid()])
+
+
+## Polish 6 §8.1b (review fix): a waiting throw's landing, from where the player stands now, with the
+## aim and the distance of its release.
+func _waiting_landing() -> Dictionary:
+	return Throw.compute(player.get_world_3d(), _hand_pos(_wait_fwd, _wait_aim), _wait_aim, _wait_dist, data.throw_angle_deg, [player.get_rid()])
 
 
 func _show_indicator(l: Dictionary) -> void:
@@ -552,19 +631,55 @@ func _shovel_type(delta: float, pos2: Vector2, fwd: Vector2, travel: Vector2, ui
 	# Edges are tracked here (not with just_pressed/just_released) so a press or release is never
 	# missed between physics frames.
 	var fill_down := not ui_block and Input.is_action_pressed("primary")
+	# Polish 6 §8.1b: a throw waiting for the recovery goes when it ends, where its release aimed (as
+	# its landing ring shows; review fix: it used to go where the aim was when it went). With a screen
+	# open (the computer) it doesn't: the load stays, kept. Due indoors, it doesn't either, silently
+	# (nothing was pressed since): the load stays, kept.
+	if throw_waiting and (recovery <= 0.0 or ui_block):
+		throw_waiting = false
+		if load > 0.0 and not ui_block and work_ok:
+			_release_throw(true)
+		else:
+			_kept_short = true
 	if fill_down and not _was_down:
-		# Polish 5 §2: a press over the per-second cap is ignored (no scoop, and no throw on release).
-		_fill_pressed = Settings.accept_press("primary")
-		if _fill_pressed and work_ok:
-			Clock.drop_to_1x("work")   # polish 5 §9: starting to scoop stops fast-forward
-	# Release: throw whatever is carried (a partial load too).
+		_hold_t = 0.0
+		# Polish 6 §8.1b: a press scoops at once, during the recovery too (it used to wait for it to
+		# end). Pressed before a waiting throw goes, it cancels it: the load stays and goes on filling.
+		# A press the cap refuses is ignored, so the throw goes on waiting.
+		_scoop_press()
+		if throw_waiting and _fill_pressed:
+			throw_waiting = false
+			_kept_short = true
+	# Release: throw whatever is carried (a partial load too) — polish 6 §8.1: unless it comes
+	# sooner than min_scoop_hold_s after its press; then nothing is thrown and the load stays.
+	# §8.1b: during the recovery the throw waits for it to end.
 	if _was_down and not fill_down and _fill_pressed:
 		_fill_pressed = false
 		if load > 0.0 and not ui_block:
-			_release_throw()
+			if _hold_t + 1e-4 < Catalog.balance.min_scoop_hold_s:
+				_kept_short = true
+			elif recovery > 0.0:
+				# Review fix: the aim and the distance are the release's, and the ring stays on them.
+				_wait_fwd = player.forward2()
+				_wait_aim = player.aim_dir()
+				_wait_dist = _throw_dist() * _pitch_factor()
+				landing = _waiting_landing()
+				_land_timer = 0.06
+				if work_ok and landing.get("valid", false):
+					throw_waiting = true
+					# The fill's "Full — release to throw." is done with: it was released.
+					if hint == _full_hint():
+						hint = ""
+				else:
+					# Nowhere to land there, or indoors: refused now, as any release would be.
+					_release_throw(true)
+			else:
+				_release_throw()
 	_was_down = fill_down
 	if not fill_down:
 		_fill_pressed = false
+	else:
+		_hold_t += delta
 	filling = fill_down and _fill_pressed
 	pushing = _held("secondary", not ui_block and Input.is_action_pressed("secondary")) and not filling
 	engaged = filling or pushing
@@ -587,6 +702,12 @@ func _shovel_type(delta: float, pos2: Vector2, fwd: Vector2, travel: Vector2, ui
 		_fade_loop(delta, -80.0)
 		return
 	if filling:
+		_kept_short = false
+		# Polish 6 §8.1b: scooping during the last throw's follow-through, the scoop's pose takes over
+		# once round 5's toss has played (the follow-through lasts the whole recovery otherwise).
+		if toss_t < 1.0 and toss_t * _toss_len >= TOSS_MIN_S:
+			toss_t = 1.0
+			_toss_cut = true
 		_fill(delta, pos2, fwd)
 		player.speed_mult_tool = 0.85 * carry_mult
 		if load > 0.0:
@@ -611,6 +732,16 @@ func _shovel_type(delta: float, pos2: Vector2, fwd: Vector2, travel: Vector2, ui
 		sweep_speed = lerpf(sweep_speed, 0.0, 1.0 - exp(-delta * 10.0))
 		if load > 0.0 and not landing.is_empty():
 			# A throw was refused (nowhere to land) and the load kept: show where it would land.
+			if _kept_short or throw_waiting:
+				# Polish 6 §8.1: or a release sooner than min_scoop_hold_s kept it: then the spot
+				# follows the aim, as while filling (it no longer stays where the last fill frame was).
+				# §8.1b: a throw waiting for the recovery to end lands where its release aimed (review
+				# fix), so its spot stays there, recomputed only for where the player stands.
+				_land_timer -= delta
+				if _land_timer <= 0.0:
+					_land_timer = 0.06
+					landing = _waiting_landing() if throw_waiting else _landing(_throw_dist() * _pitch_factor(), data.throw_angle_deg)
+				_landing_flags(landing)
 			_indicate("landing", landing.get("pos", indicator.global_position) + Vector3(0, 0.04, 0), _landing_mesh(landing), 1.0)
 		else:
 			_indicate("", Vector3.ZERO, null, 1.0)
@@ -620,6 +751,14 @@ func _shovel_type(delta: float, pos2: Vector2, fwd: Vector2, travel: Vector2, ui
 		_push(delta, pos2, fwd, travel)
 	else:
 		_fade_loop(delta, -80.0)
+
+
+## A scoop's press (hands, shovel-type tools): accepted or not by the per-second cap (polish 5 §2: a
+## press over it is ignored — no scoop, and no throw on release).
+func _scoop_press() -> void:
+	_fill_pressed = Settings.accept_press("primary")
+	if _fill_pressed and work_ok:
+		Clock.drop_to_1x("work")   # polish 5 §9: starting to scoop stops fast-forward
 
 
 ## Aim point on the snow under the crosshair, kept within the tool's reach in front of the player.
@@ -658,8 +797,16 @@ func _fill(delta: float, _pos2: Vector2, fwd: Vector2) -> void:
 	if not _stroke_valid:
 		_stroke_prev = p
 		_stroke_valid = true
-		_dig_timer = 0.0
-		_cut_time.clear()
+		# Polish 6 §8.1: no opening bite. Digging in place takes its first bite one full cycle
+		# after the press, not on it, and a new press keeps the re-cut memory (going over the same
+		# cells again doesn't renew their bite early).
+		_dig_timer = data.cycle_time
+		_cycle_swept = 0.0
+		# The opening bite's share: a load's first stroke may still take up to what its press used
+		# to bite in place, but only as the sweep's fill where its strip comes up short (below). A
+		# stroke that goes on filling a kept load gets none, so a click can't renew it.
+		_foot_cells = PackedInt32Array()
+		_foot_left = _fill_rate() * data.cycle_time * 0.4 if load <= 0.0 else 0.0
 	var seg := p - _stroke_prev
 	var seg_len := seg.length()
 	var max_step := SWEEP_MAX * delta
@@ -674,21 +821,72 @@ func _fill(delta: float, _pos2: Vector2, fwd: Vector2) -> void:
 	# used up gradually (the fill rate caps each frame) and renews once the scoop has left it.
 	var cells := PackedInt32Array()
 	var want := 0.0
-	if seg_len < 0.004:
+	# Polish 6 §8.1: the dig cycle runs from the press for as long as the scoop is held, sweeping or
+	# not: held still, it bites once per full cycle, the first one a cycle after the press. What the
+	# sweep took during the cycle counts toward that bite, so a pause in a sweep (a mouse turning
+	# back) adds no in-place lump on top of the sweep's own fill.
+	_dig_timer -= delta
+	var in_place := seg_len < 0.004
+	if in_place:
 		# Digging in place: one bite per cycle at the aim point.
-		_dig_timer -= delta
 		if _dig_timer > 0.0:
 			return
 		_dig_timer = data.cycle_time
 		cells = Snow.cells_in_obb(p - fwd * data.reach * 0.5, fwd, data.width, data.reach)
-		want = minf(cap - load, _fill_rate() * data.cycle_time * 0.4)
-	else:
+		want = minf(cap - load, _fill_rate() * data.cycle_time * 0.4 - _cycle_swept)
+		_cycle_swept = 0.0
+	if not in_place:
 		var dir := seg / seg_len
 		cells = Snow.cells_in_obb(_stroke_prev - dir * 0.12, dir, data.width, seg_len + 0.24)
 		want = minf(cap - load, _fill_rate() * delta)
 	_stroke_prev = p
 	if cells.is_empty() or want <= 0.0:
 		return
+	var acc := {"csum": Vector2.ZERO, "cn": 0, "road": 0.0}
+	var v := _cut_cells(cells, want, acc)
+	if not in_place and v < want - 1e-9 and _foot_left > 0.0:
+		# Polish 6 §8.1: when the strip the sweep crossed comes up short (a short sweep across a
+		# narrow trench, a pass over cells already cut, shallow snow), the rest of the frame's fill
+		# comes from the scoop's footprint where it is now (the cells digging in place takes), at
+		# most the opening bite's share in all for the load: the press's opening bite (gone), taken
+		# at the fill rate as the sweep goes instead of in one frame. It reaches the trench walls as
+		# that bite did. In deep snow most frames fill from the strip alone.
+		_foot_cells = Snow.cells_in_obb(p - fwd * data.reach * 0.5, fwd, data.width, data.reach)
+		var f := _cut_cells(_foot_cells, minf(want - v, _foot_left), acc)
+		_foot_left -= f
+		v += f
+	if int(acc["cn"]) > 0:
+		last_cut_center = acc["csum"] / float(acc["cn"])
+	if not in_place:
+		_cycle_swept += v
+	if v <= 0.0:
+		return
+	Boxes.note_work(p)
+	load += v
+	load_road += float(acc["road"])
+	last_fill = v
+	_record_moved(v)
+	_scoop_sfx -= delta
+	if _scoop_sfx <= 0.0 and v > 0.0003:
+		_scoop_sfx = 0.22
+		var sfx := AudioMgr.variant("hand_scoop" if data.kind == ToolData.Kind.HANDS else "shovel_fill", 3)
+		if not AudioMgr.has_sound(sfx):
+			sfx = data.action_sound if data.action_sound != &"" else "hand_dig"
+		AudioMgr.play_at(sfx, Vector3(p.x, player.global_position.y + 0.3, p.y), -5.0, randf_range(0.9, 1.12))
+		var sp := Vector3(p.x, Snow.surface_height(p.x, p.y) + 0.05, p.y)
+		SnowFX.burst(sp, maxi(3, int(data.particle_amount * 0.4)), 0.5)
+		SnowFX.puff(sp, 0.18 + data.width * 0.25)
+	if load >= cap - 1e-6:
+		_hint(_full_hint())
+
+
+func _full_hint() -> String:
+	return "Full — release to throw." if data.kind != ToolData.Kind.HANDS else "Hands full — release to toss."
+
+
+## Cut up to `want` m3 from `cells`, each at most its bite left (the re-cut memory): returns the
+## volume taken and adds the road share and the centre of the cut cells to `acc`.
+func _cut_cells(cells: PackedInt32Array, want: float, acc: Dictionary) -> float:
 	var bites := PackedFloat32Array()
 	bites.resize(cells.size())
 	for k in range(cells.size()):
@@ -707,37 +905,15 @@ func _fill(delta: float, _pos2: Vector2, fwd: Vector2) -> void:
 				_cut_time.erase(key)
 	var r := Snow.cut(cells, bites, data.scrape_floor, want)
 	var taken: PackedFloat32Array = r["taken"]
-	var csum := Vector2.ZERO
-	var cn := 0
 	for k in range(cells.size()):
 		var e2: Array = _cut_time[cells[k]]
 		e2[0] = _clock
 		e2[1] = maxf(float(e2[1]) - taken[k], 0.0)
 		if taken[k] > 0.0:
-			csum += _cell_center(cells[k])
-			cn += 1
-	if cn > 0:
-		last_cut_center = csum / cn
-	var v: float = r["volume"]
-	if v <= 0.0:
-		return
-	Boxes.note_work(p)
-	load += v
-	load_road += r["road_volume"]
-	last_fill = v
-	_record_moved(v)
-	_scoop_sfx -= delta
-	if _scoop_sfx <= 0.0 and v > 0.0003:
-		_scoop_sfx = 0.22
-		var sfx := AudioMgr.variant("hand_scoop" if data.kind == ToolData.Kind.HANDS else "shovel_fill", 3)
-		if not AudioMgr.has_sound(sfx):
-			sfx = data.action_sound if data.action_sound != &"" else "hand_dig"
-		AudioMgr.play_at(sfx, Vector3(p.x, player.global_position.y + 0.3, p.y), -5.0, randf_range(0.9, 1.12))
-		var sp := Vector3(p.x, Snow.surface_height(p.x, p.y) + 0.05, p.y)
-		SnowFX.burst(sp, maxi(3, int(data.particle_amount * 0.4)), 0.5)
-		SnowFX.puff(sp, 0.18 + data.width * 0.25)
-	if load >= cap - 1e-6:
-		_hint("Full — release to throw." if data.kind != ToolData.Kind.HANDS else "Hands full — release to toss.")
+			acc["csum"] = acc["csum"] + _cell_center(cells[k])
+			acc["cn"] = int(acc["cn"]) + 1
+	acc["road"] = float(acc["road"]) + float(r["road_volume"])
+	return float(r["volume"])
 
 
 ## Polish 5 §3: is the snow at cell centre c behind a building — does the line from the player's eye
@@ -745,7 +921,7 @@ func _fill(delta: float, _pos2: Vector2, fwd: Vector2) -> void:
 func _behind_building(c: Vector2) -> bool:
 	if _near_bld.is_empty():
 		return false
-	return Buildings.blocks(player.head.global_position, Vector3(c.x, Snow.surface_height(c.x, c.y), c.y), _near_bld)
+	return _Buildings.blocks(player.head.global_position, Vector3(c.x, Snow.surface_height(c.x, c.y), c.y), _near_bld)
 
 
 ## Polish 5 §3: may a blade or an intake whose near edge is at `p` (world XZ) work the snow — the
@@ -756,7 +932,7 @@ func can_work_at(p: Vector2) -> bool:
 		return false
 	if _near_bld.is_empty():
 		return true
-	return not Buildings.blocks(player.head.global_position, Vector3(p.x, Snow.surface_height(p.x, p.y), p.y), _near_bld, REACH_SKIN)
+	return not _Buildings.blocks(player.head.global_position, Vector3(p.x, Snow.surface_height(p.x, p.y), p.y), _near_bld, REACH_SKIN)
 
 
 ## Look down for a short drop at your feet, level or up for the full throw.
@@ -765,13 +941,14 @@ func _pitch_factor() -> float:
 	return lerpf(0.35, 1.0, clampf((rad_to_deg(pitch) + 55.0) / 60.0, 0.0, 1.0))
 
 
-func _release_throw() -> void:
+## Polish 6 §8.1b: `waited` — a throw that waited for the recovery, thrown where its release aimed.
+func _release_throw(waited := false) -> void:
 	if not work_ok:
 		# Polish 5 §3: no throwing from inside a building; the load stays in the hands.
 		_hint("You can't throw snow from inside.")
 		AudioMgr.play("ui_error", -12.0)
 		return
-	landing = _landing(_throw_dist() * _pitch_factor(), data.throw_angle_deg)
+	landing = _waiting_landing() if waited else _landing(_throw_dist() * _pitch_factor(), data.throw_angle_deg)
 	_landing_flags(landing)
 	if not landing["valid"]:
 		_hint("Nowhere for the snow to land — keep holding it and aim somewhere else.")
@@ -782,7 +959,9 @@ func _release_throw() -> void:
 	if landing_back_in_box:
 		_hint("That landed back in the box you're clearing — throw past the outline.")
 	var spread := 0.25 + load * 2.5 if data.kind != ToolData.Kind.SLEIGH else 0.45 + load * 1.5
-	ThrownSnow.spawn(Game.world, _hand_pos() + Vector3(0, 0.15, 0), player.aim_dir(), landing, load, data.throw_angle_deg, spread)
+	var fw := _wait_fwd if waited else player.forward2()
+	var ad := _wait_aim if waited else player.aim_dir()
+	ThrownSnow.spawn(Game.world, _hand_pos(fw, ad) + Vector3(0, 0.15, 0), ad, landing, load, data.throw_angle_deg, spread)
 	var sfx := "hand_toss" if data.kind == ToolData.Kind.HANDS else "shovel_throw"
 	if not AudioMgr.has_sound(sfx):
 		sfx = "shovel_throw"
@@ -790,11 +969,22 @@ func _release_throw() -> void:
 	load = 0.0
 	load_road = 0.0
 	cooldown = 0.15
+	# Polish 6 §8.1: the throw's recovery; its follow-through (toss_t) plays out over it.
+	recovery = data.throw_recovery_s
+	_toss_len = maxf(0.42, data.throw_recovery_s)
 	toss_t = 0.0
+	_toss_cut = false
+	# Polish 6 §8.1b: the re-cut memory goes with the throw (at most one per recovery), as the recovery
+	# used to renew every bite before the next scoop could start. A press can follow a throw sooner
+	# than RECUT_S now, and a sweep back over the cells just cut found their bites used up for as long
+	# as it went on. No press clears it, and a load emptied any other way (dropped at your feet) keeps
+	# it, so a click still can't renew a bite.
+	_cut_time.clear()
 
 
 ## Drop the load at your feet (tool switch, saving) — volume is never lost.
 func dump_at_feet(_force: bool) -> void:
+	throw_waiting = false   # polish 6 §8.1b: a throw waiting for the recovery goes with the load
 	if load <= 0.0:
 		return
 	var pos2 := Vector2(player.global_position.x, player.global_position.z)
@@ -817,7 +1007,7 @@ func _push(delta: float, pos2: Vector2, fwd: Vector2, travel: Vector2) -> void:
 	var push_dist := 0.3 if data.kind == ToolData.Kind.HANDS else 0.38
 	if not can_work_at(center - fwd * (adv + 0.07)):
 		# Polish 5 §3: indoors, or the blade is on the far side of a building: nothing moves.
-		player.speed_mult_tool = data.engaged_speed_mult * ItemUpgrades.mult(data.id, &"push_speed")
+		player.speed_mult_tool = data.engaged_speed_mult * _ItemUpgrades.mult(data.id, &"push_speed")
 		_fade_loop(delta, -80.0)
 		return
 	# Polish 5 §3 (Decision 12): no road rule — the berm carries over the curb onto the street.
@@ -828,7 +1018,7 @@ func _push(delta: float, pos2: Vector2, fwd: Vector2, travel: Vector2) -> void:
 	if moved > 0.0005:
 		Boxes.note_work(center)
 	var ratio: float = r["berm"] / maxf(_push_strength(), 0.005)
-	player.speed_mult_tool = data.engaged_speed_mult * ItemUpgrades.mult(data.id, &"push_speed") / (1.0 + ratio * ratio)
+	player.speed_mult_tool = data.engaged_speed_mult * _ItemUpgrades.mult(data.id, &"push_speed") / (1.0 + ratio * ratio)
 	if r["kept"] > 0.002:
 		_hint("The snow can't go any further this way.")
 	elif ratio > 2.0 and player.current_speed < 0.3:
@@ -871,6 +1061,9 @@ func _electric(delta: float, pos2: Vector2, fwd: Vector2, travel: Vector2, ui_bl
 	filling = _held("primary", not ui_block and Input.is_action_pressed("primary"))
 	pushing = _held("secondary", not ui_block and Input.is_action_pressed("secondary")) and not filling
 	engaged = filling or pushing
+	# Polish 6 §8.1: the chute throws on its own rhythm (throw_recovery_s), held or not, so starting
+	# and stopping by clicking adds no throws: what it took in goes out on the next beat.
+	_stream_timer -= delta
 	if not work_ok:
 		# Polish 5 §3: inside a building the shovel doesn't touch the snow (no intake, no push, no
 		# indicator); what it already chewed is thrown where it was going.
@@ -887,19 +1080,20 @@ func _electric(delta: float, pos2: Vector2, fwd: Vector2, travel: Vector2, ui_bl
 	if pushing:
 		indicator.visible = false
 		_push(delta, pos2, fwd, travel)
+		_stream_beat()
 		return
 	if not filling:
 		indicator.visible = false
 		player.speed_mult_tool = 1.0
 		_fade_loop(delta, -80.0)
-		_flush_stream()
+		_stream_beat()
 		return
 	player.speed_mult_tool = data.engaged_speed_mult
 	if not can_work_at(pos2 + fwd * 0.3):
 		# Polish 5 §3: the intake is on the far side of a building: no intake, no indicator.
 		indicator.visible = false
 		_fade_loop(delta, -80.0)
-		_flush_stream()
+		_stream_beat()
 		return
 	_land_timer -= delta
 	if _land_timer <= 0.0:
@@ -916,10 +1110,20 @@ func _electric(delta: float, pos2: Vector2, fwd: Vector2, travel: Vector2, ui_bl
 		Boxes.note_work(pos2 + fwd * 0.5)
 	_stream_acc += r["volume"]
 	_record_moved(r["volume"])
-	_stream_timer -= delta
+	_stream_beat()
+
+
+## The electric shovel's chute: what it took in goes out at most once per throw_recovery_s.
+func _stream_beat() -> void:
 	if _stream_timer <= 0.0 and _stream_acc > 0.0:
-		_stream_timer = 0.15
+		_stream_timer = data.throw_recovery_s
 		_flush_stream()
+
+
+## Polish 6 §8.1: throw what the electric shovel's chute still holds now (saving: the game root lands
+## it with the rest of the snow in flight).
+func flush_chute() -> void:
+	_flush_stream()
 
 
 func _flush_stream() -> void:
@@ -941,8 +1145,8 @@ func drop_tool() -> void:
 	if load > 0.0:
 		dump_at_feet(true)
 	# Polish 5 §13: the heated pad is put down (on your own lot only), not dropped like a tool.
-	if Equipment.pad_carried():
-		var why := Equipment.put_down_pad(player, player.forward2(), player.yaw)
+	if _Equipment.pad_carried():
+		var why := _Equipment.put_down_pad(player, player.forward2(), player.yaw)
 		if why != "":
 			_hint(why)
 			return
@@ -1108,7 +1312,7 @@ func _animate_viewmodel(delta: float) -> void:
 		held_fp.visible = true
 		blade_fp.visible = true
 		held_fp.transform = Transform3D(Basis.from_euler(Vector3(deg_to_rad(10), 0, 0)), Vector3(0.0, -0.3, -0.42))
-		if Equipment.is_equipment(Game.carried):
+		if _Equipment.is_equipment(Game.carried):
 			held_fp.transform = Transform3D(Basis(), Vector3(0.0, -0.3, -0.5))   # polish 5 §13: the rolled pad
 		blade_fp.transform = held_fp.transform * Transform3D(Basis(), ToolModels.tip(Game.carried))
 		return

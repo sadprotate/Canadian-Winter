@@ -3,6 +3,10 @@ extends RefCounted
 ## Builds a house for a lot. Canonical frame: +X along the street (garage side), +Y up,
 ## +Z inward (away from the street). The lot transform maps this frame to the world.
 
+# Polish 6 §2: classes added in polish 5, by path rather than global name, so this script still
+# loads when the editor's class cache predates a pull.
+const _AddressSigns := preload("res://scripts/world/address_signs.gd")
+
 const BODY_X0 := -9.25
 const BODY_X1 := 2.75
 const GAR_X0 := 2.75
@@ -204,7 +208,7 @@ static func build(lot: Dictionary, parent: Node3D, hollow: bool) -> Dictionary:
 	catcher.add_child(gcs)
 	gcs.global_transform = L * Transform3D(Basis(), Vector3(gxc, gh + g_rise * 0.5, gzm))
 	# Polish 5 §5: the house number, on a plate under the lantern by the front door.
-	var number := AddressSigns.house_plate(lot, root, hollow)
+	var number := _AddressSigns.house_plate(lot, root, hollow)
 	var out := {"root": root, "roof_snow": rs, "L": L, "wall_h": wall_h, "mesh": mi, "number": number}
 	if hollow:
 		out["door_xf"] = L * Transform3D(Basis(), Vector3(-1.5, Layout.PORCH_H, z0))

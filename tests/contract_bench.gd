@@ -227,6 +227,14 @@ func _stroke(pl: Player, side: float, tool: String) -> int:
 	pl.pitch = -atan2(eye.y - aim_y, maxf(to.length(), 0.05))
 	pl.head.rotation.x = pl.pitch
 	Input.action_press("primary")
+	# Polish 6 §8.2 (§8.1's throw rhythm, as grind_bench's bot): pressed during the last throw's
+	# recovery, the button is held through it and the scoop starts when it ends (builds without a
+	# throw recovery don't wait). §8.1b: a press scoops at once (builds with a waiting throw don't
+	# wait here; the throw waits, below).
+	var w := 0
+	while "recovery" in tc and not ("throw_waiting" in tc) and float(tc.get("recovery")) > 0.0 and w < 120:
+		await get_tree().physics_frame
+		w += 1
 	var n := 0
 	var cap: float = tc._capacity()
 	while n < 40 and tc.load < cap - 1e-6:
@@ -268,9 +276,21 @@ func _stroke(pl: Player, side: float, tool: String) -> int:
 	pl.pitch = deg_to_rad(4.0)
 	pl.head.rotation.x = pl.pitch
 	await _frames(4)
+	# Polish 6 §8.2: a release before §8.1's minimum hold throws nothing, so the bot holds at least
+	# that long (builds without one don't wait).
+	var extra := 0
+	if Catalog.balance and "min_scoop_hold_s" in Catalog.balance:
+		extra = maxi(ceili(float(Catalog.balance.get("min_scoop_hold_s")) * 60.0) + 1 - (w + n + carried + 4), 0)
+		await _frames(extra)
 	Input.action_release("primary")
 	await _frames(4)
-	return n + 8 + carried
+	# Polish 6 §8.1b: a release during the recovery throws when it ends, where the release aimed: the
+	# bot stays turned until it has gone (grind_bench's bot does the same).
+	var tw := 0
+	while "throw_waiting" in tc and bool(tc.get("throw_waiting")) and tw < 120:
+		await get_tree().physics_frame
+		tw += 1
+	return w + n + 8 + carried + extra + tw
 
 
 ## How far a point is from the box (m); negative inside it.

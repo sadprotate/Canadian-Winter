@@ -4,6 +4,11 @@ extends StaticBody3D
 ## E to let go. Intake removes snow in front; the chute throws it to a landing point (the street
 ## too, since polish 5 §3: no road rule). Nothing works from inside a building.
 
+# Polish 6 §2: classes added in polish 5, by path rather than global name, so this script still
+# loads when the editor's class cache predates a pull.
+const _Buildings := preload("res://scripts/world/buildings.gd")
+const _ItemUpgrades := preload("res://scripts/data/item_upgrades.gd")
+
 var tool_id := "small_blower"
 var data: ToolData
 var entry: Dictionary = {}
@@ -147,9 +152,9 @@ func _physics_process(delta: float) -> void:
 	# Polish 5 §3: no snow work from inside a building — the player indoors, or the intake on the far
 	# side of a building from the player's eye: no intake, no discharge, no indicator.
 	var mouth := Vector2(global_position.x, global_position.z) + fwd * 0.15
-	var inside := Buildings.indoors(pp)
-	if inside or Buildings.blocks(player.head.global_position, Vector3(mouth.x, Snow.surface_height(mouth.x, mouth.y), mouth.y),
-			Buildings.near(mouth, 4.0), ToolController.REACH_SKIN):
+	var inside := _Buildings.indoors(pp)
+	if inside or _Buildings.blocks(player.head.global_position, Vector3(mouth.x, Snow.surface_height(mouth.x, mouth.y), mouth.y),
+			_Buildings.near(mouth, 4.0), ToolController.REACH_SKIN):
 		stream_fx.emitting = false
 		disc_snd.volume_db = -80.0
 		hint = "You can't work the snow from inside." if inside else ""
@@ -162,7 +167,7 @@ func _physics_process(delta: float) -> void:
 	_land_timer -= delta
 	if _land_timer <= 0.0:
 		_land_timer = 0.12
-		_landing = Throw.compute(get_world_3d(), cp, cd, data.throw_distance * ItemUpgrades.mult(data.id, &"blower_throw"), data.throw_angle_deg, [player.get_rid(), get_rid()])
+		_landing = Throw.compute(get_world_3d(), cp, cd, data.throw_distance * _ItemUpgrades.mult(data.id, &"blower_throw"), data.throw_angle_deg, [player.get_rid(), get_rid()])
 	if player.tools:
 		player.tools._show_indicator(_landing)
 	if not _landing.get("valid", false):
@@ -178,7 +183,7 @@ func _physics_process(delta: float) -> void:
 	var depth := Snow.depth_at(front.x + fwd.x * 0.3, front.y + fwd.y * 0.3)
 	# Deep snow above the intake slows you down; the blower still chews through it.
 	_resist = 1.0 / (1.0 + maxf(0.0, depth - 0.45) * 3.0)
-	var r := Snow.intake(front, fwd, data.width, data.reach, data.rate * ItemUpgrades.mult(data.id, &"blower_rate") * delta, data.scrape_floor)
+	var r := Snow.intake(front, fwd, data.width, data.reach, data.rate * _ItemUpgrades.mult(data.id, &"blower_rate") * delta, data.scrape_floor)
 	var v: float = r["volume"]
 	if v > 0.0:
 		Boxes.note_work(front + fwd * 0.3)
@@ -193,6 +198,6 @@ func _physics_process(delta: float) -> void:
 	disc_snd.volume_db = move_toward(disc_snd.volume_db, -4.0 if v > 0.0 else -30.0, delta * 50.0)
 	_tick -= delta
 	if _tick <= 0.0 and _acc > 0.0:
-		_tick = 0.18
+		_tick = data.throw_recovery_s   # polish 6 §8.1: the chute's throw rhythm (was 0.18 s)
 		ThrownSnow.spawn(Game.world, cp, cd, _landing, _acc, data.throw_angle_deg, 0.5 + _acc * 3.0)
 		_acc = 0.0

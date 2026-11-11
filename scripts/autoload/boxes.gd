@@ -15,6 +15,10 @@ signal box_completed(id: String)
 signal box_reopened(id: String)
 signal changed
 
+# Polish 6 §2: classes added in polish 5, by path rather than global name, so this script still
+# loads when the editor's class cache predates a pull.
+const _Heating := preload("res://scripts/world/heating.gd")
+
 const TINY := 0.0004            # m3: a box with less snow than this counts as empty
 ## Big boxes (streets, parking lots) are measured from a sample of their cells; once the sample
 ## says they are within this much of box_completion they are counted exactly, so they complete at
@@ -367,7 +371,7 @@ func sim_step(delta: float) -> void:
 func on_hour(_day: int, _hour: int) -> void:
 	if Clock.skipping:
 		# Polish 5 §13: a heated box (driveway, path) is measured too, so it completes as it melts.
-		var heated := Heating.box_ids()
+		var heated := _Heating.box_ids()
 		for b in boxes:
 			if b["complete"] or heated.has(b["id"]):
 				measure(b, false)

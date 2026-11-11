@@ -7,6 +7,8 @@ extends Node
 ## Version 3 (polish 5 §7): game.company_name and contracts.job_history (both optional). Polish 5
 ## §10 adds optional keys inside contracts (the listings' bids and rivals, the contracts' due times,
 ## tier_noted); a save without them gets due times on load (Contracts._migrate_due_times).
+## Polish 6 §3 adds two optional keys inside snow: "relax" (the relaxation still pending; a save
+## without it is settled once on load) and "push_rng" (blade_push's stream).
 ## Older saves are migrated on load, in order: 1 -> 2 (_migrate_v1), 2 -> 3 (_migrate_v2).
 const SAVE_VERSION := 3
 const MIN_VERSION := 1
@@ -15,6 +17,9 @@ const DIR := "user://saves/"
 signal saved(mode: String)
 
 var last_error := ""
+## Polish 6 §3: set by the main menu so that an older save's settling (Snow.settle_all) runs a
+## frame at a time on its loading screen (Snow.settle_step) instead of inside load_game.
+var settle_later := false
 
 
 func path_for(mode: String) -> String:
@@ -68,6 +73,7 @@ func save_game() -> bool:
 	var snow_out := snow.duplicate()
 	snow_out["data"] = Marshalls.raw_to_base64(snow["data"])
 	snow_out["loose"] = Marshalls.raw_to_base64(snow["loose"])
+	snow_out.merge(Snow.serialize_pending())   # polish 6 §3: "relax", "push_rng"
 	var d := {
 		"version": SAVE_VERSION,
 		"saved_at": Time.get_datetime_string_from_system(),
@@ -141,6 +147,20 @@ func load_game(mode: String) -> bool:
 		Boxes.deserialize(d["boxes"])
 	else:
 		Boxes.migrate_from_snow()
+	# Polish 6 §3: a save from before the relaxation queue was saved settles once, now that the
+	# completed boxes hold their edges again (what it had pending was lost with the queue). It is
+	# also a save from before tools rested on the snow: a tool put down on deep snow was placed on
+	# the ground under it, its grip showing; it lies on top of the snow now, as one put down does.
+	if Snow.settle_on_load:
+		for it in Game.items:
+			if not bool(it.get("buried", false)) and not str(it.get("tool", "")).begins_with("crate:") and it.get("pos") is Vector3:
+				var p: Vector3 = it["pos"]
+				p.y = maxf(p.y, Snow.surface_height(p.x, p.z))
+				it["pos"] = p
+		if settle_later:
+			Snow.settle_begin()
+		else:
+			Snow.settle_all()
 	Economy.deserialize(d["economy"])
 	Contracts.deserialize(d["contracts"])
 	Municipal.deserialize(d["municipal"])

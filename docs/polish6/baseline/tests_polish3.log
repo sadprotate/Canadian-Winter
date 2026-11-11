@@ -1,0 +1,108 @@
+# command: godot --headless --fixed-fps 60 --path . res://tests/test_runner.tscn -- --only=polish3
+# cwd: /c/Users/orsin/OneDrive/Desktop/Canadian Winter/Canadian-Winter (at 1b38f4a, game code = polish6-baseline)
+# exit code: 0   wall time: 173 s   finished: 2026-11-05 08:58
+# Godot: 4.7.2.stable.official.ed1daf0bf
+
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+[notify] Good morning.
+[notify] Game saved.
+[notify] Good morning.
+[notify] Game saved.
+[notify] Good morning.
+[notify] Game saved.
+[notify] BLIZZARD WARNING in effect. Stay safe and warm.
+[notify] Good morning.
+[notify] Game saved.
+[notify] Good morning.
+[notify] Game saved.
+[notify] Good morning.
+[notify] Game saved.
+[notify] Good morning.
+[notify] Game saved.
+[notify] BLIZZARD WARNING in effect. Stay safe and warm.
+[notify] Good morning.
+[notify] Game saved.
+  PASS  test_polish3.gd::test_fixtures_load_and_play (25102 ms)
+  PASS  test_polish3.gd::test_overwrite_dialog_fits_and_centres (32 ms)
+  PASS  test_polish3.gd::test_no_snow_inside_the_houses (1668 ms)
+  PASS  test_polish3.gd::test_bed_prompt_and_sleep_text (1143 ms)
+[notify] Payment received: $39 from Dave Campbell.
+[notify] 16 Maple Street — all clear.
+[notify] Payment received: $20 from Mei Tremblay.
+[notify] 16 Maple Street — all clear.
+  PASS  test_polish3.gd::test_ninety_percent_snap_updates_everything (1344 ms)
+[notify] You found a small snow shovel! Hold Left Mouse and sweep it through the snow to fill it, release to throw, hold Right Mouse to push.
+  PASS  test_polish3.gd::test_shovel_pickup_at_75_percent (1628 ms)
+  PASS  test_polish3.gd::test_tool_pickup_fully_exposed_and_after_snowfall (1996 ms)
+[notify] Contract accepted: Gerry's path, 15 Maple Street — $55. Clear the outlined path from his steps down to his mailbox.
+[notify] Payment received: $55 from Gerry (neighbour).
+[notify] 15 Maple Street — all clear.
+  PASS  test_polish3.gd::test_gerry_trail_is_outlined_without_flags (2712 ms)
+[notify] Contract accepted: Gerry's path, 15 Maple Street — $55. Clear the outlined path from his steps down to his mailbox.
+[notify] Payment received: $55 from Gerry (neighbour).
+[notify] 15 Maple Street — all clear.
+[notify] Gerry taught you the business. Your computer's Help app has his advice. Time to head home!
+[notify] Contract accepted: Gerry's path, 15 Maple Street — $55. Clear the outlined path from his steps down to his mailbox.
+[notify] Payment received: $55 from Gerry (neighbour).
+[notify] 15 Maple Street — all clear.
+[notify] Gerry taught you the business. Your computer's Help app has his advice. Time to head home!
+  PASS  test_polish3.gd::test_gerry_walks_in_and_player_follows (14116 ms)
+[notify] Contract accepted: Gerry's path, 15 Maple Street — $55. Clear the outlined path from his steps down to his mailbox.
+[notify] Payment received: $55 from Gerry (neighbour).
+[notify] 15 Maple Street — all clear.
+[notify] Contract accepted: Gerry's path, 15 Maple Street — $55. Clear the outlined path from his steps down to his mailbox.
+[notify] Payment received: $55 from Gerry (neighbour).
+[notify] 15 Maple Street — all clear.
+  PASS  test_polish3.gd::test_gerry_waits_if_you_dont_follow_and_lets_you_in_first (17117 ms)
+[notify] Contract accepted: Gerry's path, 15 Maple Street — $55. Clear the outlined path from his steps down to his mailbox.
+[notify] Payment received: $55 from Gerry (neighbour).
+[notify] 15 Maple Street — all clear.
+[notify] Gerry taught you the business. Your computer's Help app has his advice. Time to head home!
+  PASS  test_polish3.gd::test_gerry_sequence_survives_save_and_load (9574 ms)
+  PASS  test_polish3.gd::test_mailboxes_beside_paths_and_lamps_clear (1834 ms)
+[notify] Payment received: $50 from Gerry (neighbour).
+[notify] 15 Maple Street — all clear.
+[notify] Payment received: $50 from Gerry (neighbour).
+[notify] 15 Maple Street — all clear.
+  PASS  test_polish3.gd::test_mid_trail_fixture_uses_the_new_trail (3153 ms)
+  PASS  test_polish3.gd::test_menu_top_level_is_title_play_settings_exit (3132 ms)
+  PASS  test_polish3.gd::test_menu_exit_quits_through_the_hook (2414 ms)
+  PASS  test_polish3.gd::test_menu_play_mode_new_game_and_continue (17930 ms)
+  PASS  test_polish3.gd::test_menu_two_minutes_leaves_no_trace (13139 ms)
+  PASS  test_polish3.gd::test_menu_fixture_load_is_the_same_as_direct (6506 ms)
+  PASS  test_polish3.gd::test_menu_return_and_start_again_is_clean (8027 ms)
+  PASS  test_polish3.gd::test_menu_respects_graphics_settings (1704 ms)
+[notify] You found a small snow shovel! Hold Left Mouse and sweep it through the snow to fill it, release to throw, hold Right Mouse to push.
+[notify] Contract accepted: Gerry's path, 15 Maple Street — $55. Clear the outlined path from his steps down to his mailbox.
+[notify] Payment received: $55 from Gerry (neighbour).
+[notify] 15 Maple Street — all clear.
+[notify] Gerry taught you the business. Your computer's Help app has his advice. Time to head home!
+[notify] Bid of $32 placed on 20 Birch Avenue.
+[notify] Bid of $39 placed on 31 Birch Avenue.
+[notify] Bid of $38 placed on 24 Maple Street.
+[notify] Bid of $37 placed on 24 Birch Avenue.
+[notify] Bid won! Maple Snow Removal wins 20 Birch Avenue — one-time job at $32, due 9 p.m. Wed.
+[notify] Bid won! Maple Snow Removal wins 31 Birch Avenue — one-time job at $39, due 9 p.m. Wed.
+[notify] Bid won! Maple Snow Removal wins 24 Maple Street — one-time job at $38, due 9 p.m. Wed.
+[notify] Bid won! Maple Snow Removal wins 24 Birch Avenue — one-time job at $37, due 9 p.m. Wed.
+[notify] Good morning.
+[notify] Game saved.
+[notify] You found a small snow shovel! Hold Left Mouse and sweep it through the snow to fill it, release to throw, hold Right Mouse to push.
+[notify] Contract accepted: Gerry's path, 15 Maple Street — $55. Clear the outlined path from his steps down to his mailbox.
+[notify] Payment received: $55 from Gerry (neighbour).
+[notify] 15 Maple Street — all clear.
+[notify] Gerry taught you the business. Your computer's Help app has his advice. Time to head home!
+[notify] Bid of $32 placed on 20 Birch Avenue.
+[notify] Bid of $39 placed on 31 Birch Avenue.
+[notify] Bid of $38 placed on 24 Maple Street.
+[notify] Bid of $37 placed on 24 Birch Avenue.
+[notify] Bid won! Maple Snow Removal wins 20 Birch Avenue — one-time job at $32, due 9 p.m. Wed.
+[notify] Bid won! Maple Snow Removal wins 31 Birch Avenue — one-time job at $39, due 9 p.m. Wed.
+[notify] Bid won! Maple Snow Removal wins 24 Maple Street — one-time job at $38, due 9 p.m. Wed.
+[notify] Bid won! Maple Snow Removal wins 24 Birch Avenue — one-time job at $37, due 9 p.m. Wed.
+[notify] Good morning.
+[notify] Game saved.
+  PASS  test_polish3.gd::test_playthrough_from_the_menu_both_modes (31457 ms)
+
+==== 21 passed, 0 failed (168.0 s) ====

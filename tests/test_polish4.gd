@@ -102,6 +102,18 @@ static func _collider_boxes(root: Node) -> Array:
 # (The polish-3 fixtures are covered by test_polish3's test_fixtures_load_and_play.)
 # -----------------------------------------------------------------------------
 
+## Polish 6 §3: where the fixture test stands the player on the street — 4 m out from the middle of
+## the player's lot, as it always did, or the first point further out whose snow is under half the
+## hip height. An older save is settled on load, and in round 5's mid-winter fixture and pass 4's
+## storm fixture a street bank slumps over the lane's edge there (1.4–2 m deep).
+static func _road_spot() -> Vector2:
+	for k in range(25):
+		var p := Layout.lot_to_world(Layout.player_lot, 0.0, -4.0 - k * 0.25)
+		if Snow.depth_at(p.x, p.y) < CharacterModel.HIP_HEIGHT * 0.5:
+			return p
+	return Layout.lot_to_world(Layout.player_lot, 0.0, -4.0)
+
+
 func test_polish4_fixtures_load_and_play() -> void:
 	for mode in ["fun", "survival"]:
 		for point in ["1_opening", "2_mid_trail", "3_trail_done", "4_contract", "5_midwinter", "6_storm"]:
@@ -113,7 +125,7 @@ func test_polish4_fixtures_load_and_play() -> void:
 			var stage := Game.stage()
 			await _spawn_world()
 			var pl: Player = world.player
-			var road := Layout.lot_to_world(Layout.player_lot, 0.0, -4.0)
+			var road := _road_spot()
 			pl.teleport(Vector3(road.x, 0.05, road.y), PI * 0.5)
 			pl.pitch = 0.0
 			await _frames(2)

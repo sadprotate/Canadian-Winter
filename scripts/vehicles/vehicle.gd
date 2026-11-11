@@ -5,6 +5,10 @@ extends CharacterBody3D
 ## Controls (remappable): W/S drive & brake/reverse, A/D steer, Space handbrake, LMB blade/blower
 ## on-off (or dump), Z/C blade angle / chute, V camera, H horn, T radio, E exit.
 
+# Polish 6 §2: classes added in polish 5, by path rather than global name, so this script still
+# loads when the editor's class cache predates a pull.
+const _ItemUpgrades := preload("res://scripts/data/item_upgrades.gd")
+
 var data: VehicleData
 var uid := 0
 var entry: Dictionary = {}
@@ -328,11 +332,11 @@ func _physics_process(delta: float) -> void:
 		var bp: Vector3 = global_transform * Vector3(0, 0, info["blade_z"])
 		var face := fwd.rotated(deg_to_rad(blade_angle))
 		var adv := maxf(travel.dot(fwd), 0.0)
-		var hw := data.blade_width * 0.5 * ItemUpgrades.mult(data.id, &"vehicle_blade_width")
+		var hw := data.blade_width * 0.5 * _ItemUpgrades.mult(data.id, &"vehicle_blade_width")
 		# Polish 5 §3 (Decision 12): no road rule — a plow carries yard snow over the curb.
 		var r := Snow.blade_push(Vector2(bp.x, bp.z), face, hw, adv + 0.1, data.blade_floor, false, 0.6)
 		player_guard(Vector2(bp.x, bp.z), fwd, hw + 0.2)
-		var ratio: float = r["berm"] / (data.blade_capacity * ItemUpgrades.mult(data.id, &"vehicle_clear_speed"))
+		var ratio: float = r["berm"] / (data.blade_capacity * _ItemUpgrades.mult(data.id, &"vehicle_clear_speed"))
 		work_drag = 1.0 / (1.0 + ratio * ratio)
 		Snow.stat_player_moved += r["moved"]
 		Game.stats_add("snow_moved", r["moved"])
@@ -504,7 +508,7 @@ func _blow(delta: float, fwd: Vector2) -> void:
 	_land_timer -= delta
 	if _land_timer <= 0.0:
 		_land_timer = 0.15
-		_landing = Throw.compute(get_world_3d(), cp, cd, data.blower_throw * ItemUpgrades.mult(data.id, &"vehicle_blower"), 40.0, [get_rid()])
+		_landing = Throw.compute(get_world_3d(), cp, cd, data.blower_throw * _ItemUpgrades.mult(data.id, &"vehicle_blower"), 40.0, [get_rid()])
 	work_snd.volume_db = move_toward(work_snd.volume_db, -3.0, delta * 40.0)
 	if stream_fx:
 		stream_fx.global_position = cp
@@ -521,7 +525,7 @@ func _blow(delta: float, fwd: Vector2) -> void:
 			Notify.push("The blower has nowhere to put the snow. Turn the chute with %s." % keys, Notify.WARN)
 		return
 	var fp := Vector2(global_position.x, global_position.z) + fwd * absf(float(info["blade_z"]))
-	var r := Snow.intake(fp, fwd, data.blower_width, 0.6, data.blower_rate * ItemUpgrades.mult(data.id, &"vehicle_blower") * delta, 0.01)
+	var r := Snow.intake(fp, fwd, data.blower_width, 0.6, data.blower_rate * _ItemUpgrades.mult(data.id, &"vehicle_blower") * delta, 0.01)
 	_stream_acc += r["volume"]
 	Snow.stat_player_moved += r["volume"]
 	Game.stats_add("snow_moved", r["volume"])

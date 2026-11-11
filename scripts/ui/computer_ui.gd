@@ -10,6 +10,12 @@ extends Control
 
 signal closed
 
+# Polish 6 §2: classes added in polish 5, by path rather than global name, so this script still
+# loads when the editor's class cache predates a pull.
+const _Equipment := preload("res://scripts/data/equipment.gd")
+const _Heating := preload("res://scripts/world/heating.gd")
+const _ItemUpgrades := preload("res://scripts/data/item_upgrades.gd")
+
 ## The apps, in sidebar order (polish 5 §7): APP_IDS are stable ids, APPS the names shown.
 const APP_IDS := ["weather", "contracts", "board", "store", "upgrades", "bills", "orders", "property", "help"]
 const APPS := ["Weather", "Contracts", "Contract board", "Equipment store", "Upgrades", "Bills & payments",
@@ -695,14 +701,14 @@ func _store() -> void:
 				stats += "  ·  load %.2f m³" % td.capacity
 			ToolData.Kind.ELECTRIC_SHOVEL, ToolData.Kind.WALK_BLOWER:
 				stats += "  ·  %.2f m³/s  ·  throw %.0f m" % [td.rate, td.throw_distance]
-		_store_card(String(td.id), td.display_name, td.price, Settings.with_keys(td.description), stats)
+		_store_card(String(td.id), td.display_name, td.price, td.store_description(), stats)
 	# Polish 5 §13: equipment — not tools (never in a slot); the coat in Survival only.
 	_section("Equipment")
 	for k in Catalog.EQUIPMENT.keys():
-		if not Equipment.shown(k):
+		if not _Equipment.shown(k):
 			continue
 		var e: Dictionary = Catalog.EQUIPMENT[k]
-		_store_card(String(k), e["name"], Equipment.price(k), Settings.with_keys(e["desc"]), Equipment.store_stats(k), String(k))
+		_store_card(String(k), e["name"], _Equipment.price(k), Settings.with_keys(e["desc"]), _Equipment.store_stats(k), String(k))
 	_section("Supplies")
 	for k in Catalog.UTILITY.keys():
 		var u: Dictionary = Catalog.UTILITY[k]
@@ -739,9 +745,9 @@ func _upgrades() -> void:
 		for g in others:
 			var names := []
 			for item in g:
-				for tr in ItemUpgrades.tracks(item):
-					if ItemUpgrades.track_shown(item, tr):
-						names.append(ItemUpgrades.TRACKS[tr]["name"])
+				for tr in _ItemUpgrades.tracks(item):
+					if _ItemUpgrades.track_shown(item, tr):
+						names.append(_ItemUpgrades.TRACKS[tr]["name"])
 			_cell(t, Catalog.item_name(g[0]), Color.WHITE)
 			_cell(t, ", ".join(names), UIKit.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true)
 			_cell(t, _not_owned_hint(g[0]), UIKit.MUTED)
@@ -778,10 +784,10 @@ static func _heated_stats(id: StringName) -> String:
 static func upgrade_groups() -> Array:
 	var out := []
 	var at := {}
-	for item in ItemUpgrades.items():
-		if not ItemUpgrades.tracks(item).any(func(t): return ItemUpgrades.track_shown(item, t)):
+	for item in _ItemUpgrades.items():
+		if not _ItemUpgrades.tracks(item).any(func(t): return _ItemUpgrades.track_shown(item, t)):
 			continue
-		var lead: StringName = ItemUpgrades.GROUP.get(item, item)
+		var lead: StringName = _ItemUpgrades.GROUP.get(item, item)
 		if at.has(lead):
 			(out[at[lead]] as Array).append(item)
 		else:
@@ -791,11 +797,11 @@ static func upgrade_groups() -> Array:
 
 
 static func _group_owned(g: Array) -> bool:
-	return g.any(func(i): return ItemUpgrades.owns(i))
+	return g.any(func(i): return _ItemUpgrades.owns(i))
 
 
 static func _not_owned_hint(item: StringName) -> String:
-	if ItemUpgrades.GROUP.has(item):
+	if _ItemUpgrades.GROUP.has(item):
 		return "Fit the pickup's front plow first"
 	var p := Economy.price_of(String(item))
 	return "Equipment store · %s" % UIKit.money(p) if p > 0 else "—"
@@ -823,21 +829,21 @@ func _upgrade_item_card(g: Array) -> void:
 	v.add_child(UIKit.label(Catalog.item_name(g[0]), FS_CARD, Color.WHITE))
 	var grid := _table(5, v)
 	for item in g:
-		for t in ItemUpgrades.tracks(item):
-			if ItemUpgrades.track_shown(item, t):
+		for t in _ItemUpgrades.tracks(item):
+			if _ItemUpgrades.track_shown(item, t):
 				_upgrade_row(grid, item, t)
 
 
 ## A track: its name, the level owned, the next level's effect, its price and Buy (or why not).
 func _upgrade_row(g: GridContainer, item: StringName, t: StringName) -> void:
-	var n := ItemUpgrades.level(item, t)
-	var top := maxi(ItemUpgrades.max_level(item, t), n)
-	var name_l := _cell(g, ItemUpgrades.TRACKS[t]["name"], Color.WHITE)
+	var n := _ItemUpgrades.level(item, t)
+	var top := maxi(_ItemUpgrades.max_level(item, t), n)
+	var name_l := _cell(g, _ItemUpgrades.TRACKS[t]["name"], Color.WHITE)
 	name_l.custom_minimum_size = Vector2(150, 46)    # every row as tall as one with its Buy button
 	name_l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	var lv := _cell(g, "Level %d / %d" % [n, top], UIKit.GOOD if n >= top else UIKit.MUTED)
 	lv.custom_minimum_size.x = 120
-	var nid := ItemUpgrades.level_id(item, t, n + 1)
+	var nid := _ItemUpgrades.level_id(item, t, n + 1)
 	if n >= top or nid == "":
 		_cell(g, "Fitted" if t == &"front_plow" else "Fully upgraded", UIKit.GOOD, HORIZONTAL_ALIGNMENT_LEFT, true)
 		_cell(g, "")
@@ -895,7 +901,7 @@ func _bills() -> void:
 		_p("Power & heating: %s" % pw, UIKit.GOOD if Survival.power_on else UIKit.BAD, FS_SECTION)
 		_p("Hydro & heating: $%d a month, due on the 15th. Still unpaid at midnight into the 16th, the power is cut until you pay (no reconnection fee)." % Catalog.balance.hydro_bill)
 		# Polish 5 §13: what the heated pad, driveway and path use goes on the next bill.
-		var hc := Heating.hourly_costs()
+		var hc := _Heating.hourly_costs()
 		if not hc.is_empty() or Economy.heat_used > 0.0:
 			var parts := hc.map(func(x): return "%s $%.2f" % [x[0], x[1]])
 			_p("Heating since the last bill: %s, on the next bill%s." % [UIKit.money(roundi(Economy.heat_used)), (" ($%.2f a m³ melted; an hour at most: %s)" % [Catalog.balance.melt_cost_per_m3, ", ".join(parts)]) if not parts.is_empty() else ""], Color.WHITE)
@@ -956,7 +962,7 @@ func _property() -> void:
 			_cell(g2, Catalog.item_name(StringName(m["tool"])), Color.WHITE)
 			_cell(g2, "near %s" % Layout.describe_point(Vector2(p2.x, p2.z)), UIKit.TEXT, HORIZONTAL_ALIGNMENT_LEFT, true)
 	# Polish 5 §13: the equipment you have.
-	var eq := Equipment.overview_lines(false)
+	var eq := _Equipment.overview_lines(false)
 	if not eq.is_empty():
 		_section("Equipment")
 		for line in eq:
@@ -975,7 +981,7 @@ func _property() -> void:
 	for grp in upgrade_groups():
 		var parts := []
 		for item in grp:
-			var sm := ItemUpgrades.summary(item)
+			var sm := _ItemUpgrades.summary(item)
 			if sm != "":
 				parts.append(sm)
 		if not parts.is_empty():
@@ -1045,7 +1051,7 @@ func _orders() -> void:
 		_cell(g, col, UIKit.MUTED, HORIZONTAL_ALIGNMENT_LEFT, false, FS_SMALL)
 	for o in list:
 		var status := Economy.order_status_text(o)
-		if o["item"] == String(ItemUpgrades.PLOW_ID) and o["status"] == "spawned":
+		if o["item"] == String(_ItemUpgrades.PLOW_ID) and o["status"] == "spawned":
 			status = "Drive your pickup into the store lot to have it installed"
 		var col := UIKit.GOOD if o["status"] == "spawned" or o["status"] == "ready" else (UIKit.WARN if o["status"] == "pending" else UIKit.MUTED)
 		_cell(g, "%d" % o["id"], col)

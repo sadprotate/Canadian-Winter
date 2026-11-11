@@ -10,6 +10,7 @@ var world: Node = null
 ## at the end of the round (--set=polish5_v3) is added by listing its folder here.
 const FIXTURE_DIRS := [
 	"res://tests/fixtures/polish5/",
+	"res://tests/fixtures/polish5_v3/",
 ]
 
 
@@ -89,6 +90,18 @@ static func fixture_points(dir_path: String) -> Dictionary:
 # (The polish-3 and polish-4 fixtures are covered by test_polish3 / test_polish4.)
 # -----------------------------------------------------------------------------
 
+## Polish 6 §3: where the fixture test stands the player on the street — 4 m out from the middle of
+## the player's lot, as it always did, or the first point further out whose snow is under half the
+## hip height. An older save is settled on load, and in round 5's mid-winter fixture and pass 4's
+## storm fixture a street bank slumps over the lane's edge there (1.4–2 m deep).
+static func _road_spot() -> Vector2:
+	for k in range(25):
+		var p := Layout.lot_to_world(Layout.player_lot, 0.0, -4.0 - k * 0.25)
+		if Snow.depth_at(p.x, p.y) < CharacterModel.HIP_HEIGHT * 0.5:
+			return p
+	return Layout.lot_to_world(Layout.player_lot, 0.0, -4.0)
+
+
 func test_polish5_fixtures_load_and_play() -> void:
 	for dir_path in FIXTURE_DIRS:
 		var points := fixture_points(dir_path)
@@ -108,7 +121,7 @@ func test_polish5_fixtures_load_and_play() -> void:
 				var stage := Game.stage()
 				await _spawn_world()
 				var pl: Player = world.player
-				var road := Layout.lot_to_world(Layout.player_lot, 0.0, -4.0)
+				var road := _road_spot()
 				pl.teleport(Vector3(road.x, 0.05, road.y), PI * 0.5)
 				pl.pitch = 0.0
 				await _frames(2)
@@ -527,36 +540,43 @@ func test_s2_no_conflict_in_any_context() -> void:
 
 ## The auto-clicker against the cap (polish 5 §2), with the real controls and bare hands on the
 ## player's path box (tests/click_bench.gd): at 20 and 50 presses/s no more presses register than
-## the cap allows and no more snow comes off the box than clicking at the cap rate; without the cap
-## 20/s would be far ahead. The hold-and-sweep bot's rate is measured alongside and reported: each
-## press still opens with an in-place bite (how a scoop starts its cut, left as it is), so clicking
-## at the cap rate stays ahead of sweeping (see docs/polish5/report/s2.md).
+## the cap allows, and no more snow comes off the box than clicking at the cap rate (both kept from
+## round 5). Polish 6 §8.1 replaced the click behaviour this test asserted: a press no longer
+## opens with an in-place bite, a release sooner than min_scoop_hold_s throws nothing and every
+## throw is followed by the tool's throw_recovery_s. So clicking at the cap rate, at 20 and 50/s,
+## and at 20/s with the cap off, removes no more snow per second than holding and sweeping, and
+## throws no more often than the recovery allows (see docs/polish6/report/s8_1.md).
 func test_s2_autoclick_capped() -> void:
 	var bench: Node = load("res://tests/click_bench.gd").new()
 	runner.add_child(bench)
 	await bench.setup(runner)
 	world = bench.world
 	var cap: float = Catalog.balance.input_max_presses_per_s
+	var rec: float = Catalog.tool(&"hands").throw_recovery_s
 	var secs := 20.0
 	var sw: Dictionary = await bench.run_sweep(secs)
 	var at_cap: Dictionary = await bench.run_click_primary(cap, secs)
 	var r_sw: float = sw["removed"] / sw["secs"]
 	var r_cap: float = at_cap["removed"] / at_cap["secs"]
-	runner.info("hold + sweep: %.4f m3/s; clicking at the cap (%.0f/s): %.4f m3/s, %.1f registered/s, %.1f L per press" % [r_sw, cap, r_cap, at_cap["registered"] / at_cap["secs"], at_cap["moved"] / maxf(at_cap["registered"], 1) * 1000.0])
+	runner.info("hold + sweep: %.4f m3/s; clicking at the cap (%.0f/s): %.4f m3/s, %.1f registered/s, %d throws, %.1f L per press" % [r_sw, cap, r_cap, at_cap["registered"] / at_cap["secs"], at_cap["throws"], at_cap["moved"] / maxf(at_cap["registered"], 1) * 1000.0])
+	runner.check(r_cap <= r_sw * 1.05 + 0.002, "§2 clicking LMB at the cap rate (%.0f/s) removes no more snow per second than holding and sweeping (%.4f vs %.4f m3/s)" % [cap, r_cap, r_sw])
 	for rate in [20.0, 50.0]:
 		var d: Dictionary = await bench.run_click_primary(rate, secs)
 		var r: float = d["removed"] / d["secs"]
-		runner.info("clicking at %.0f/s: %.4f m3/s (x%.2f the cap rate, x%.2f hold + sweep), %d sent, %d registered" % [rate, r, r / maxf(r_cap, 1e-6), r / maxf(r_sw, 1e-6), d["sent"], d["registered"]])
+		runner.info("clicking at %.0f/s: %.4f m3/s (x%.2f hold + sweep), %d sent, %d registered, %d throws" % [rate, r, r / maxf(r_sw, 1e-6), d["sent"], d["registered"], d["throws"]])
 		runner.check(float(d["registered"]) <= cap * d["secs"] + 1.0, "§2 clicking LMB at %.0f/s: at most %.0f presses register per second (%d in %.1f s)" % [rate, cap, d["registered"], d["secs"]])
 		runner.check(r <= r_cap * 1.12 + 0.002, "§2 clicking LMB at %.0f/s removes no more snow per second than clicking at the cap rate (%.4f vs %.4f m3/s)" % [rate, r, r_cap])
-		runner.check(d["throws"] == d["registered"], "§2 …one throw per registered press, none per ignored one (%d / %d)" % [d["throws"], d["registered"]])
-	# The cap is what holds it: without it, 20/s registers and removes far more.
+		runner.check(r <= r_sw * 1.05 + 0.002, "§2 clicking LMB at %.0f/s removes no more snow per second than holding and sweeping (%.4f vs %.4f m3/s)" % [rate, r, r_sw])
+		runner.check(d["throws"] <= d["registered"] and float(d["throws"]) <= d["secs"] / rec + 1.0, "§2 …and throws no more than once per registered press and once per %.2f s recovery (%d throws, %d registered)" % [rec, d["throws"], d["registered"]])
+	# The cap still limits the presses; the scoop's rule is what holds the snow now: without the cap,
+	# 20/s registers far more presses and still removes no more than holding and sweeping.
 	Catalog.balance.input_max_presses_per_s = 0.0
 	var free20: Dictionary = await bench.run_click_primary(20.0, secs)
 	Catalog.balance.input_max_presses_per_s = cap
 	var r_free: float = free20["removed"] / free20["secs"]
-	runner.info("without the cap, clicking at 20/s: %.4f m3/s, %d registered" % [r_free, free20["registered"]])
-	runner.check(r_free > r_cap * 1.4 and float(free20["registered"]) > cap * free20["secs"] * 1.3, "§2 without the cap, 20/s would remove %.1fx as much" % (r_free / maxf(r_cap, 1e-6)))
+	runner.info("without the cap, clicking at 20/s: %.4f m3/s, %d registered, %d throws" % [r_free, free20["registered"], free20["throws"]])
+	runner.check(float(free20["registered"]) > cap * free20["secs"] * 1.3, "§2 without the cap, 20/s registers %d presses in %.1f s" % [free20["registered"], free20["secs"]])
+	runner.check(r_free <= r_sw * 1.05 + 0.002 and float(free20["throws"]) <= free20["secs"] / rec + 1.0, "§2 …and still removes no more than holding and sweeping (%.4f vs %.4f m3/s, %d throws)" % [r_free, r_sw, free20["throws"]])
 	# RMB: pushing gives no per-press gain; capped presses don't push more than holding.
 	var hold_push: Dictionary = await bench.run_push(0.0, 8.0)
 	var tap_push: Dictionary = await bench.run_push(50.0, 8.0)
@@ -629,16 +649,24 @@ func test_s2_drop_presses_lose_and_duplicate_nothing() -> void:
 	bench.queue_free()
 
 
-## A human tapping at 5 a second: every press registers (LMB scoops and throws on each tap, RMB
-## pushes, E and G alternate), and holding is never cut short by the cap.
+## A human tapping at 5 a second: every press registers (RMB pushes, E and G alternate), and holding
+## is never cut short by the cap. Polish 6 §8.1: an LMB tap that short (held half of a 5/s period)
+## comes before min_scoop_hold_s and, standing still, before one cycle_time: it scoops and throws
+## nothing (round 5 asserted a scoop and a throw on every tap).
 func test_s2_tapping_5_per_s_works() -> void:
 	var bench: Node = load("res://tests/click_bench.gd").new()
 	runner.add_child(bench)
 	await bench.setup(runner)
 	world = bench.world
 	var d: Dictionary = await bench.run_click_primary(5.0, 8.0)
-	runner.check(d["sent"] >= 25 and d["registered"] == d["sent"] and d["throws"] == d["registered"], "§2 LMB tapped at 5/s: every tap registers and throws (%d sent, %d registered, %d throws)" % [d["sent"], d["registered"], d["throws"]])
-	runner.check(d["moved"] / maxf(d["registered"], 1) > 0.004, "§2 …and every tap scoops (%.1f L per tap)" % (d["moved"] / maxf(d["registered"], 1) * 1000.0))
+	var tap := 0.5 / 5.0
+	var hands: ToolData = Catalog.tool(&"hands")
+	var short_hold := tap < Catalog.balance.min_scoop_hold_s
+	var short_dig := tap < hands.cycle_time
+	runner.check(d["sent"] >= 25 and d["registered"] == d["sent"], "§2 LMB tapped at 5/s: every tap registers (%d sent, %d registered)" % [d["sent"], d["registered"]])
+	runner.check(d["throws"] == (0 if short_hold else d["registered"]), "§2 …a %.2f s tap throws %s (min hold %.2f s): %d throws" % [tap, "nothing" if short_hold else "once", Catalog.balance.min_scoop_hold_s, d["throws"]])
+	if short_dig:
+		runner.check(d["moved"] < 1e-6, "§2 …and a %.2f s tap without a sweep scoops nothing (cycle %.2f s): %.2f L" % [tap, hands.cycle_time, d["moved"] * 1000.0])
 	var p: Dictionary = await bench.run_push(5.0, 4.0)
 	runner.check(p["registered"] == p["sent"] and p["sent"] >= 19, "§2 RMB tapped at 5/s: every tap pushes (%d / %d)" % [p["registered"], p["sent"]])
 	var eg: Dictionary = await bench.run_tool_presses("both", 5.0, 20)
@@ -709,7 +737,7 @@ func test_s2_keys_shown_from_input_map() -> void:
 	runner.check(hint.contains("Middle Mouse") and hint.contains("Y: angle"), "§2 the tool reminder shows the bound keys (%s)" % hint)
 	var descs := []
 	for t in Catalog.store_tools():
-		descs.append(Settings.with_keys((t as ToolData).description))
+		descs.append((t as ToolData).store_description())   # polish 6 §3: as the store shows it ({width})
 	for v in Catalog.store_vehicles():
 		descs.append(Settings.with_keys((v as VehicleData).description))
 	for k in Catalog.UTILITY.keys():
@@ -2485,6 +2513,13 @@ const S6_PROFILES := {
 	"small_blower": [0.56, 0.4, 0.03, 0.05, 8.0, 0.1, 0.065],
 	"large_blower": [0.78, 0.4, 0.03, 0.05, 12.5, 0.1, 0.14],
 }
+## Polish 6 §8.2 (Decision 1): the six shovel-type tools that pick up and throw carry twice as much:
+## their base capacity and fill rate (values 2 and 3 above) are these times the profiles' above.
+const S6_LOAD_X := {"small_shovel": 2.0, "standard_shovel": 2.0, "wide_pusher": 2.0, "snow_scraper": 2.0,
+	"large_scraper": 2.0, "snow_sleigh": 2.0}
+## Polish 6 §8.1b (the owner's decision): bare hands' fill rate (value 3 above) is this times the
+## profile's (0.085 → 0.1105 m³/s).
+const S6_FILL_X := {"hands": 1.3}
 
 
 ## The triangles of a mesh (every surface), as a flat array of vertices (three per triangle).
@@ -2560,9 +2595,10 @@ func test_s6_blades_match_the_profiles() -> void:
 		var p: Array = S6_PROFILES[id]
 		var now := [t.width, t.push_width, t.capacity, t.fill_rate, t.throw_distance, t.push_strength, t.rate]
 		for k in range(p.size()):
-			if not is_equal_approx(float(p[k]), float(now[k])):
-				bad.append("%s value %d: %s -> %s" % [id, k, p[k], now[k]])
-	runner.check(bad.is_empty(), "§6 the tool profiles are unchanged (width, push width, capacity, fill, throw, push strength, intake) %s" % str(bad))
+			var want := float(p[k]) * (float(S6_LOAD_X.get(id, 1.0)) if k == 2 or k == 3 else 1.0) * (float(S6_FILL_X.get(id, 1.0)) if k == 3 else 1.0)
+			if not is_equal_approx(want, float(now[k])):
+				bad.append("%s value %d: %s -> %s" % [id, k, want, now[k]])
+	runner.check(bad.is_empty(), "§6 the tool profiles are unchanged (width, push width, capacity, fill, throw, push strength, intake; polish 6 §8.2: the shovel-type tools' capacity and fill ×2; §8.1b: bare hands' fill ×1.3) %s" % str(bad))
 	var widths := []
 	for id in S6_TOOLS:
 		var t: ToolData = Catalog.tool(StringName(id))
@@ -3188,6 +3224,16 @@ func test_s7_v3_save_round_trips() -> void:
 	Snow.melted = 3.125
 	var bills_of := func() -> Array: return Economy.bills.map(func(x): return [int(x["month"]), int(x["amount"]), int(x.get("heat", 0)), int(x["due_day"]), bool(x["paid"])])
 	var want13b := JSON.stringify({"eq": Game.equipment, "used": Economy.heat_used, "acc": Economy.heat_acc, "bills": bills_of.call(), "melted": Snow.melted}, "", true)
+	# Polish 6 §3: the snow's relaxation still pending (hot and cold, in order) and blade_push's
+	# stream — optional keys of version 3.
+	Snow.deposit(pad_at + Vector2(6.0, 0.0), 0.6, 0.8)
+	Snow.hot_mode = false
+	Snow.deposit(pad_at + Vector2(-6.0, 3.0), 0.6, 0.8)
+	Snow.hot_mode = true
+	Snow.push_rng.randf()
+	var want_p6 := JSON.stringify(Snow.serialize_pending())
+	var pend_p6 := Snow.relax_pending()
+	var soft_p6 := Snow.soft.duplicate()      # polish 6 §9: the player-moved marks (the throws' snow)
 	runner.check(Saves.save_game(), "§7 a version-3 save")
 	Game.upgrades = {}
 	Game.company_name = ""
@@ -3199,6 +3245,11 @@ func test_s7_v3_save_round_trips() -> void:
 	Snow.melted = 0.0
 	await _unload()
 	runner.check(Saves.load_game("fun"), "§7 …loads")
+	var got_p6 := JSON.stringify(Snow.serialize_pending())
+	runner.check(got_p6 == want_p6 and Snow.relax_pending() == pend_p6 and pend_p6 > 0 and not Snow.settle_on_load, "§3 (polish 6) …and the snow's pending relaxation (%d tiles, hot and cold in order) and blade_push's stream exactly as saved" % pend_p6)
+	runner.check(Snow.soft == soft_p6 and soft_p6.count(1) > 0, "§9 (polish 6) …and the player-moved snow's marks exactly as saved (%d cells)" % soft_p6.count(1))
+	if got_p6 != want_p6:
+		runner.info("want %s\n got %s" % [want_p6.left(600), got_p6.left(600)])
 	var got13b := JSON.stringify({"eq": Game.equipment, "used": Economy.heat_used, "acc": Economy.heat_acc, "bills": bills_of.call(), "melted": Snow.melted}, "", true)
 	runner.check(got13b == want13b and Equipment.pad_placed() and not Equipment.snowshoes_on(), "§13b …and the equipment, the pad where it lies, the heating not yet billed, the bill's heating and the melted-volume ledger exactly as saved")
 	if got13b != want13b:
@@ -6319,7 +6370,8 @@ func test_s13_upgrades_belong_to_an_item() -> void:
 			for k in range(ItemUpgrades.ids(item, t).size()):
 				var u: UpgradeData = Catalog.upgrade(StringName(ItemUpgrades.ids(item, t)[k]))
 				n_levels += 1
-				var want_v := 1.0 if t == &"cab" else (Catalog.upgrade(lv[k]) as UpgradeData).value
+				# Polish 6 §8.2: bare hands' capacity levels have their own step (ItemUpgrades.level_value).
+				var want_v := 1.0 if t == &"cab" else ItemUpgrades.level_value(Catalog, item, t, (Catalog.upgrade(lv[k]) as UpgradeData).value)
 				var old_p: float = b.upgrade_cab_price if t == &"cab" else float((Catalog.upgrade(lv[k]) as UpgradeData).price)
 				var want_p := int(old_p) if t == &"front_plow" else ItemUpgrades.nice_price(old_p * ip / ref)
 				if not is_equal_approx(u.value, want_v) or u.stat != ItemUpgrades.TRACKS[t]["stat"] or u.item != item or u.level != k + 1:
@@ -6475,7 +6527,8 @@ func test_s13_old_global_levels_carry_over() -> void:
 				var want := 1.0
 				for lid in ItemUpgrades.TRACKS[t]["levels"]:
 					if old_ups.has(String(lid)):
-						want *= (Catalog.upgrade(lid) as UpgradeData).value
+						# Polish 6 §8.2: bare hands' capacity levels have their own step (ItemUpgrades.level_value).
+						want *= ItemUpgrades.level_value(Catalog, item, t, (Catalog.upgrade(lid) as UpgradeData).value)
 				var n_old: int = (ItemUpgrades.TRACKS[t]["levels"] as Array).filter(func(l): return old_ups.has(String(l))).size()
 				if t != &"cab" and (ItemUpgrades.level(item, t) != n_old or not is_equal_approx(ItemUpgrades.mult(item, stat), want)):
 					bad.append("%s:%s level %d (want %d)" % [item, t, ItemUpgrades.level(item, t), n_old])
@@ -6557,22 +6610,32 @@ func test_s13_the_ladder() -> void:
 	runner.check(each_track.is_empty(), "§13 …every track has a level for sale %s" % str(each_track))
 	# About the next item's base, where the next item is the same kind of tool: bare hands → small
 	# shovel → standard shovel; scraper → large scraper (load, fill speed, throw).
+	# Polish 6 §8.1b (the owner's decision): bare hands fill ×1.3 faster, so the ladder sells one of
+	# their two capacity levels; fully upgraded they come as near the small shovel's base as the
+	# ladder allows: the next level would pass it by more than the slack on what the track improves.
 	var near := []
 	for pair in [["hands", "capacity"], ["hands", "fill"], ["small_shovel", "capacity"], ["small_shovel", "fill"], ["small_shovel", "throw"],
 			["snow_scraper", "capacity"], ["snow_scraper", "fill"], ["snow_scraper", "throw"], ["wide_pusher", "throw"], ["wide_pusher", "push_strength"]]:
 		for r in rows:
 			if String(r["item"]) == pair[0] and r["q"] == pair[1]:
 				var ratio: float = r["max"] / r["next_base"]
-				if ratio < 0.85 or ratio > 1.0 + slack:
+				if pair[0] == "hands":
+					if ratio > 1.0 + slack or not _p6_ladder_stops_short(rows, r, slack):
+						near.append("%s %s %.2f" % [pair[0], pair[1], ratio])
+					runner.info("§13 polish 6 §8.1b: bare hands' %s fully upgraded (%d levels) %.2f of the small shovel's base" % [pair[1], r["levels"], ratio])
+				elif ratio < 0.85 or ratio > 1.0 + slack:
 					near.append("%s %s %.2f" % [pair[0], pair[1], ratio])
-	runner.check(near.is_empty(), "§13 …and reaches about it (within 85 %%–%d %%) where the next item is the same kind of tool %s" % [int(100.0 + slack * 100.0), str(near)])
-	# The levels past the ladder are the old global levels' only (carried over, never sold).
+	runner.check(near.is_empty(), "§13 …and reaches about it (within 85 %%–%d %%) where the next item is the same kind of tool (polish 6 §8.1b: bare hands as near as the ladder allows) %s" % [int(100.0 + slack * 100.0), str(near)])
+	# The levels past the ladder are the old global levels' only (carried over, never sold). Polish 6
+	# §8.1b: and bare hands' capacity levels the data no longer lets the ladder sell (one).
 	var past := 0
 	for item in ItemUpgrades.items():
 		for t in ItemUpgrades.tracks(item):
 			past += ItemUpgrades.ids(item, t).size() - ItemUpgrades.max_level(item, t)
-	runner.info("§13 levels kept for old saves past the ladder: %d (small shovel capacity 2 / throw 2, wide pusher capacity 2 / throw 2, scraper throw 2)" % past)
-	runner.check(past == 5, "§13 five levels exist past the ladder, for old saves only (%d)" % past)
+	var hands_past := ItemUpgrades.ids(&"hands", &"capacity").size() - _p6_hands_capacity_levels()
+	runner.info("§13 levels kept for old saves past the ladder: %d (small shovel capacity 2 / throw 2, wide pusher capacity 2 / throw 2, scraper throw 2; polish 6 §8.1b: bare hands capacity %d)" % [past, hands_past])
+	runner.check(past == 5 + hands_past and hands_past == ItemUpgrades.ids(&"hands", &"capacity").size() - ItemUpgrades.max_level(&"hands", &"capacity"),
+		"§13 five levels exist past the ladder, for old saves only, and (polish 6 §8.1b) %d of bare hands' capacity levels (%d)" % [hands_past, past])
 	# Full-upgrade cost against the next item's price (the report's table).
 	for item in ItemUpgrades.items():
 		var cost := 0
@@ -6581,6 +6644,37 @@ func test_s13_the_ladder() -> void:
 				cost += (Catalog.upgrade(StringName(ItemUpgrades.ids(item, t)[k])) as UpgradeData).price
 		var nxt_i := order.find(item) + 1
 		runner.info("  cost %s: %s for every level for sale; the item %s, the next %s %s" % [item, UIKit.money(cost), UIKit.money(Economy.price_of(String(item))), order[nxt_i] if nxt_i < order.size() else "—", UIKit.money(Economy.price_of(String(order[nxt_i]))) if nxt_i < order.size() else ""])
+
+
+## Polish 6 §8.1b: a ladder row's track sells fewer levels than it has, and its next level would take
+## the item past the next item's base by more than the slack on one of the things the track improves
+## (the reason the ladder stops there).
+static func _p6_ladder_stops_short(rows: Array, r: Dictionary, slack: float) -> bool:
+	var ids := ItemUpgrades.ids(r["item"], r["track"])
+	if int(r["levels"]) >= ids.size():
+		return false
+	var v := (Catalog.upgrade(StringName(ids[int(r["levels"])])) as UpgradeData).value
+	for o in rows:
+		if o["item"] == r["item"] and o["track"] == r["track"] and float(o["next_base"]) > 0.0 and float(o["base"]) < float(o["next_base"]) and float(o["max"]) * v > float(o["next_base"]) * (1.0 + slack) + 1e-9:
+			return true
+	return false
+
+
+## Polish 6 §8.1b: bare hands' capacity levels the ladder can sell, from the data: the most levels
+## after which fully upgraded bare hands carry and fill no more than the slack past the small shovel's
+## base (balance.upgrade_hands_capacity_step a level).
+static func _p6_hands_capacity_levels() -> int:
+	var b: BalanceData = Catalog.balance
+	var hands: ToolData = Catalog.tool(&"hands")
+	var small: ToolData = Catalog.tool(&"small_shovel")
+	var n := 0
+	var m := 1.0
+	for k in range(ItemUpgrades.ids(&"hands", &"capacity").size()):
+		m *= b.upgrade_hands_capacity_step
+		if hands.capacity * m > small.capacity * (1.0 + b.upgrade_ladder_slack) + 1e-9 or hands.fill_rate * m > small.fill_rate * (1.0 + b.upgrade_ladder_slack) + 1e-9:
+			break
+		n += 1
+	return n
 
 
 ## The Upgrades app: grouped by item, the items you own first (each card with its own icon — the

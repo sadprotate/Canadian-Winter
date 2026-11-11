@@ -9,6 +9,11 @@ signal upgrades_changed
 
 enum Stage { START, LETTER_READ, NEIGHBOR_TALKED, TRAIL_DONE, COMPLETE }
 
+# Polish 6 §2: classes added in polish 5, by path rather than global name, so this script still
+# loads when the editor's class cache predates a pull.
+const _Equipment := preload("res://scripts/data/equipment.gd")
+const _ItemUpgrades := preload("res://scripts/data/item_upgrades.gd")
+
 var mode := "fun"
 var year := 1
 var money := 20
@@ -93,13 +98,13 @@ func new_game(m: String, seed_override := -1) -> void:
 	carried = ""
 	heat_pouches = 0
 	upgrades = {}
-	ItemUpgrades.pending_note = ""
+	_ItemUpgrades.pending_note = ""
 	vehicles = []
 	items = []
 	machines = []
 	rack = []
 	equipment = {}
-	Equipment.pending_note = ""
+	_Equipment.pending_note = ""
 	next_uid = 1
 	camera_third = Settings.get_value("camera", "default_third", false)
 	weather_seed = int(Time.get_unix_time_from_system()) % 100000 + 17 if seed_override < 0 else seed_override
@@ -257,10 +262,10 @@ func has_upgrade(id: StringName) -> bool:
 
 func grant_upgrade(id: StringName) -> void:
 	# Polish 5 §13: an old global upgrade (an old order's crate) goes to every item it improved.
-	if ItemUpgrades.is_legacy(id):
-		ItemUpgrades.grant_legacy(id, upgrades)
+	if _ItemUpgrades.is_legacy(id):
+		_ItemUpgrades.grant_legacy(id, upgrades)
 	elif Catalog.RETIRED_UPGRADE_IDS.has(id):
-		Equipment.collect(Equipment.COAT)   # polish 5 §13: the old jacket / parka is the coat now
+		_Equipment.collect(_Equipment.COAT)   # polish 5 §13: the old jacket / parka is the coat now
 	else:
 		upgrades[String(id)] = true
 	upgrades_changed.emit()
@@ -399,7 +404,7 @@ func serialize() -> Dictionary:
 	return {"mode": mode, "year": year, "money": money, "reputation": reputation, "company_name": company_name, "stats": stats,
 		"lifetime": lifetime, "flags": flags, "slots": slots, "selected": selected, "carried": carried,
 		"heat_pouches": heat_pouches, "upgrades": upgrades, "vehicles": _pack_list(vehicles),
-		"items": _pack_list(items), "machines": _pack_list(machines), "rack": rack, "equipment": Equipment.pack(equipment),
+		"items": _pack_list(items), "machines": _pack_list(machines), "rack": rack, "equipment": _Equipment.pack(equipment),
 		"player_pos": a3(player_pos), "player_yaw": player_yaw, "camera_third": camera_third,
 		"next_uid": next_uid, "weather_seed": weather_seed}
 
@@ -425,8 +430,8 @@ func deserialize(d: Dictionary) -> void:
 	upgrades = d.get("upgrades", {})
 	# Polish 5 §13 (Decision 8): an old save's global upgrades go to every item they improved (one
 	# notification, shown once the game is up). Saves stay version 3: the same key, new ids.
-	ItemUpgrades.pending_note = ""
-	ItemUpgrades.migrate(upgrades)
+	_ItemUpgrades.pending_note = ""
+	_ItemUpgrades.migrate(upgrades)
 	vehicles = _unpack_list(d.get("vehicles", []))
 	items = _unpack_list(d.get("items", []))
 	machines = _unpack_list(d.get("machines", []))
@@ -436,9 +441,9 @@ func deserialize(d: Dictionary) -> void:
 	equipment = {}
 	var eq = d.get("equipment", {})
 	if eq is Dictionary:
-		equipment = Equipment.pack(eq)
-	Equipment.pending_note = ""
-	Equipment.migrate(upgrades, equipment, mode == "survival")
+		equipment = _Equipment.pack(eq)
+	_Equipment.pending_note = ""
+	_Equipment.migrate(upgrades, equipment, mode == "survival")
 	player_pos = v3(d.get("player_pos", [0, 0, 0]))
 	player_yaw = float(d.get("player_yaw", 0.0))
 	camera_third = bool(d.get("camera_third", false))

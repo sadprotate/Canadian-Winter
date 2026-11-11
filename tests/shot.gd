@@ -47,6 +47,11 @@ extends Node
 ##   --scoop=mid|loaded|glide a real scoop with the real controls (with --tool, --player, --pitch,
 ##                            --tp): captured mid-sweep, loaded and aimed up (--aim_up=deg), or a
 ##                            glide series (--seq, --every)
+##   --scoop=thrown --after=F (polish 6 §8.1) the same scoop, aimed up and released (thrown), captured
+##                            F frames after the release (default 33: 0.55 s); --switch=S switches
+##                            to bare hands S frames after the release, inside the recovery;
+##                            --repress=R (§8.1b) R frames after the release, look back down and
+##                            press again, sweeping; --rethrow=H H frames into it, aim up, release
 ##   --photo_out=path         also save the framed photograph's texture (full size) to path
 ##   --seq=N --every=F        capture N frames, one every F frames, to <out>_00.png, _01.png …
 ##   --menu_shot=k --menu_at=f   (menu) jump the background camera to shot k (0..2), fraction f
@@ -140,6 +145,25 @@ extends Node
 ##                            heading with that text (e.g. Equipment, Property)
 ##   --shoes_walk=frames      (§13b) walk forward that many frames (real input) before the shot —
 ##                            with snowshoes on, a shallow track behind the player
+## Polish 6 additions:
+##   --win=WxH                (§3) show the canvas a W × H screen gives (canvas_items: 16:9 is
+##                            1920 × 1080 at any size, 21:9 2580 × 1080, 4:3 1920 × 1440) in the
+##                            window, letterboxed when its aspect differs from the window's
+##   --load=path              (§3) load this save (a fixture) as Continue does, instead of a new game
+##                            (its own date and time: --day/--hour/--setup are not applied); it is
+##                            copied over the mode's save in user://saves/, as the suites do
+##   --street_scoop=1         (§3) a shovel's scoop on the boulevard just short of the curb in front
+##                            of the player's house (Maple Street), then the snow settled; prints the
+##                            spot (aim --cam/--look at it)
+##   --pile=hand|plow|pickup|throws  (§9) a pile made with the real controls, then settled, the
+##                            camera on it unless --cam is given: a berm pushed (RMB, walking) with
+##                            the wide pusher across the front yard; a pile pushed along Maple Street
+##                            by the pickup with its plow down, the truck then backed off; the pickup
+##                            (no plow) shoving along Maple Street, then backed off; or 20 standard-
+##                            shovel loads landed on one spot of the front yard (the throw's landing
+##                            op). Use with --setup=medium (35 cm everywhere) and --fixed-fps 60;
+##                            --pile_frames=n pushes (default 90) / drives (600) that long; prints
+##                            the pile's top
 
 var args := {}
 var game: Node = null
@@ -151,6 +175,17 @@ func _ready() -> void:
 		if a.begins_with("--") and a.contains("="):
 			var kv := a.substr(2).split("=", true, 1)
 			args[kv[0]] = kv[1]
+	if args.has("win"):
+		# The canvas a W × H screen gives (canvas_items, expand: 1080 high, wider for wider screens;
+		# 1920 wide, taller for narrower ones), shown whole in this window (letterboxed when its
+		# aspect differs): the window on this PC can't be resized from here.
+		var wh := str(args["win"]).split("x")
+		var ratio := float(wh[0]) / float(wh[1])
+		var canvas := Vector2i(roundi(1080.0 * ratio), 1080) if ratio >= 16.0 / 9.0 else Vector2i(1920, roundi(1920.0 / ratio))
+		get_window().content_scale_size = canvas
+		get_window().content_scale_aspect = Window.CONTENT_SCALE_ASPECT_KEEP
+		await _wait(3)
+		print("window ", get_window().size, " showing the canvas of ", args["win"], ": ", get_viewport().get_visible_rect().size)
 	var scene: String = args.get("scene", "game")
 	if scene == "menu":
 		var m: Node = load("res://scenes/main_menu.tscn").instantiate()
@@ -170,8 +205,11 @@ func _ready() -> void:
 			await _capture_seq()
 		_capture()
 		return
-	Game.new_game(str(args.get("mode", "fun")), int(args.get("seed", "-1")))
-	_setup_world_state()
+	if _load_is_save():
+		_load_save(str(args["load"]))
+	else:
+		Game.new_game(str(args.get("mode", "fun")), int(args.get("seed", "-1")))
+		_setup_world_state()
 	game = load("res://scenes/game.tscn").instantiate()
 	add_child(game)
 	await _wait(3)
@@ -410,9 +448,49 @@ func _setup_world_state() -> void:
 		Survival.activate()
 
 
+## Polish 6 §8.2: --load is a save to load (§3) unless it is a number, the --pose load fraction (both
+## options are named --load; a number used to be taken for a save's path).
+func _load_is_save() -> bool:
+	return args.has("load") and not str(args["load"]).is_valid_float()
+
+
+## --load: the save copied over its mode's save and loaded as the menu's Continue does.
+func _load_save(path: String) -> void:
+	var mode := "survival" if path.get_file().begins_with("survival") else "fun"
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(Saves.DIR))
+	for p in [Saves.path_for(mode), Saves.path_for(mode) + ".bak"]:
+		if FileAccess.file_exists(p):
+			DirAccess.remove_absolute(p)
+	DirAccess.copy_absolute(ProjectSettings.globalize_path(path), ProjectSettings.globalize_path(Saves.path_for(mode)))
+	var t0 := Time.get_ticks_msec()
+	print("load ", path, ": ", Saves.load_game(mode), " in %d ms" % (Time.get_ticks_msec() - t0))
+
+
+## --street_scoop: a standard shovel's load scooped on the boulevard just short of Maple Street's
+## curb in front of the player's house (straight out from the lot's middle), then the snow settled.
+func _street_scoop() -> void:
+	var lot := Layout.player_lot
+	var inward: Vector2 = lot["inward"]
+	var p := Layout.lot_to_world(lot, 0.0, 0.0)
+	var at := p
+	for k in range(80):
+		var q := p - inward * (k * 0.125)
+		if Snow.surf[Snow.cell_z(q.y) * Snow.W + Snow.cell_x(q.x)] == Snow.S_ROAD:
+			break
+		at = q
+	var r := Snow.scoop(at + inward * 0.5, -inward, 0.46, 0.45, 0.065)
+	var t0 := Time.get_ticks_msec()
+	var n := 0
+	while Snow.relax_pending() > 0 and n < 400000:
+		n += Snow.process_relax(64)
+	print("street scoop at ", at, ": %.1f L, %d tiles settled in %d ms" % [float(r["volume"]) * 1000.0, n, Time.get_ticks_msec() - t0])
+
+
 func _setup_after_spawn() -> void:
 	var w = game
 	var lot := Layout.player_lot
+	if args.has("street_scoop"):
+		_street_scoop()
 	if args.has("rep"):
 		Game.reputation = clampf(float(args["rep"]), 0.0, 100.0)   # §10b (quietly: no tier notification)
 		if "tier_noted" in Contracts:
@@ -536,6 +614,8 @@ func _setup_after_spawn() -> void:
 		_crew_watch(w)
 	if args.has("pickup_bank"):
 		await _pickup_bank(w)
+	if args.has("pile"):
+		await _pile(w)
 	if args.has("cam") or args.has("lotcam") or args.has("hcam"):
 		_cam = Camera3D.new()
 		_cam.fov = float(args.get("fov", "62"))
@@ -698,14 +778,135 @@ func _pickup_bank(w) -> void:
 		args["look"] = "%f,0.6,%f" % [fx - 1.2, lane + 0.3]
 
 
+## Polish 6 §9: --pile=hand|plow|pickup|throws — a pile made with the real controls (see the top),
+## settled, then framed from the side (unless --cam). The same steps on any build since round 5.
+func _pile(w) -> void:
+	var kind := str(args["pile"])
+	var lot := Layout.player_lot
+	var inward := Vector2(lot["inward"]).normalized()
+	Game.force_input = true
+	Game.flags["truck_keys"] = true
+	Game.flags["help_vehicle_0"] = true   # no controls panel over the shot
+	Clock.running = false
+	var pl: Player = w.player
+	var frames := int(args.get("pile_frames", "0"))
+	var area := Rect2()
+	var hide_at := Layout.lot_to_world(lot, Layout.gu(lot, 8.0), 6.0)
+	match kind:
+		"hand":
+			var a := Layout.lot_to_world(lot, Layout.gu(lot, -3.5), 1.2)   # beside the walkway: no trees
+			Game.slots = ["wide_pusher", "", "", ""]
+			Game.selected = 0
+			Game.inventory_changed.emit()
+			await _wait(2)
+			pl.teleport(Vector3(a.x, Snow.surface_height(a.x, a.y) + 0.05, a.y), atan2(-inward.x, -inward.y))
+			pl.pitch = deg_to_rad(-30.0)
+			await get_tree().physics_frame
+			Input.action_press("secondary")
+			Input.action_press("move_forward")
+			for i in range(frames if frames > 0 else 90):
+				await get_tree().physics_frame
+			Input.action_release("move_forward")
+			Input.action_release("secondary")
+			await _wait(4)
+			area = Rect2(a - Vector2(3.0, 3.0), Vector2(6.0, 6.0)).merge(Rect2(Vector2(pl.global_position.x, pl.global_position.z) - Vector2(3.0, 3.0), Vector2(6.0, 6.0)))
+		"plow", "pickup":
+			var lane := 84.95
+			var id := "pickup_plow" if kind == "plow" else "pickup"
+			if kind == "pickup":
+				# As perf.tscn's pickup scenario: a bare run-up, then 60 cm (under its bog depth).
+				Snow.set_rect(Rect2(0, 79, 24, 8), 0.03)
+				Snow.set_rect(Rect2(24, 79, 68, 8), 0.6)
+				Snow.relax_until_stable()
+			var e := {"uid": Game.uid(), "id": id, "pos": Vector3(6.0, 0, lane), "yaw": -PI * 0.5, "snow": 0.0}
+			Game.vehicles.append(e)
+			var v: Vehicle = w.spawn_vehicle_node(e)
+			await get_tree().physics_frame
+			await get_tree().physics_frame
+			v.enter_vehicle(pl)
+			await get_tree().physics_frame
+			if v.data.has_plow and not v.tool_on:
+				v._toggle_tool()
+			Input.action_press("veh_accelerate")
+			var still := 0
+			for i in range(frames if frames > 0 else 600):
+				await get_tree().physics_frame
+				still = still + 1 if absf(v.speed) < 0.05 and i > 60 else 0
+				if still > 30:
+					break
+			Input.action_release("veh_accelerate")
+			var front := v.global_position.x + v.data.length * 0.5
+			if v.tool_on:
+				v._toggle_tool()
+			Input.action_press("veh_reverse")
+			for i in range(110):
+				await get_tree().physics_frame
+			Input.action_release("veh_reverse")
+			Input.action_press("veh_brake")
+			await _wait(40)
+			Input.action_release("veh_brake")
+			v.exit_vehicle()
+			await get_tree().physics_frame
+			# The truck out of the way, behind the camera.
+			v.global_position = Vector3(2.0, v.global_position.y, 81.0)
+			v.set_physics_process(false)
+			area = Rect2(6.0 if kind == "plow" else 24.0, 79.0, maxf(front - 6.0, 4.0) + 4.0, 8.0)
+		"throws":
+			var a2 := Layout.lot_to_world(lot, Layout.gu(lot, -3.5), 5.5)
+			var load := 0.13      # a standard shovel's full load (polish 6 §8.2)
+			var rng := RandomNumberGenerator.new()
+			rng.seed = 4
+			for k in range(20):
+				Snow.deposit(a2 + Vector2(rng.randf_range(-0.2, 0.2), rng.randf_range(-0.2, 0.2)), load, 0.25 + load * 2.5, true)
+				for f in range(20):
+					await get_tree().process_frame
+			area = Rect2(a2 - Vector2(3.0, 3.0), Vector2(6.0, 6.0))
+	pl.teleport(Vector3(hide_at.x, Snow.surface_height(hide_at.x, hide_at.y) + 0.05, hide_at.y))
+	await _wait(60)      # a blade guard runs out (polish 6 §9: its tiles are queued 0.75 s later)
+	Snow.relax_until_stable()
+	await _wait(4)
+	# The pile's top in the area.
+	var top := -1.0
+	var tp := Vector2.ZERO
+	for z in range(Snow.cell_z(area.position.y), Snow.cell_z(area.end.y)):
+		for x in range(Snow.cell_x(area.position.x), Snow.cell_x(area.end.x)):
+			var hh := Snow.cell_surface(x, z)
+			if hh > top:
+				top = hh
+				tp = Vector2((x + 0.5) * Snow.CELL, (z + 0.5) * Snow.CELL)
+	print("pile %s: top %.2f m at (%.2f, %.2f)" % [kind, top, tp.x, tp.y])
+	if not args.has("cam"):
+		var side := (Layout.lot_to_world(lot, Layout.gu(lot, -1.0), 0.0) - Layout.lot_to_world(lot, 0.0, 0.0)).normalized()
+		var c := Vector2.ZERO
+		var hgt := top + 1.3
+		match kind:
+			"hand":
+				c = tp - inward * 3.8 + side * 2.8
+			"throws":
+				# The same view on any build: low, across the yard from the walkway's far side.
+				tp = Layout.lot_to_world(lot, Layout.gu(lot, -3.5), 5.5)
+				c = tp - side * 5.0
+				hgt = top + 0.2
+			"plow":
+				c = tp + Vector2(-5.5, -4.0)
+			"pickup":
+				# The same view on any build: along the shove from behind its start, north side.
+				tp = Vector2(31.0, 84.8)
+				top = 0.9
+				c = Vector2(19.5, 81.2)
+				hgt = 3.1
+		args["cam"] = "%f,%f,%f" % [c.x, hgt, c.y]
+		args["look"] = "%f,%f,%f" % [tp.x, top - 0.5, tp.y]
+
+
 ## --pose=hold|scoop|push|toss [--load=0.5] [--toss=0.5]: freeze the hands / tool in a pose.
 func _apply_pose() -> void:
-	if not args.has("pose") and not args.has("load"):
+	if not args.has("pose") and (not args.has("load") or _load_is_save()):
 		return
 	var tc: ToolController = game.player.tools
 	tc.pose_override = str(args.get("pose", "hold"))
 	tc.toss_override = float(args.get("toss", "0.5"))
-	tc.load = tc._capacity() * float(args.get("load", "0"))
+	tc.load = 0.0 if _load_is_save() else tc._capacity() * float(args.get("load", "0"))
 	if args.has("work"):
 		# Polish 2 §3: pretend the player just scooped from this box so its outline shows.
 		var bid := Boxes.lot_box(Layout.player_lot, str(args["work"]))
@@ -1220,6 +1421,7 @@ func _scoop_shot() -> void:
 	# Let the opening fade-in finish first (--frames, as for the other shots).
 	await _wait(maxi(int(args.get("frames", "40")), 3))
 	var base: float = pl.yaw
+	var pitch0: float = pl.pitch
 	Input.action_press("primary")
 	var sweep := 14 if args["scoop"] == "mid" else 30
 	for k in range(sweep):
@@ -1231,6 +1433,45 @@ func _scoop_shot() -> void:
 		return
 	pl.set_yaw(base + 0.35)
 	var up := deg_to_rad(float(args.get("aim_up", "8")))
+	if args["scoop"] == "thrown":
+		# Polish 6 §8.1: aimed up and released (the throw), captured --after frames later.
+		pl.pitch = up
+		pl.head.rotation.x = pl.pitch
+		await _wait(4)
+		Input.action_release("primary")
+		var after := int(args.get("after", "33"))
+		if args.has("repress"):
+			# Polish 6 §8.1b: --repress=R: R frames after the release (inside the recovery), look back
+			# down at the snow and press again, sweeping; --rethrow=H: H frames into that sweep, aim up
+			# and release (a release inside the recovery: its throw waits). Captured --after frames
+			# after the first release.
+			var rf := mini(int(args["repress"]), after)
+			await _wait(rf)
+			pl.pitch = pitch0
+			pl.head.rotation.x = pl.pitch
+			Input.action_press("primary")
+			var hf := int(args.get("rethrow", "-1"))
+			for k in range(after - rf):
+				if k == hf:
+					pl.pitch = up
+					pl.head.rotation.x = pl.pitch
+					Input.action_release("primary")
+				elif hf < 0 or k < hf:
+					pl.set_yaw(base + 0.3 * sin(k * 0.2))
+				await get_tree().physics_frame
+			after = 0
+		elif args.has("switch"):
+			# --switch=F: F frames after the release (inside the recovery), switch to bare hands (an
+			# empty slot); still captured --after frames after the release.
+			var f := mini(int(args["switch"]), after)
+			await _wait(f)
+			var e: int = Game.slots.find("")
+			if e >= 0:
+				Game.select_slot(e)
+			after -= f
+		await _wait(after)
+		await _capture_now()
+		return
 	if args["scoop"] == "glide":
 		var out: String = args.get("out", "user://shot.png")
 		var n := int(args.get("seq", "5"))

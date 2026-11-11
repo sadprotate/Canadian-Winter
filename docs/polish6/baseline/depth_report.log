@@ -1,0 +1,76 @@
+# command: godot --headless --path . res://tests/depth_report.tscn -- --years=1,5
+# cwd: /c/Users/orsin/OneDrive/Desktop/Canadian Winter/Canadian-Winter (at 1b38f4a, game code = polish6-baseline)
+# exit code: 0   wall time: 419 s   finished: 2026-11-05 09:46
+# Godot: 4.7.2.stable.official.ed1daf0bf
+
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+
+=== Winter 1 (seed 2024): 27 events — light 22, storms 4, major 1; 281 cm total; starts at 0.81 m ===
+   storm  Dec 5 03:49   21.7 cm in 14.3 h  (unforecast)
+   storm  Dec 12 00:45   15.4 cm in 17.0 h
+   major  Jan 20 14:29  108.8 cm in  3.8 h
+   storm  Jan 27 19:19   25.6 cm in 15.4 h  (unforecast)
+   storm  Mar 6 11:13   20.5 cm in 15.9 h
+   date      yard   street bank (max, along Birch Ave)   sidewalk (mean)   boulevard (mean)
+   Dec 1     0.81 m   0.87 m   0.80 m   0.80 m
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Severe weather advisory: heavy snow expected around Dec 12 00:03.
+   Dec 15    1.28 m   4.94 m   0.00 m   4.48 m
+   Jan 1     1.41 m   5.63 m   0.00 m   5.09 m
+   Jan 15    1.62 m   6.00 m   0.00 m   5.89 m
+[notify] Severe weather advisory: blizzard expected around Jan 20 13:56.
+[notify] BLIZZARD WARNING in effect. Stay safe and warm.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+   Feb 1     3.04 m   6.00 m   0.00 m   6.00 m
+   Feb 15    3.16 m   6.00 m   0.00 m   6.00 m
+[notify] Extreme cold warning: -26 °C, wind chill -41.
+   Mar 1     3.29 m   6.00 m   0.00 m   6.00 m
+[notify] Severe weather advisory: heavy snow expected around Mar 6 11:48.
+[notify] Extreme cold warning: -32 °C, wind chill -47.
+   Mar 15    3.59 m   6.00 m   0.00 m   6.00 m
+   Mar 31    3.71 m   6.00 m   0.00 m   6.00 m
+
+=== Winter 5 (seed 2024): 35 events — light 21, storms 10, major 4; 735 cm total; starts at 0.48 m ===
+   storm  Dec 5 18:21   20.2 cm in 10.7 h
+   storm  Dec 25 16:54   29.2 cm in 12.1 h
+   storm  Jan 7 04:15   20.5 cm in 16.0 h
+   major  Jan 10 10:25  103.9 cm in  5.9 h  (unforecast)
+   major  Jan 12 06:43  107.0 cm in  4.8 h
+   storm  Jan 15 21:50   21.9 cm in 12.5 h
+   storm  Jan 25 02:34   17.0 cm in 12.5 h
+   storm  Feb 2 06:39   21.6 cm in 12.0 h
+   storm  Feb 22 16:17   26.8 cm in 12.4 h
+   major  Feb 25 23:30  107.6 cm in  3.9 h  (unforecast)
+   storm  Mar 12 08:30   20.4 cm in 10.2 h
+   major  Mar 14 21:17  118.9 cm in  3.9 h
+   storm  Mar 15 02:14   28.6 cm in 11.7 h
+   storm  Mar 28 16:57   16.9 cm in 13.1 h
+   date      yard   street bank (max, along Birch Ave)   sidewalk (mean)   boulevard (mean)
+   Dec 1     0.48 m   0.55 m   0.47 m   0.47 m
+[notify] Severe weather advisory: heavy snow expected around Dec 5 18:49.
+   Dec 15    0.80 m   2.91 m   0.12 m   2.52 m
+[notify] Severe weather advisory: heavy snow expected around Dec 25 16:28.
+   Jan 1     1.24 m   4.94 m   0.31 m   4.03 m
+[notify] Severe weather advisory: heavy snow expected around Jan 7 03:27.
+[notify] WEATHER ALERT: an unforecast storm is dumping snow at 18 cm an hour — stay indoors!
+[notify] Severe weather advisory: blizzard expected around Jan 12 06:32.
+[notify] BLIZZARD WARNING in effect. Stay safe and warm.
+   Jan 15    3.63 m   6.00 m   0.00 m   6.00 m
+[notify] Severe weather advisory: heavy snow expected around Jan 15 21:27.
+[notify] Severe weather advisory: heavy snow expected around Jan 25 03:09.
+   Feb 1     4.14 m   6.00 m   0.00 m   6.00 m
+[notify] Severe weather advisory: heavy snow expected around Feb 2 05:46.
+[notify] Extreme cold warning: -28 °C, wind chill -42.
+   Feb 15    4.45 m   6.00 m   0.02 m   6.00 m
+[notify] Severe weather advisory: heavy snow expected around Feb 22 16:23.
+[notify] Extreme cold warning: -26 °C, wind chill -40.
+[notify] WEATHER ALERT: an unforecast storm is dumping snow at 28 cm an hour — stay indoors!
+   Mar 1     5.92 m   6.00 m   0.00 m   6.00 m
+[notify] Severe weather advisory: heavy snow expected around Mar 12 08:26.
+[notify] Severe weather advisory: blizzard expected around Mar 14 21:50.
+[notify] Severe weather advisory: heavy snow expected around Mar 15 03:01.
+[notify] BLIZZARD WARNING in effect. Stay safe and warm.
+   Mar 15    6.00 m   6.00 m   1.45 m   6.00 m
+[notify] Severe weather advisory: heavy snow expected around Mar 28 16:41.
+   Mar 31    6.00 m   6.00 m   0.00 m   6.00 m

@@ -8,6 +8,10 @@ extends Node
 ## viewport freed. Headless runs (no renderer) and the frames before the render is done draw the
 ## procedural icons instead (Icons._draw_tool), so no test depends on a captured image.
 
+# Polish 6 §2: this class by path rather than its global name, so this script still loads (Icons
+# preloads it) when the editor's class cache predates a pull.
+const _ToolIcons := preload("res://scripts/ui/tool_icons.gd")
+
 const CELL := 240           # px per icon as rendered (cut out and scaled down to SIZE)
 const PITCH := 1.6          # cells are this far apart (in icon widths), so a long handle running
                             # off its icon's corner never reaches the next icon
@@ -59,7 +63,7 @@ static func request() -> void:
 	if tree == null or tree.root == null:
 		return
 	state = "rendering"
-	var n := ToolIcons.new()
+	var n := _ToolIcons.new()
 	n.name = "ToolIconRender"
 	tree.root.add_child.call_deferred(n)
 

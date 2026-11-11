@@ -268,6 +268,7 @@ func _spawn(id: String, at_store: bool) -> void:
 		p = Vector3(Layout.store_pad.get_center().x, 0, Layout.store_pad.get_center().y)
 	var t: ToolData = Catalog.tool(StringName(id))
 	if t.uses_slot:
+		p.y = Snow.surface_height(p.x, p.z)   # polish 6 §3: a tool rests on the snow
 		var e := {"uid": Game.uid(), "tool": id, "pos": p, "yaw": 0.0}
 		Game.items.append(e)
 		world.spawn_item_node(e)

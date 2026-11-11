@@ -1,0 +1,26 @@
+# command: godot --headless --fixed-fps 60 --path . res://tests/contract_bench.tscn
+# cwd: /c/Users/orsin/OneDrive/Desktop/Canadian Winter/Canadian-Winter (at 1b38f4a, game code = polish6-baseline)
+# exit code: 0   wall time: 379 s   finished: 2026-11-05 09:39
+# Godot: 4.7.2.stable.official.ed1daf0bf
+
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+path / small_shovel: 16 Birch Avenue's path, 2.2 m3 (median of 20; 1.8–2.6 m3), Dec 6 07:00
+  done: 91 strokes, 1.2 min of bot play (1.0 game h); at a human pace 1.7 min (1.4 game h)
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+path / standard_shovel: 16 Birch Avenue's path, 2.2 m3 (median of 20; 1.8–2.6 m3), Dec 6 07:00
+  done: 73 strokes, 1.0 min of bot play (0.8 game h); at a human pace 1.4 min (1.1 game h)
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+driveway / small_shovel: 20 Birch Avenue's driveway, 15.8 m3 (median of 20; 14.0–18.2 m3), Dec 6 07:00
+  done: 678 strokes, 9.3 min of bot play (7.5 game h); at a human pace 12.8 min (10.2 game h)
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+driveway / standard_shovel: 20 Birch Avenue's driveway, 15.8 m3 (median of 20; 14.0–18.2 m3), Dec 6 07:00
+  done: 483 strokes, 6.7 min of bot play (5.3 game h); at a human pace 9.1 min (7.3 game h)
+
+CONTRACT BENCH — state storm; the day's window 7 a.m.–9 p.m. = 14 game h = 17.5 real min
+job       tool                   m3   done    bot min bot game h  human min   human gh     fits
+path      small_shovel          2.2    yes        1.2        1.0        1.7        1.4      yes
+path      standard_shovel       2.2    yes        1.0        0.8        1.4        1.1      yes
+driveway  small_shovel         15.8    yes        9.3        7.5       12.8       10.2      yes
+driveway  standard_shovel      15.8    yes        6.7        5.3        9.1        7.3      yes

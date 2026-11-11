@@ -14,6 +14,10 @@ extends RefCounted
 ## it melts adds up in Economy.heat_used (Survival) and goes on the next hydro bill. A power cut
 ## (Survival.power_on false) stops every source: nothing melts, nothing is billed.
 
+# Polish 6 §2: classes added in polish 5, by path rather than global name, so this script still
+# loads when the editor's class cache predates a pull.
+const _Equipment := preload("res://scripts/data/equipment.gd")
+
 ## Depth (m) a source melts at a time.
 const QUANTUM := 0.002
 ## A slice that melted less than this (m³: a dusting) doesn't light the pad's lamp.
@@ -28,9 +32,9 @@ static var last_melt: Dictionary = {}
 static func sources() -> Array:
 	var out := []
 	var b: BalanceData = Catalog.balance
-	if Equipment.pad_placed():
-		out.append({"id": "pad", "rects": [Equipment.pad_rect()], "rate": b.pad_melt_cm_h / 6000.0,
-			"area": Equipment.PAD_SIZE.x * Equipment.PAD_SIZE.y, "box": ""})
+	if _Equipment.pad_placed():
+		out.append({"id": "pad", "rects": [_Equipment.pad_rect()], "rate": b.pad_melt_cm_h / 6000.0,
+			"area": _Equipment.PAD_SIZE.x * _Equipment.PAD_SIZE.y, "box": ""})
 	if Game.has_upgrade(&"heated_driveway") or Game.has_upgrade(&"heated_path"):
 		for kind in ["driveway", "path"]:
 			if not Game.has_upgrade(StringName("heated_" + kind)):

@@ -1,0 +1,8 @@
+# command: godot --headless --path . res://tests/parse_all.tscn
+# cwd: /c/Users/orsin/OneDrive/Desktop/Canadian Winter/Canadian-Winter (at 1b38f4a, game code = polish6-baseline)
+# exit code: 0   wall time: 15 s   finished: 2026-11-05 08:50
+# Godot: 4.7.2.stable.official.ed1daf0bf
+
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+Parsed 90 scripts, 0 errors

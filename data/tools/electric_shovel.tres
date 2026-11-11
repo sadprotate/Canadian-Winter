@@ -13,6 +13,7 @@ description = "Battery power shovel. Hold {primary} to chew through snow and tos
 width = 0.32
 reach = 0.35
 throw_distance = 5.0
+throw_recovery_s = 0.15
 scrape_floor = 0.004
 rate = 0.05
 push_width = 0.34

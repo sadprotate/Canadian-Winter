@@ -8,6 +8,7 @@ extends RefCounted
 ## plow power; a blower vehicle its blower; the pickup the front plow; a vehicle without a cab a
 ## heated cab. Each level is one of the old global upgrades (data/upgrades/*.tres, kept as the
 ## levels' templates): the same effect, its price scaled with the item's price (balance "Upgrades").
+## Polish 6 §8.2: bare hands' capacity levels have their own step (level_value).
 ## A level is an id "<item>:<track>:<level>" in Game.upgrades (the save key the global upgrades
 ## used), bought in the Upgrades app and collected as a crate, as before.
 ##
@@ -150,12 +151,22 @@ static func _templates(cat: Node, item: StringName, t: StringName) -> Array:
 		var old: UpgradeData = cat.upgrades.get(lid)
 		if old == null:
 			continue
+		var value := level_value(cat, item, t, old.value)
 		var text: String = TRACKS[t]["text"]
-		var desc := text % roundi((old.value - 1.0) * 100.0) if text.contains("%d") else text
+		var desc := text % roundi((value - 1.0) * 100.0) if text.contains("%d") else text
 		# The front plow keeps its price (the pickup itself has none); every other level scales.
 		var price := old.price if t == &"front_plow" else nice_price(old.price * _item_price(cat, item) / _ref_price(cat, item))
-		out.append({"value": old.value, "price": price, "desc": desc, "pickup": old.requires_pickup})
+		out.append({"value": value, "price": price, "desc": desc, "pickup": old.requires_pickup})
 	return out
+
+
+## A level's effect: the old global upgrade's (old_value), except bare hands' capacity levels
+## (polish 6 §8.2: balance.upgrade_hands_capacity_step; the shovel-type tools' loads doubled and
+## bare hands' didn't, so their +25 % levels no longer took them to about the small shovel's base).
+static func level_value(cat: Node, item: StringName, t: StringName, old_value: float) -> float:
+	if item == &"hands" and t == &"capacity":
+		return (cat.balance as BalanceData).upgrade_hands_capacity_step
+	return old_value
 
 
 static func _item_price(cat: Node, item: StringName) -> float:

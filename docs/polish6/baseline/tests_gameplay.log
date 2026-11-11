@@ -1,0 +1,117 @@
+# command: godot --headless --fixed-fps 60 --path . res://tests/test_runner.tscn -- --only=gameplay
+# cwd: /c/Users/orsin/OneDrive/Desktop/Canadian Winter/Canadian-Winter (at 1b38f4a, game code = polish6-baseline)
+# exit code: 0   wall time: 120 s   finished: 2026-11-05 08:55
+# Godot: 4.7.2.stable.official.ed1daf0bf
+
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+  PASS  test_gameplay.gd::test_main_menu_and_play_panel (2018 ms)
+  PASS  test_gameplay.gd::test_world_loads_player_moves_indoors (2417 ms)
+      distance in 1 s: clear 3.93, 30 cm 2.42, 1 m wall 0.00
+  PASS  test_gameplay.gd::test_snow_depth_slows_and_blocks (1430 ms)
+  PASS  test_gameplay.gd::test_walking_does_not_clear_snow (1248 ms)
+      hands: depth ahead 0.772 -> 0.772, held 30.0 L, moved 0.0300 m3
+  PASS  test_gameplay.gd::test_hands_dig_moves_real_snow (1288 ms)
+      hands load while sweeping: [19.8, 25.5, 30.0] L, cap 30.0 L
+  PASS  test_gameplay.gd::test_hands_sweep_fill_full_and_partial_throws (1585 ms)
+  PASS  test_gameplay.gd::test_shovel_load_grows_and_throws_farther (1402 ms)
+  PASS  test_gameplay.gd::test_shovel_throws_onto_road (1465 ms)
+  PASS  test_gameplay.gd::test_pusher_pushes_over_the_curb (2183 ms)
+  PASS  test_gameplay.gd::test_scraper_angle_cycles (1087 ms)
+[notify] Order placed: Standard Snow Shovel — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+  PASS  test_gameplay.gd::test_store_order_spawns_and_is_collected (1209 ms)
+[notify] Order placed: Wide Snow Pusher — ready at 7:00 when the store opens.
+[notify] Wide Snow Pusher is ready for pickup at the store.
+  PASS  test_gameplay.gd::test_after_hours_order_appears_at_7 (1285 ms)
+[notify] Order placed: Small Walk-Behind Snowblower — ready for pickup at Northern Supply Co., 11 Cedar Lane.
+[notify] Snowblower: hold Left Mouse to run, Z / C to turn the chute, E to let go.
+  PASS  test_gameplay.gd::test_walk_behind_blower (1950 ms)
+[notify] The truck is locked and the keys are missing. You had them before the storm — they must be out there somewhere.
+[notify] The pickup truck is snowed in: about 80 cm of snow around the wheels. It won't move until you dig around them and clear a path.
+[notify] The pickup truck with front plow is snowed in: about 55 cm of snow around the wheels. It won't move until you dig around them and clear a path.
+      plow moved 51.50 m3, lane 2.40 -> 0.30, truck x 44.5
+  PASS  test_gameplay.gd::test_vehicle_plow_and_stuck_pickup (2203 ms)
+  PASS  test_gameplay.gd::test_plow_pushes_yard_snow_onto_road (2073 ms)
+[notify] The city crews are clearing the streets and sidewalks.
+  PASS  test_gameplay.gd::test_grader_npc_clears_road_and_windrows (1778 ms)
+  PASS  test_gameplay.gd::test_mailbox_letter_and_cry_for_help (1241 ms)
+[notify] Contract accepted: Gerry's path, 15 Maple Street — $55. Clear the outlined path from his steps down to his mailbox.
+[notify] Payment received: $55 from Gerry (neighbour).
+[notify] 15 Maple Street — all clear.
+[notify] Gerry taught you the business. Your computer's Help app has his advice. Time to head home!
+  PASS  test_gameplay.gd::test_tutorial_negotiation_trail_and_explanation (4538 ms)
+[notify] You found your truck keys! (The truck still can't drive through deep snow.)
+  PASS  test_gameplay.gd::test_keys_buried_in_lawn (1141 ms)
+[notify] You found a small snow shovel! Hold Left Mouse and sweep it through the snow to fill it, release to throw, hold Right Mouse to push.
+  PASS  test_gameplay.gd::test_hidden_shovel_beside_truck (1164 ms)
+[notify] Good morning.
+[notify] Game saved.
+[notify] Good morning.
+[notify] Game saved.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+[notify] Good morning.
+[notify] Game saved.
+[notify] Good morning.
+[notify] Game saved.
+  PASS  test_gameplay.gd::test_sleep_saves_and_advances (5054 ms)
+[notify] POWER CUT: your hydro bill was not paid. The house will cool down over the day.
+[notify] Hydro bill paid ($85).
+[notify] Power and heating restored. The house is warming back up.
+  PASS  test_gameplay.gd::test_power_outage_house_and_ups_computer (1111 ms)
+  PASS  test_gameplay.gd::test_computer_apps_and_map_pause_debug (1570 ms)
+  PASS  test_gameplay.gd::test_settings_rebinding (4 ms)
+[notify] BLIZZARD WARNING: a blizzard has developed suddenly!
+[notify] You are critical freezing.
+  PASS  test_gameplay.gd::test_freezing_death_screen (1888 ms)
+[notify] Winter 2 begins. Good luck out there!
+  PASS  test_gameplay.gd::test_winter_summary_and_new_year (2384 ms)
+  PASS  test_gameplay.gd::test_audio_files_exist_for_every_sound (0 ms)
+      hand push: mound 0.53 m / 0.074 m3 after one push, 0.53 m / 0.117 m3 after two (base 0.20 m)
+  PASS  test_gameplay.gd::test_push_builds_a_mound_conserving_volume (1878 ms)
+      pushed in 2.5 s: hands 0.119 m3, wide pusher 2.431 m3
+  PASS  test_gameplay.gd::test_tool_profiles_have_specialties (2886 ms)
+      hands removal with the real controls: old 25.0 L/s, new 50.0 L/s (x2.00)
+  PASS  test_gameplay.gd::test_bigger_scoops_and_tool_ladder (4060 ms)
+      grip check: 700 hand placements, worst 0.027 m FP / 0.010 m TP
+  PASS  test_gameplay.gd::test_both_hands_grip_every_tool (7527 ms)
+  PASS  test_gameplay.gd::test_box_outline_follows_work (1674 ms)
+      waded 4.6 m: trench 0.19 m, flanks 0.82 m (was 0.65)
+  PASS  test_gameplay.gd::test_snow_refinements (2159 ms)
+      fun: door→walkway 5.7 s, →mailbox 5.2 s, →Gerry's walk 19.9 s, →his door 4.8 s
+      survival: door→walkway 5.7 s, →mailbox 5.2 s, →Gerry's walk 19.9 s, →his door 4.8 s
+  PASS  test_gameplay.gd::test_wading_from_the_start_in_both_modes (10041 ms)
+      metres in 1 s at 0 / 0.3 / 0.6 / 0.85 m: [3.93, 2.42, 1.3, 0.63]
+  PASS  test_gameplay.gd::test_wading_speed_hips_and_banks (2185 ms)
+[notify] BLIZZARD WARNING: a blizzard has developed suddenly!
+      after the storm: 1.94 m on the walkway
+      dug 3.2 m out from the porch
+  PASS  test_gameplay.gd::test_dig_out_by_hand_after_a_major_event (21780 ms)
+  PASS  test_gameplay.gd::test_boxes_driveway_path_reopen_and_save (1912 ms)
+[notify] Good morning.
+[notify] Game saved.
+[notify] WEATHER ALERT: storm strengthening — heavy snow conditions, worse than forecast!
+  PASS  test_gameplay.gd::test_snowfall_adds_on_top_everywhere (3670 ms)
+[notify] The computer is locked — Gerry across the street set it up for you and has the password. Go see if he needs a hand.
+[notify] Payment received: $50 from Gerry (neighbour).
+[notify] 15 Maple Street — all clear.
+  PASS  test_gameplay.gd::test_computer_locked_until_gerry_and_saved (2822 ms)
+      fun: at the door, prompt '[E] Pickup truck (locked)'
+[notify] The truck is locked and the keys are missing. You had them before the storm — they must be out there somewhere.
+      fun: at the keys, prompt '[E] Pick up the truck keys'
+[notify] You found your truck keys! (The truck still can't drive through deep snow.)
+      fun: at the door with keys, prompt '[E] Drive Pickup Truck'
+[notify] The pickup truck is snowed in: about 80 cm of snow around the wheels. It won't move until you dig around them and clear a path.
+      fun: stuck drive moved 0.22 m, status 'Stuck: 80 cm of snow under the wheels — this pickup truck only clears about 60 cm. Dig around the wheels and clear a path.'
+      fun: dug out, drove 20.6 m (truck z 76.2, driveway apron at 87.0), status ''
+      survival: at the door, prompt '[E] Pickup truck (locked)'
+[notify] The truck is locked and the keys are missing. You had them before the storm — they must be out there somewhere.
+      survival: at the keys, prompt '[E] Pick up the truck keys'
+[notify] You found your truck keys! (The truck still can't drive through deep snow.)
+      survival: at the door with keys, prompt '[E] Drive Pickup Truck'
+[notify] The pickup truck is snowed in: about 80 cm of snow around the wheels. It won't move until you dig around them and clear a path.
+      survival: stuck drive moved 0.22 m, status 'Stuck: 80 cm of snow under the wheels — this pickup truck only clears about 60 cm. Dig around the wheels and clear a path.'
+      survival: dug out, drove 20.6 m (truck z 76.2, driveway apron at 87.0), status ''
+  PASS  test_gameplay.gd::test_truck_keys_end_to_end (6236 ms)
+  PASS  test_gameplay.gd::test_zz_cleanup (10 ms)
+
+==== 41 passed, 0 failed (117.8 s) ====

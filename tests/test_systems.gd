@@ -3,6 +3,10 @@ extends RefCounted
 ## skips, municipal schedule, store orders, contracts (99% rule, recurring visits, bidding),
 ## survival (warmth, bills, outage timing), saves, winter completion and year scaling.
 
+# Polish 6 §2: classes added in polish 5, by path rather than global name, so this script still
+# loads when the editor's class cache predates a pull.
+const _ItemUpgrades := preload("res://scripts/data/item_upgrades.gd")
+
 var runner
 
 
@@ -632,7 +636,7 @@ func test_winter_end_and_next_year() -> void:
 	_fresh("fun", 31)
 	Game.money = 777
 	Game.vehicles.append({"uid": Game.uid(), "id": "atv_blade", "pos": Vector3(120, 0, 30), "yaw": 0.0})
-	var up := StringName(ItemUpgrades.level_id(&"small_shovel", &"throw", 1))   # polish 5 §13: an item's upgrade
+	var up := StringName(_ItemUpgrades.level_id(&"small_shovel", &"throw", 1))   # polish 5 §13: an item's upgrade
 	Game.grant_upgrade(up)
 	var ended := [false]
 	var cb := func(): ended[0] = true
@@ -803,8 +807,8 @@ func test_upgrades_and_stats() -> void:
 	runner.check(r["ok"] and Game.has_upgrade(&"weather_pro"), "Weather app activates immediately")
 	runner.check(Weather.forecast_days() >= 4, "Forecast lookahead grows with the app")
 	# Polish 5 §13: upgrades belong to an item (bare hands' throw here, always owned).
-	var throw_2 := ItemUpgrades.level_id(&"hands", &"throw", 2)
-	var throw_1 := ItemUpgrades.level_id(&"hands", &"throw", 1)
+	var throw_2 := _ItemUpgrades.level_id(&"hands", &"throw", 2)
+	var throw_1 := _ItemUpgrades.level_id(&"hands", &"throw", 1)
 	var r2 := Economy.buy(throw_2)
 	runner.check(not r2["ok"], "Tiered upgrade requires the previous one")
 	Economy.buy(throw_1)
