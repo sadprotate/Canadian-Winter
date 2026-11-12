@@ -59,6 +59,7 @@ var dragging := false        # polish 7 §11: the blade down and reversing (back
 var _drag_side := false      # polish 7 §11: the blade last dragged (reversing) rather than pushed
 var _drag_stop := Vector2.ZERO   # polish 7 §11: the blade's centre when it last dragged
 var _leaving_drag := false   # polish 7 §11: driving forward off a dragged pile (see the push)
+var _sunk := -1.0            # polish 7 playtest fix 1: the snow it stands in, for the bog depth (-1: not read yet)
 
 ## Polish 7 §11: back-drag (the blade down, reversing). The blade takes the snow it passes over on its
 ## far side and carries it toward the vehicle: Snow.blade_push with the face turned to the vehicle,
@@ -202,11 +203,13 @@ func enter_vehicle(p: Player) -> void:
 	p.tools.indicator.visible = false
 	engine_on = true
 	cam_yaw = 0.0
+	_sunk = -1.0     # polish 7 playtest fix 1: getting in reads the snow it stands in, as a load does
 	_set_camera()
 	# Snowed in? Say so straight away rather than letting the wheels spin in silence.
+	# Polish 7 playtest fix 1: the truck still creeps (its reverse always does), so it says that.
 	var wd := wheel_snow_depth()
 	if wd > stuck_depth():
-		Notify.push("The %s is snowed in: about %d cm of snow around the wheels. It won't move until you dig around them and clear a path." % [data.display_name.to_lower(), int(round(wd * 100.0))], Notify.WARN)
+		Notify.push("The %s is snowed in: about %d cm of snow around the wheels. %s until you dig around them and clear a path." % [data.display_name.to_lower(), int(round(wd * 100.0)), "It only creeps" if is_pickup() else "It won't move"], Notify.WARN)
 	AudioMgr.play_at("engine_start", global_position, -3.0)
 	AudioMgr.play_at("door_close", global_position, -8.0, 1.3)
 	engine_snd.play()
@@ -433,9 +436,17 @@ func _physics_process(delta: float) -> void:
 			_shove(fwd, travel)
 	# Polish 5 §12: how hard the snow ahead pushes back on the pickup — its depth above the shove
 	# floor as a fraction of the bog depth's (1 = as hard as the engine pulls).
+	# Polish 7 playtest fix 1: the bog depth counts from the snow the truck stands in (_axle_depth())
+	# — its depth above the shove floor adds to it. On bare ground or its own shoved track it is
+	# pickup_bog_depth, as before. It is read when the driver gets in and while the truck moves, and
+	# kept while it stands still, so snow that slumps in under a stopped truck doesn't lift it out
+	# of a bog.
+	if truck and (_sunk < 0.0 or absf(speed) > 0.05):
+		_sunk = maxf(_axle_depth() - bal.pickup_shove_floor, 0.0)
 	var shove_x := 0.0
+	var bog_at := bal.pickup_bog_depth + maxf(_sunk, 0.0)
 	if pickup:
-		shove_x = maxf(ahead - bal.pickup_shove_floor, 0.0) / maxf(bal.pickup_bog_depth - bal.pickup_shove_floor, 0.01)
+		shove_x = maxf(ahead - bal.pickup_shove_floor, 0.0) / maxf(bog_at - bal.pickup_shove_floor, 0.01)
 	if blade_node:
 		blade_node.rotation.y = lerp_angle(blade_node.rotation.y, -deg_to_rad(blade_angle), delta * 6.0)
 		blade_node.position.y = lerpf(blade_node.position.y, 0.0 if tool_on else 0.18, delta * 6.0)
@@ -457,7 +468,7 @@ func _physics_process(delta: float) -> void:
 			int(round(ahead * 100.0)), int(round(c * 190.0))]
 	elif bogged:
 		blocked_reason = "Snowbank ahead: %d cm deep — too much to push from a standstill (about %d cm). Back up with %s and take a run at it, or clear it." % [
-			int(round(ahead * 100.0)), int(round(bal.pickup_bog_depth * 100.0)), Settings.action_label("veh_reverse")]
+			int(round(ahead * 100.0)), int(round(bog_at * 100.0)), Settings.action_label("veh_reverse")]
 	if bank_block or bogged:
 		max_fwd = 0.0
 		if _warn_timer <= 0.0:
@@ -556,6 +567,21 @@ func _shove(fwd: Vector2, travel: Vector2) -> void:
 		var s2 := -1.0 if randf() < 0.5 else 1.0
 		var out := fwd.rotated(ang * 2.0 * s2)
 		SnowFX.burst(Vector3(front.x, 0.5, front.y) + Vector3(right.x, 0, right.y) * (data.width * 0.45 * s2), 8, 1.0, Vector3(out.x, 0.9, out.y).normalized())
+
+
+## Polish 7 playtest fix 1: the snow the truck stands in, for its bog depth: the lower wheel of each
+## axle, averaged over the axles. A wheel line its shove doesn't clear (the plain pickup's 2 m V ends
+## at its wheels) or a wheel off its cleared track in a turn adds nothing.
+func _axle_depth() -> float:
+	var ws: Array = info["wheels"]
+	var sum := 0.0
+	var n := 0
+	for k in range(0, ws.size() - 1, 2):
+		var a: Vector3 = global_transform * (ws[k]["pos"] as Vector3)
+		var b: Vector3 = global_transform * (ws[k + 1]["pos"] as Vector3)
+		sum += minf(Snow.depth_at(a.x, a.z), Snow.depth_at(b.x, b.z))
+		n += 1
+	return sum / maxf(n, 1)
 
 
 ## Polish 5 §12: the average snow depth under the wheels (m) at which this vehicle is stuck.

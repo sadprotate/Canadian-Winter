@@ -14,6 +14,15 @@ Branch `cw-polish7-pg` from `main` (`dcd0b78`). Brief: `POLISH_ROUND_7_PROMPT.md
   last worked and driving forward leaves the pile; dragging slows the reverse like a push. Tested:
   polish7 (8 new, 14 in all), the §2 key tests, the push and §3/§9 blade tests, the snow suite; a
   review pass (4 findings fixed) (`report/s11.md`).
+- [x] Playtest fix 1 — the truck gets out of the driveway (`PLAYTEST_FIX_1.md`). `pickup_stuck_depth`
+  0.6 → 0.9 (above the opening's deepest), and round 5 §12's bog depth counts from the snow the truck
+  stands in (the lower wheel of each axle; read on getting in and while it moves, held while it
+  stands still); the pickups' snowed-in message says the truck only creeps. From a new game with
+  nothing shovelled, the truck backs up, plows out blade down in 1 pass (8.9 s), and gets out blade up
+  with run-ups (5 pushes, 42.6 s), for 3 seeds in both modes. Tested: polish7 `test_pf1_` (7 new),
+  `test_s10_`, `test_s11_`; polish5 `test_s12_` (both trucks, the opening test updated), `s3_road_rule`;
+  gameplay `vehicle_plow`, `plow_pushes`, `truck_keys` (updated); polish6 `test_s9_`, the generator
+  test; a review pass (4 problems fixed) (`report/playtest_fix_1.md`).
 
 ## Questions
 
@@ -60,3 +69,25 @@ needed. The known flaky `test_menu_fixture_load_is_the_same_as_direct` passed in
   again without moving) still runs the standstill push as before the round, which can throw the
   pile's nearest row forward. Left as it was ("Standing still adds nothing new"); noted for the
   playtest.
+- Playtest fix 1: two texts still describe the old opening, and were left as they are (the brief keeps
+  the keys unchanged; the owner's call):
+  - the Help app (`help_text.gd`: "…room to drive: dig the snow from around the wheels and clear the
+    driveway");
+  - the keys message (`buried_keys.gd`: "(The truck still can't drive through deep snow.)").
+- Playtest fix 1: blade down, the truck plows out in one pass, and the driveway's snow ends up as a
+  pile up to about 3.9 m high on the street in front of the blade. That is the plow path's tuning,
+  shared by every plow, and left as it is.
+- Playtest fix 1: backing up onto its own track where snow has slumped back raises the bog depth by
+  that snow: a few cm for the plowed truck, up to about 25 cm for the plain pickup (old saves; its
+  track is narrower). A run-up carries a little further there.
+- Playtest fix 1: digging out only around the wheels (not the driveway) makes the truck bog from a
+  standstill against the snow ahead ("…Back up with S and take a run at it"), where without digging it
+  pushes off slowly. That is round 5's dug-out case, unchanged; the bog depth counts from the snow the
+  truck stands in, and dug-out wheels stand in none. Question for the owner: should dug-out wheels do
+  at least as well? (`PLAYTEST.md` item 18.)
+- Playtest fix 1: the pickups' snowed-in message on getting in (more than `pickup_stuck_depth` under
+  the wheels, e.g. after a major event) now says "It only creeps until you dig around them…" instead of
+  "It won't move…": the truck creeps there (its reverse always does), which the brief's Decision 3
+  says the message must not deny. Other vehicles' message is unchanged.
+- Playtest fix 1 shots: one framing from across the street wasn't kept (the pile hid the truck); the
+  kept shot is from beside the driveway.

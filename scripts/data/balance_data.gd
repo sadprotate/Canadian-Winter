@@ -194,16 +194,19 @@ extends Resource
 ## VehicleData clearance and bank checks). Snow under the wheels slows it on this depth scale
 ## (speed limit × 1 / (1 + 2.5 (depth / scale)²)): 15 cm → 40 km/h, 30 cm → 22 km/h.
 @export var pickup_drag_depth: float = 0.4
-## Average snow under the wheels at which it is stuck (dig around the wheels). The opening's
-## driveway snow (~0.8 m) is above it.
-@export var pickup_stuck_depth: float = 0.6
+## Average snow under the wheels at which it is stuck (dig around the wheels). Polish 7 playtest
+## fix 1: above the first morning's deepest (opening_max_depth), so the opening's snow never holds
+## the wheels; a major event's does (was 0.6).
+@export var pickup_stuck_depth: float = 0.9
 ## Snow ahead of the bumper up to this depth passes under the truck (storm snow); above it the
 ## front shoves the snow ahead and out to the sides (the blade op at the truck's width, down to
 ## this depth: no clean lane, no pavement).
 @export var pickup_shove_floor: float = 0.3
 ## Snow ahead deeper than this pushes back harder than the engine pulls: only the truck's speed
 ## carries it on, so a run-up shoves through a short bank and a long stretch bogs it down. Below
-## it the truck keeps going, slower the deeper the snow.
+## it the truck keeps going, slower the deeper the snow. Polish 7 playtest fix 1: counted from the
+## snow the truck stands in — snow under its wheels above the shove floor adds to it (on bare
+## ground or its own shoved track it is this value).
 @export var pickup_bog_depth: float = 0.7
 ## The snow also pushes back with the square of the speed (per m/s², per unit of the depth
 ## above): hitting a bank fast slows the truck a lot, so a faster run-up only carries it a

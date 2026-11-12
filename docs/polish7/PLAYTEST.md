@@ -8,11 +8,10 @@ Try these in **Fun Mode**, then repeat the truck checks (1–5) in **Survival Mo
    - Try to get in (E): it says the truck is locked and the keys are missing.
    - The framed photo by the front door shows the truck with its plow.
    - The main menu's view of the house shows the plow too.
-2. Find the keys by the tree on the front lawn and get in.
-   - On the first morning the truck is still snowed in: the status line says how deep the snow is
-     under the wheels and that it clears about 60 cm.
-   - Dig around the wheels and clear the driveway, then drive out with the blade up. It should cross
-     the windrow the city's grader leaves across the end of the driveway, as the old pickup did.
+2. Find the keys by the tree on the front lawn and get in. Getting in shouldn't say the truck is
+   snowed in (getting out of the driveway: see "Playtest fix 1" below). Later, with the driveway
+   cleared, drive out with the blade up: it should cross the windrow the city's grader leaves across
+   the end of the driveway, as the old pickup did.
 3. Drive the truck into deep snow and into a bank with the blade up. It should go as far as the old
    plain pickup did:
    - it shoves the snow ahead and out to the sides, clear of its own path;
@@ -61,3 +60,28 @@ Try these in **Fun Mode**, then repeat the truck checks (1–5) in **Survival Mo
     - Restore defaults puts them back on Up and Down.
 12. If you had moved another vehicle action onto Up or Down before this build, the new action starts
     unbound ("—") instead of clashing.
+
+## Playtest fix 1: the truck gets out of the driveway (re-check)
+
+13. Start a new game, find the keys and get in. Shovel nothing.
+    - Getting in says nothing about the truck being snowed in.
+    - S backs it up (about 1 m, to the garage) and W moves it forward.
+14. Blade down, the main way: press Down and drive forward out of the driveway to the street.
+    - It starts slow (about 2 km/h) while its wheels are in the deep snow, then picks up once they
+      run on what the blade has cleared.
+    - It should reach the street in one push (about 9 s). If you stop and back up, raise the blade
+      first (Up), or it drags the snow back with you.
+    - The driveway's snow ends up as a big pile on the street in front of the blade. Say whether
+      that's OK.
+15. Blade up, the slower way: start another new game and drive out with the blade up.
+    - It pushes off slowly (about 4 km/h). About 4 m in it stops: "Snowbank ahead … too much to push
+      from a standstill … Back up with S…".
+    - Back up all the way to the garage and drive at it again. Each run gets a little further, and
+      about the fifth gets it out (about 45 s in all). A short back-up isn't enough: the deep snow
+      where the truck was parked slows the run.
+16. Make sure it still feels like deep snow: slow in the opening's snow, the plow slowed by its pile,
+    and a bank above the grille still a wall ("…too much to drive through…").
+17. Repeat 13–15 in Survival Mode.
+18. Start another new game and dig out only around the truck's wheels with the shovel, not the
+    driveway. Blade up, it now stops at once ("…too much to push from a standstill… Back up…"), where
+    without digging it pushes off slowly. Back up and take a run at it. Say whether that feels right.

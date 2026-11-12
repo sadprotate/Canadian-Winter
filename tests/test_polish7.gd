@@ -774,3 +774,321 @@ func test_s11_help_lists_the_keys() -> void:
 	panel.queue_free()
 	await _drop(v)
 	await _unload()
+
+
+# =============================================================================
+# Playtest fix 1: the truck gets out of the driveway
+# =============================================================================
+
+## The new games the playtest fix 1 tests run over: three seeds in both modes.
+const PF1_GAMES := [["fun", 2024], ["fun", 7], ["fun", 31337], ["survival", 2024], ["survival", 7], ["survival", 31337]]
+
+
+## A new game as it starts (Dec 1, 7:30), the keys found and nothing shovelled; the clock stopped.
+func _pf1_world(mode: String, sd: int) -> void:
+	await _unload()
+	Game.force_input = true
+	Game.new_game(mode, sd)
+	Game.flags["truck_keys"] = true
+	world = load("res://scenes/game.tscn").instantiate()
+	runner.add_child(world)
+	await _frames(3)
+	Clock.running = false
+	world.snow_renderer.relax_usec = 0
+
+
+## Walk to the driver's door and get in with the interact key. Returns the truck.
+func _pf1_get_in() -> Vehicle:
+	var truck: Vehicle = world.vehicle_nodes()[0]
+	var pl: Player = world.player
+	var tp := Vector2(truck.global_position.x, truck.global_position.z)
+	var tfwd := Vector2(-truck.global_transform.basis.z.x, -truck.global_transform.basis.z.z).normalized()
+	var door := tp - Vector2(-tfwd.y, tfwd.x) * (truck.data.width * 0.5 + 1.0)
+	pl.teleport(Vector3(door.x, 0.05, door.y), 0.0)
+	await _frames(2)
+	var to := tp - door
+	pl.set_yaw(atan2(-to.x, -to.y))
+	pl.pitch = deg_to_rad(-12.0)
+	pl.head.rotation.x = pl.pitch
+	await _frames(4)
+	Notify.history.clear()
+	Input.parse_input_event(_s11_action("interact", true))
+	await _frames(2)
+	Input.parse_input_event(_s11_action("interact", false))
+	await _frames(3)
+	return truck
+
+
+## How many of the truck's wheels stand on the road.
+func _pf1_on_road(v: Vehicle) -> int:
+	var n := 0
+	for w in v.info["wheels"]:
+		var wp: Vector3 = v.global_transform * (w["pos"] as Vector3)
+		if Snow.surface_at(wp.x, wp.z) == Snow.S_ROAD:
+			n += 1
+	return n
+
+
+func _pf1_along(v: Vehicle, p0: Vector3, fwd: Vector3) -> float:
+	return (v.global_position - p0).dot(fwd)
+
+
+## Hold an action up to `frames` (or until all four wheels are on the road); with `stop_slow`, stop
+## once it has been under `stop_slow` m/s for 40 frames. Counts the frames, the frames stuck, the
+## top speed and the blocked reasons in `r`.
+func _pf1_hold(v: Vehicle, action: String, frames: int, stop_slow: float, r: Dictionary) -> void:
+	Input.action_press(action)
+	var slow := 0
+	for f in range(frames):
+		await _tree().physics_frame
+		r["frames"] += 1
+		r["top"] = maxf(r["top"], absf(v.speed))
+		r["stuck"] += 1 if v.stuck else 0
+		if v.blocked_reason != "" and not (r["reasons"] as Array).has(v.blocked_reason):
+			r["reasons"].append(v.blocked_reason)
+		if _pf1_on_road(v) == 4:
+			break
+		slow = slow + 1 if stop_slow > 0.0 and absf(v.speed) < stop_slow and f > 45 else 0
+		if slow > 40:
+			break
+	Input.action_release(action)
+
+
+## The scripted way out from where the truck is parked, within `limit_s` seconds of driving.
+## "down" plows: the blade lowered (Down), forward until the berm stalls it; then the blade raised
+## (Up), back up 1.5 s, brake, lower it, angle it the other way (Z / C), forward again.
+## "up" takes run-ups: forward until it stops, back up until it stops (the garage), brake, again.
+## Returns {out, secs, passes, first (m forward in the first pass), stuck, top, reasons, vol, log}.
+func _pf1_plow_out(v: Vehicle, style: String, limit_s := 180.0) -> Dictionary:
+	var fwd := -v.global_transform.basis.z
+	var p0 := v.global_position
+	var vol0 := Snow.total_volume() + Snow.melted
+	var r := {"frames": 0, "stuck": 0, "top": 0.0, "reasons": [], "passes": 0, "first": 0.0, "log": []}
+	var limit := int(limit_s * 60.0)
+	var f0 := Engine.get_physics_frames()     # every frame counts: the keys, the angling, the braking
+	var aim := "veh_aim_left"
+	while Engine.get_physics_frames() - f0 < limit and _pf1_on_road(v) < 4:
+		r["passes"] += 1
+		if style == "down":
+			if not v.tool_on:
+				await _s11_key(_s11_bound("veh_blade_down"))
+			if r["passes"] > 1:
+				Input.action_press(aim)
+				await _frames(50)
+				Input.action_release(aim)
+				aim = "veh_aim_right" if aim == "veh_aim_left" else "veh_aim_left"
+		var a0 := _pf1_along(v, p0, fwd)
+		await _pf1_hold(v, "veh_accelerate", maxi(limit - (Engine.get_physics_frames() - f0), 1), 0.4, r)
+		if r["passes"] == 1:
+			r["first"] = _pf1_along(v, p0, fwd)
+		r["log"].append("%d: %+.1f→%+.1f m at %.0f s" % [r["passes"], a0, _pf1_along(v, p0, fwd), (Engine.get_physics_frames() - f0) / 60.0])
+		if _pf1_on_road(v) == 4 or Engine.get_physics_frames() - f0 >= limit:
+			break
+		if style == "down":
+			await _s11_key(_s11_bound("veh_blade_up"))
+			await _pf1_hold(v, "veh_reverse", 90, 0.0, r)
+		else:
+			await _pf1_hold(v, "veh_reverse", 240, 0.05, r)
+		Input.action_press("veh_brake")
+		await _frames(20)
+		Input.action_release("veh_brake")
+	r["out"] = _pf1_on_road(v) == 4
+	r["secs"] = (Engine.get_physics_frames() - f0) / 60.0
+	r["vol"] = Snow.total_volume() + Snow.melted - vol0
+	return r
+
+
+func _pf1_said(word: String) -> bool:
+	for n in Notify.history:
+		if str(n.get("text", n)).contains(word):
+			return true
+	return false
+
+
+## Getting in on the first morning: the opening's snow doesn't hold the wheels (no "snowed in"), and
+## from where it's parked the truck backs up (the old 15 % creep made 0.15 m in a second).
+func test_pf1_getting_in_and_backing_up() -> void:
+	var b: BalanceData = Catalog.balance
+	for g in PF1_GAMES:
+		var tag := "PF1 %s seed %d:" % g
+		await _pf1_world(g[0], g[1])
+		var v := await _pf1_get_in()
+		var wd := v.wheel_snow_depth()
+		runner.check(world.player.state == "vehicle" and v.engine_on, tag + " in the truck with the interact key")
+		runner.check(wd < b.pickup_stuck_depth and b.opening_max_depth < b.pickup_stuck_depth and not _pf1_said("snowed in") and not v.stuck,
+			tag + " %d cm under the wheels, the opening at most %d cm, stuck from %d cm: getting in doesn't say it's snowed in" % [int(round(wd * 100.0)), int(round(b.opening_max_depth * 100.0)), int(round(b.pickup_stuck_depth * 100.0))])
+		var fwd := -v.global_transform.basis.z
+		var p0 := v.global_position
+		var r := {"frames": 0, "stuck": 0, "top": 0.0, "reasons": []}
+		await _pf1_hold(v, "veh_reverse", 60, 0.0, r)
+		var back := _pf1_along(v, p0, fwd)
+		runner.check(back < -0.3 and r["stuck"] == 0,
+			tag + " …reverse moves it from where it's parked: %.2f m in 1 s, up to %.1f km/h, never stuck" % [back, r["top"] * 3.6])
+	await _unload()
+
+
+## Blade down, the main way: from where it's parked, a scripted plow-out (lower the blade, push,
+## raise it, back up, lower it, angle it, push again…) gets all four wheels onto the road within
+## 3 minutes of driving, never stuck, the snow holding it under half its top speed; volume exact.
+func test_pf1_plow_out_blade_down() -> void:
+	for g in PF1_GAMES:
+		var tag := "PF1 %s seed %d:" % g
+		await _pf1_world(g[0], g[1])
+		var v := await _pf1_get_in()
+		var r := await _pf1_plow_out(v, "down")
+		runner.info(tag + " blade down: out %s in %.1f s, %d passes %s, top %.1f km/h, %s" % [r["out"], r["secs"], r["passes"], str(r["log"]), r["top"] * 3.6, str(r["reasons"])])
+		runner.check(r["first"] > 0.5, tag + " blade down, forward moves it from where it's parked (%.1f m in the first pass)" % r["first"])
+		runner.check(r["out"] and r["secs"] <= 180.0 and r["stuck"] == 0,
+			tag + " …it plows its way out: all four wheels on the road in %.1f s of driving, %d passes, never stuck" % [r["secs"], r["passes"]])
+		runner.check(r["top"] < v.data.max_speed * 0.5, tag + " …the snow and the berm hold it to %.1f km/h (its top speed: %.0f km/h)" % [r["top"] * 3.6, v.data.max_speed * 3.6])
+		runner.check(absf(r["vol"]) < 1e-4, tag + " …the snow volume is conserved (%.6f m³)" % r["vol"])
+	await _unload()
+
+
+## Blade up, the slower way: from where it's parked it pushes off, bogs in the driveway's snow
+## ("…from a standstill… Back up with <reverse>"), and with run-ups gets all four wheels onto the
+## road within 3 minutes of driving, never stuck; volume exact.
+func test_pf1_run_ups_blade_up() -> void:
+	for g in PF1_GAMES:
+		var tag := "PF1 %s seed %d:" % g
+		await _pf1_world(g[0], g[1])
+		var v := await _pf1_get_in()
+		var r := await _pf1_plow_out(v, "up")
+		runner.info(tag + " blade up: out %s in %.1f s, %d pushes %s, top %.1f km/h" % [r["out"], r["secs"], r["passes"], str(r["log"]), r["top"] * 3.6])
+		var bogged := false
+		for t in r["reasons"]:
+			bogged = bogged or (str(t).begins_with("Snowbank ahead") and str(t).contains("standstill") and str(t).contains("Back up with %s" % Settings.action_label("veh_reverse")))
+		runner.check(r["first"] > 0.5 and not v.tool_on, tag + " blade up, forward moves it from where it's parked (%.1f m in the first push)" % r["first"])
+		runner.check(bogged and r["passes"] > 1, tag + " …it bogs in the driveway's snow and says so: %s" % str(r["reasons"]).substr(0, 140))
+		runner.check(r["out"] and r["secs"] <= 180.0 and r["stuck"] == 0,
+			tag + " …with run-ups it gets all four wheels onto the road in %.1f s of driving, %d pushes, never stuck" % [r["secs"], r["passes"]])
+		runner.check(absf(r["vol"]) < 1e-4, tag + " …the snow volume is conserved (%.6f m³)" % r["vol"])
+	await _unload()
+
+
+## Still snow: a bank deeper than pickup_bank_max stops the truck with the blade up and says so,
+## with a run-up on Maple Street, and from where it's parked in the opening's snow.
+func test_pf1_a_bank_above_the_limit_stops_it() -> void:
+	var b: BalanceData = Catalog.balance
+	var h := b.pickup_bank_max + 0.05
+	var wall := "too much to drive through (about %d cm at most, with a run-up)" % int(round(b.pickup_bank_max * 100.0))
+	await _world()
+	_s10_bank(30.0, h)
+	Snow.relax_until_stable()
+	var half: float = Catalog.vehicle(&"pickup_plow").length * 0.5
+	var v := await _truck("pickup_plow", 29.5 - 4.0 - half)    # a 4 m run-up
+	var r := await _s10_drive(v, 600, "veh_accelerate", 40.0)
+	runner.check(r["front"] < 30.0 and str(r["reasons"]).contains(wall),
+		"PF1 a %d cm bank on Maple Street, 4 m run-up, blade up: stopped before it (front at x %.1f), %s" % [int(round(h * 100.0)), r["front"], str(r["reasons"]).substr(0, 120)])
+	await _drop(v)
+	# The new game's truck in the opening's snow, the same bank across the driveway 1.5 m ahead.
+	await _pf1_world("fun", 2024)
+	var t := await _pf1_get_in()
+	var f3 := -t.global_transform.basis.z
+	var f2 := Vector2(f3.x, f3.z).normalized()
+	var s2 := Vector2(-f2.y, f2.x)
+	var c := Vector2(t.global_position.x, t.global_position.z) + f2 * (half + 1.5)
+	var mn := c + s2 * 2.0
+	var mx := mn
+	for p in [c - s2 * 2.0, c + s2 * 2.0 + f2 * 2.0, c - s2 * 2.0 + f2 * 2.0]:
+		mn = mn.min(p)
+		mx = mx.max(p)
+	Snow.set_rect(Rect2(mn, mx - mn), h)
+	var p0 := t.global_position
+	var rr := {"frames": 0, "stuck": 0, "top": 0.0, "reasons": []}
+	await _pf1_hold(t, "veh_accelerate", 600, 0.05, rr)
+	var went := _pf1_along(t, p0, f3)
+	var said := false
+	for x in rr["reasons"]:
+		said = said or str(x).contains(wall)
+	runner.check(went > 0.5 and went < 1.5 and said and rr["stuck"] == 0,
+		"PF1 parked in the opening's snow, a %d cm bank across the driveway 1.5 m ahead: it pushes up to it (%.2f m) and stops: %s" % [int(round(h * 100.0)), went, str(rr["reasons"]).substr(0, 120)])
+	await _unload()
+
+
+## Getting in reads the snow the truck stands in: driven on a bare street, parked, then left standing
+## in snow above the bog depth (as after storms), it pushes off from a standstill when the driver gets
+## back in, as in the opening and as after a save and load.
+func test_pf1_getting_back_in_reads_the_snow() -> void:
+	var b: BalanceData = Catalog.balance
+	await _world()
+	Snow.set_rect(Rect2(0, 79, 92, 8), 0.03)
+	var v := await _truck("pickup_plow", 10.0)
+	await _s10_drive(v, 60)                       # on the bare street: nothing under its wheels
+	Input.action_press("veh_brake")
+	await _frames(60)
+	Input.action_release("veh_brake")
+	v.exit_vehicle()
+	await _frames(2)
+	var d := b.pickup_bog_depth + 0.05
+	Snow.set_rect(Rect2(v.global_position.x - 4.0, 79, 20.0, 8), d)
+	v.enter_vehicle(world.player)
+	await _frames(2)
+	var r := await _s10_drive(v, 240)
+	runner.check(r["dist"] > 0.5 and r["stuck"] == 0 and not str(r["reasons"]).contains("standstill"),
+		"PF1 parked, then %d cm under it and ahead (the bog depth: %d cm): getting back in, it pushes off from a standstill (%.1f m) %s" % [int(round(d * 100.0)), int(round(b.pickup_bog_depth * 100.0)), r["dist"], str(r["reasons"]).substr(0, 100)])
+	await _drop(v)
+	await _unload()
+
+
+## Still snow: with more than pickup_stuck_depth around its wheels, getting in says it's snowed in,
+## with the depth, and that it only creeps; and it does, back and forth.
+func test_pf1_snowed_in_still_says_so() -> void:
+	var b: BalanceData = Catalog.balance
+	await _world()
+	Snow.set_rect(Rect2(0, 79, 92, 8), 0.03)
+	for id in S10_TRUCKS:
+		var v := await _truck(id, 20.0)
+		v.exit_vehicle()
+		await _frames(2)
+		var tp := Vector2(v.global_position.x, v.global_position.z)
+		var span := Vector2.ONE * (v.data.length * 0.5 + 0.5)
+		Snow.set_rect(Rect2(tp - span, span * 2.0), b.pickup_stuck_depth + 0.05)
+		Notify.history.clear()
+		v.enter_vehicle(world.player)
+		await _frames(2)
+		var wd := v.wheel_snow_depth()
+		var msg := ""
+		for n in Notify.history:
+			if str(n.get("text", n)).contains("snowed in"):
+				msg = str(n.get("text", n))
+		runner.check(wd > b.pickup_stuck_depth and msg.contains("about %d cm" % int(round(wd * 100.0))) and msg.contains("only creeps"),
+			"PF1 %s: %d cm around the wheels (stuck from %d cm), getting in says: '%s'" % [id, int(round(wd * 100.0)), int(round(b.pickup_stuck_depth * 100.0)), msg])
+		var rb := await _s10_drive(v, 120, "veh_reverse")
+		var rf := await _s10_drive(v, 120)
+		runner.check(rb["stuck"] > 0 and rb["dist"] < -0.05 and rb["dist"] > -0.5 and rf["dist"] < 0.5 and str(rb["reasons"]).contains("only clears about %d cm" % int(round(b.pickup_stuck_depth * 100.0))),
+			"PF1 %s: …and it only creeps: %.2f m back and %.2f m forward in 2 s each, '%s'" % [id, rb["dist"], rf["dist"], str(rb["reasons"]).substr(0, 90)])
+		await _drop(v)
+	await _unload()
+
+
+## Round 5 §12's long stretch at the bog depth with a 13 m run-up, at four places across the street
+## (a cell's width): each truck bogs, and stays bogged with the throttle held while snow slumps in
+## under it. The plain pickup's 2 m shove leaves one wheel line in the untouched snow at some of them.
+func test_pf1_a_long_stretch_bogs_anywhere_across_the_street() -> void:
+	var b: BalanceData = Catalog.balance
+	await _world()
+	var runs := []
+	var bad := []
+	for id in S10_TRUCKS:
+		for z in [84.80, 84.86, 84.90, 84.98]:
+			Snow.set_rect(Rect2(0, 79, 20, 8), 0.03)
+			Snow.set_rect(Rect2(20, 79, 72, 8), b.pickup_bog_depth)
+			Snow.relax_until_stable()
+			var v := await _truck(id, 4.0, z)
+			Input.action_press("veh_accelerate")
+			var bogged := false
+			for f in range(900):
+				await _tree().physics_frame
+				bogged = bogged or v.blocked_reason.contains("standstill")
+				if v.global_position.x + v.data.length * 0.5 > 52.0:
+					break
+			Input.action_release("veh_accelerate")
+			var into := v.global_position.x + v.data.length * 0.5 - 20.0
+			var held := bogged and absf(v.speed) < 0.05 and into < 25.0
+			runs.append("%s z %.2f: %s %.1f m in" % [id, z, "bogged" if held else "NOT held", into])
+			if not held:
+				bad.append(runs[-1])
+			await _drop(v)
+	runner.check(bad.is_empty(), "PF1 %d cm untouched (the bog depth), a 13 m run-up, at four places across the street: every truck bogs and stays bogged %s %s" % [int(round(b.pickup_bog_depth * 100.0)), str(runs), str(bad)])
+	await _unload()

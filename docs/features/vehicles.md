@@ -4,7 +4,11 @@
 
 - **Your truck.** A new game starts with your pickup truck and its front plow in the driveway, nose to
   the street. It's locked until you find the keys, which are buried by the tree on the front lawn. On
-  the first morning it's snowed in: dig the snow from around its wheels and clear the driveway.
+  the first morning it stands in about 80 cm of snow, but it isn't snowed in: it backs up, and it gets
+  out to the street on its own.
+  - Blade down (the main way), it plows its way out.
+  - Blade up, it pushes off slowly, bogs in the driveway's snow, and gets out with run-ups from the
+    garage.
 - **Driving** (all keys rebindable): drive forward and brake/reverse, steer, handbrake, the camera,
   the horn, the radio forecast, and get out.
 - **In deep snow, blade up,** the truck handles like a pickup:
@@ -36,14 +40,36 @@
   - **The keys:** without `Game.flags.truck_keys` the prompt reads "(locked)" and E gives the locked
     message.
   - **The wheels:** it is stuck with more than `pickup_stuck_depth` under the wheels (`stuck_depth()`),
-    blade up or down. The snowed-in message on getting in uses the same limit.
+    blade up or down. The snowed-in message on getting in uses the same limit. It is above the first
+    morning's deepest snow (`opening_max_depth`; Dec 1 is always dry), so the opening never holds the
+    wheels; a major event's snow does.
   - **Round 5 §12's snow rules,** with the blade up:
     - the drag under the wheels scaled by `pickup_drag_depth`;
     - the shove (`_shove`): a V of two `Snow.blade_push` arms at the front, floor `pickup_shove_floor`;
     - the push-back: `pickup_bog_depth`, `pickup_shove_drag`, and below `pickup_shove_min_speed` it
       bogs;
     - the wall at `pickup_bank_max`;
-    - their messages ("Stuck…", "Snowbank ahead…", "…from a standstill… Back up with <reverse key>").
+    - their messages ("Stuck…", "Snowbank ahead…", "…from a standstill (about N cm)… Back up with
+      <reverse key>").
+  - **The bog depth counts from the snow the truck stands in** (playtest fix 1). That snow
+    (`_axle_depth()`) is the lower wheel of each axle, averaged over the axles. Its depth above
+    `pickup_shove_floor` (`_sunk`) adds to `pickup_bog_depth`. On bare ground or in its own shoved
+    track it adds nothing, so round 5 §12 is unchanged there.
+    - Parked in the opening's 80 cm, the snow ahead (84 cm) pushes back less than the engine pulls,
+      so it moves off slowly. Once both axles are in its own shoved track, the driveway's snow ahead
+      is above the bog depth again and it bogs, as §12 intends.
+    - The lower wheel of each axle: a wheel line its shove doesn't clear doesn't count. The plain
+      pickup's 2 m V ends at its wheels, so at some places across a street one of its wheel lines
+      runs in the untouched snow. A wheel off its cleared track in a turn doesn't count either.
+    - `_sunk` is read when the driver gets in (as after a load) and while the truck moves, and kept
+      while it stands still. Snow that slumps into its lane under a stopped truck (the body's guard is
+      only renewed while it shoves) doesn't lift it out of a bog.
+    - The bogged message gives this bog depth ("about N cm").
+    - The wall (`pickup_bank_max`) reads the raw snow ahead, whatever the wheels stand in.
+  - **Snowed in:** getting in with more than `pickup_stuck_depth` under the wheels says so with the
+    depth, and that it only creeps until you dig around the wheels. It does creep: its reverse always
+    does (the stuck rule's 15 %), and forward until half the clearance deeper. Other vehicles' message
+    still says they won't move.
   - **The shove's cast** is `SHOVE_CAST` for the plain pickup's 2 m (`SHOVE_CAST_WIDTH`), in
     proportion for a wider truck (the plowed truck's 2.4 m). That keeps the snow ahead of the raised
     blade and clear of the truck's path.
@@ -137,7 +163,24 @@
   - where the shove lands;
   - contracts.
 - `--only=polish5 --test=test_s12_`: round 5's pickup-in-snow tests, for the plain pickup and the
-  plowed truck (`S12_TRUCKS`).
+  plowed truck (`S12_TRUCKS`). `test_s12_opening_by_the_numbers`: the opening's snow under the stuck
+  depth, no snowed-in message, it backs up and pushes forward until it bogs on its own track.
+- `--only=polish7 --test=test_pf1_` (playtest fix 1).
+  - From a new game, over 3 seeds in both modes, with the keys found, nothing shovelled and the real
+    controls:
+    - getting in (interact) says nothing about being snowed in, and reverse moves it;
+    - blade down, a scripted plow-out (push, raise, back up, lower, angle, again) gets all four
+      wheels onto the road within 3 minutes, never stuck, under half its top speed, volume exact;
+    - blade up, run-ups from the garage get it out within 3 minutes, bogging on the way, never stuck.
+  - A bank above `pickup_bank_max` still stops it with its message, on the street with a run-up and
+    from the parked spot.
+  - On Maple Street:
+    - parked after driving on bare ground, then left in snow above the bog depth: getting back in, it
+      pushes off;
+    - with more than `pickup_stuck_depth` around the wheels, both trucks say they're snowed in and
+      only creep, and they do;
+    - a long stretch at `pickup_bog_depth` bogs both trucks, and holds them, at four places across
+      the street.
 - `--only=gameplay --test=truck_keys`: the keys end to end, then out through a windrow across the apron
   with the blade up, then the blade lowered, plowing.
 - `--only=gameplay --test=vehicle_plow`, `--test=plow_pushes`.
@@ -151,7 +194,8 @@
   - driving off the pile from five starts across a cell.
 - Pushing unchanged: `--only=gameplay --test=vehicle_plow`, `--test=plow_pushes`,
   `--only=snow --test=test_blade_push`, `--only=polish6 --test=test_s3_blade`, `--test=test_s9_`.
-- Shots: `tests/shot.gd --back_drag=frames [--drag_lift=1]`.
+- Shots: `tests/shot.gd --back_drag=frames [--drag_lift=1]`; `--plow_out=down|up` (the way out on the
+  first morning).
 
 ## Decisions
 
@@ -169,6 +213,14 @@
   - Driving off a dragged pile, the blade leaves the pile: the brief's "drive forward, and the snow
     stays where it is".
   - Dragging caps the reverse speed by the berm's drag: the old reverse limit hid it below about 3 m³.
+- Round 7 playtest fix 1: the truck gets out of the driveway on the first morning. In the playtest it
+  couldn't go forward at all: the opening's 80 cm was above `pickup_stuck_depth`, so deep that the
+  stuck rule's creep factor was 0, and reverse only crept at 0.15 m/s.
+  - `pickup_stuck_depth` went up to above the opening's deepest.
+  - The bog depth counts from the snow the truck stands in: the lower wheel of each axle, read when
+    the driver gets in and while it moves, and held while it stands still.
+  - The pickups' snowed-in message says the truck only creeps, which is what it does.
+  - Nothing else changed: no other value, the plow path, the shove, the other vehicles.
 
 ## Known issues
 
@@ -176,3 +228,15 @@
   than the pickup (round 6 §3, left for a later round).
 - With the blade down, the plowed truck's drag under the wheels is still scaled by its clearance (the
   plow path as before). Only its stuck depth is the pickup's.
+- On the first morning the blade-down truck plows out in one pass (about 9 s). It pushes the
+  driveway's snow onto the street as a pile about 2.5–3.9 m high in front of the blade. That is the
+  plow path's tuning, shared with every plow, and left as it is.
+- Backing up onto its own track where snow has slumped back in raises the bog depth by that snow (a
+  few cm for the plowed truck; up to about 25 cm for the plain pickup, whose track is narrower), so
+  a run-up carries a little further there.
+- Digging out only around the wheels makes the truck bog from a standstill against the snow ahead,
+  where without digging it pushes off slowly. That is round 5's dug-out case, unchanged, and the
+  message says to back up and take a run. The Help app and the keys message still tell the player
+  to dig around the wheels.
+- The stuck rule keeps round 5's creep: from `pickup_stuck_depth` to half the clearance deeper the
+  truck creeps forward, and its reverse always creeps. The status line still says "Stuck…".

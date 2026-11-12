@@ -6262,10 +6262,11 @@ func _s12_bank_at(x: float, h: float) -> void:
 	Snow.set_rect(Rect2(x + 2.0, 79, 0.5, 8), h * 0.5)
 
 
-## The opening, by the numbers: the truck stands in the first morning's snow, deeper than it can
-## start in, so its wheels still need digging out ("Stuck: … clears about N cm" from the balance);
-## dug out around the wheels only, the driveway's snow ahead is deeper than it can push from a
-## standstill; with the driveway cleared it drives out.
+## The opening, by the numbers. Polish 7 playtest fix 1: the first morning's snow around the wheels
+## is under the stuck depth (and so is the opening's deepest), so getting in doesn't say it's snowed
+## in; it backs up, and it pushes forward through the driveway's snow until its wheels are on its
+## own shoved track, where the snow ahead is more than it pushes from a standstill ("…Back up with
+## <reverse key>…"). Dug out around the wheels only, the same; with the driveway cleared it drives out.
 func test_s12_opening_by_the_numbers() -> void:
 	var b: BalanceData = Catalog.balance
 	for id in S12_TRUCKS:
@@ -6273,21 +6274,29 @@ func test_s12_opening_by_the_numbers() -> void:
 		await _s12_world(0, 7.6, id)
 		var truck: Vehicle = world.vehicle_nodes()[0]
 		var wd := truck.wheel_snow_depth()
-		runner.check(wd > b.pickup_stuck_depth and truck.stuck_depth() == b.pickup_stuck_depth,
-			t12 + " the opening: %d cm of snow around the wheels, the pickup is stuck from %d cm" % [int(round(wd * 100.0)), int(round(b.pickup_stuck_depth * 100.0))])
+		runner.check(wd < b.pickup_stuck_depth and b.opening_max_depth < b.pickup_stuck_depth and truck.stuck_depth() == b.pickup_stuck_depth,
+			t12 + " the opening: %d cm of snow around the wheels (at most %d cm), the pickup is stuck from %d cm" % [int(round(wd * 100.0)), int(round(b.opening_max_depth * 100.0)), int(round(b.pickup_stuck_depth * 100.0))])
 		Notify.history.clear()
 		truck.enter_vehicle(world.player)
 		await _frames(2)
-		runner.check(_s12_notified("snowed in"), t12 + " …getting in says it's snowed in")
-		var r := await _s12_drive(truck, 120)
-		runner.check(absf(r["dist"]) < 0.5 and str(r["reasons"]).contains("only clears about %d cm" % int(round(b.pickup_stuck_depth * 100.0))),
-			t12 + " …it doesn't move (%.2f m): %s" % [r["dist"], str(r["reasons"])])
+		runner.check(not _s12_notified("snowed in"), t12 + " …getting in doesn't say it's snowed in")
+		var rb := await _s12_drive(truck, 120, "veh_reverse")
+		runner.check(rb["dist"] < -0.3 and rb["stuck"] == 0, t12 + " …it backs up (%.2f m), never stuck" % rb["dist"])
+		var r := await _s12_drive(truck, 900)
+		runner.check(r["dist"] > 1.0 and r["stuck"] == 0 and str(r["reasons"]).contains("standstill") and str(r["reasons"]).contains("Back up with %s" % Settings.action_label("veh_reverse")),
+			t12 + " …it pushes through the driveway's snow (%.1f m) until the snow ahead is more than it pushes from a standstill: %s" % [r["dist"], str(r["reasons"]).substr(0, 110)])
+		# Dug out around the wheels where it's parked (the opening again): the driveway's snow ahead is
+		# more than it pushes from a standstill, the bog depth the balance's once it moves.
+		await _s12_world(0, 7.6, id)
+		truck = world.vehicle_nodes()[0]
+		truck.enter_vehicle(world.player)
+		await _frames(2)
 		var tp := Vector2(truck.global_position.x, truck.global_position.z)
 		var dug := Vector2(truck.data.width * 0.5 + 0.6, truck.data.length * 0.5 + 0.05)
 		Snow.set_rect(Rect2(tp - dug, dug * 2.0), 0.0)    # dug out around the wheels
 		var front := tp + Vector2(0, -1).rotated(-truck.rotation.y) * (truck.data.length * 0.5 + 0.35)
 		var r2 := await _s12_drive(truck, 150)
-		runner.check(Snow.depth_at(front.x, front.y) > b.pickup_bog_depth and r2["dist"] < 1.5 and str(r2["reasons"]).contains("standstill"),
+		runner.check(Snow.depth_at(front.x, front.y) > b.pickup_bog_depth and r2["dist"] < 1.5 and str(r2["reasons"]).contains("standstill") and str(r2["reasons"]).contains("about %d cm" % int(round(b.pickup_bog_depth * 100.0))),
 			t12 + " …dug out around the wheels: the driveway ahead (%d cm) is more than it pushes from a standstill (%.1f m, %s)" % [int(round(Snow.depth_at(front.x, front.y) * 100.0)), r2["dist"], str(r2["reasons"]).substr(0, 70)])
 		var drv: Rect2 = Boxes.get_box(Boxes.lot_box(Layout.player_lot, "driveway"))["rects"][0]
 		Snow.set_rect(drv, 0.03)
