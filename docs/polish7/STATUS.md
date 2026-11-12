@@ -83,8 +83,8 @@ needed. The known flaky `test_menu_fixture_load_is_the_same_as_direct` passed in
 - Playtest fix 1: digging out only around the wheels (not the driveway) makes the truck bog from a
   standstill against the snow ahead ("…Back up with S and take a run at it"), where without digging it
   pushes off slowly. That is round 5's dug-out case, unchanged; the bog depth counts from the snow the
-  truck stands in, and dug-out wheels stand in none. Question for the owner: should dug-out wheels do
-  at least as well? (`PLAYTEST.md` item 18.)
+  truck stands in, and dug-out wheels stand in none. Asked the owner whether dug-out wheels should do
+  at least as well: **leave it as is** (`PLAYTEST.md` item 18 still asks the testers how it feels).
 - Playtest fix 1: the pickups' snowed-in message on getting in (more than `pickup_stuck_depth` under
   the wheels, e.g. after a major event) now says "It only creeps until you dig around them…" instead of
   "It won't move…": the truck creeps there (its reverse always does), which the brief's Decision 3
