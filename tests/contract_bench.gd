@@ -465,7 +465,7 @@ func _pacing(winters: int) -> void:
 			if t >= 1 and not Game.owns_tool("small_blower"):
 				Game.machines.append({"uid": Game.uid(), "tool": "small_blower", "pos": Vector3.ZERO, "yaw": 0.0})
 			if t >= 2 and Contracts.equipment_capability() < 3:
-				Game.vehicles.append({"uid": Game.uid(), "id": "pickup_plow", "pos": Vector3.ZERO, "yaw": 0.0})
+				Game.vehicles.append({"uid": Game.uid(), "id": "plow_truck", "pos": Vector3.ZERO, "yaw": 0.0})   # polish 7 §10: not the starting truck
 			for k in range(t + 1):
 				var key := "%d" % k
 				if not tier_at.has(key):

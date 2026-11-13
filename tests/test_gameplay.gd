@@ -551,14 +551,21 @@ func test_vehicle_plow_and_stuck_pickup() -> void:
 	Game.flags["truck_keys"] = true
 	truck.interact(pl)
 	runner.check(pl.state == "vehicle", "With keys the truck can be entered")
+	# Polish 7 playtest fix 1: the opening's snow is under the stuck depth; snow deeper than it around
+	# the wheels still holds the truck.
+	var stuck_d := Catalog.balance.pickup_stuck_depth
+	runner.check(truck.wheel_snow_depth() < stuck_d, "The opening's snow around the wheels (%d cm) is under the stuck depth (%d cm)" % [int(round(truck.wheel_snow_depth() * 100.0)), int(round(stuck_d * 100.0))])
+	var tp := Vector2(truck.global_position.x, truck.global_position.z)
+	var span := Vector2.ONE * (truck.data.length * 0.5 + 0.5)
+	Snow.set_rect(Rect2(tp - span, span * 2.0), stuck_d + 0.05)
 	var p0 := truck.global_position
 	Input.action_press("veh_accelerate")
 	await _frames(120)
 	_release_all()
 	var moved := truck.global_position.distance_to(p0)
 	# Polish 5 §12: the pickup's snow thresholds are balance values.
-	runner.check(moved < 2.0 and truck.wheel_snow_depth() > Catalog.balance.pickup_stuck_depth, "Truck is stuck in the opening's deep snow (moved %.2f m; %d cm around the wheels, stuck from %d cm)" % [
-		moved, int(round(truck.wheel_snow_depth() * 100.0)), int(round(Catalog.balance.pickup_stuck_depth * 100.0))])
+	runner.check(moved < 2.0 and truck.wheel_snow_depth() > stuck_d and truck.status_text.contains("only clears about %d cm" % int(round(stuck_d * 100.0))), "Truck is stuck in snow deeper than it clears (moved %.2f m; %d cm around the wheels, stuck from %d cm): '%s'" % [
+		moved, int(round(truck.wheel_snow_depth() * 100.0)), int(round(stuck_d * 100.0)), truck.status_text])
 	truck.exit_vehicle()
 	await _frames(2)
 	# A plow truck on Maple Street.
@@ -1573,11 +1580,14 @@ func test_computer_locked_until_gerry_and_saved() -> void:
 
 ## Polish 2 §4: find the keys, get in and drive the truck out of the driveway, with real input,
 ## in both modes. Covers the no-keys message, the blocked-by-snow message and saves.
+## Polish 7 §10: the truck has its plow from the start: out through the windrow across the apron
+## with the blade up, then the blade lowered, plowing.
 func test_truck_keys_end_to_end() -> void:
 	for mode in ["fun", "survival"]:
 		await _load_world(mode, 2024, 10.0, 0)
 		var pl: Player = world.player
 		var truck: Vehicle = world.vehicle_nodes()[0]
+		runner.check(truck.data.has_plow and not truck.tool_on, "%s: the truck in the driveway has its plow (%s), the blade up" % [mode, truck.data.display_name])
 		var tp := Vector2(truck.global_position.x, truck.global_position.z)
 		var tfwd := Vector2(-truck.global_transform.basis.z.x, -truck.global_transform.basis.z.z).normalized()
 		var tright := Vector2(-tfwd.y, tfwd.x)
@@ -1615,15 +1625,31 @@ func test_truck_keys_end_to_end() -> void:
 		await _frames(3)
 		runner.check(pl.state == "vehicle" and truck.engine_on, "%s: in the truck with the engine running" % mode)
 		var p0 := truck.global_position
+		var tfwd3 := -truck.global_transform.basis.z
 		await _hold("veh_reverse", 90)
-		runner.info("%s: stuck drive moved %.2f m, status '%s'" % [mode, truck.global_position.distance_to(p0), truck.status_text])
-		# Polish 5 §12: the pickup's snow thresholds are balance values — the opening's snow around the
-		# wheels is deeper than it starts in, and the message gives that depth.
-		var stuck_cm := int(round(Catalog.balance.pickup_stuck_depth * 100.0))
-		runner.check(truck.wheel_snow_depth() > Catalog.balance.pickup_stuck_depth, "%s: the opening's snow around the wheels (%d cm) is deeper than the pickup starts in (%d cm)" % [mode, int(round(truck.wheel_snow_depth() * 100.0)), stuck_cm])
-		runner.check(truck.global_position.distance_to(p0) < 1.5, "%s: deep snow holds the truck" % mode)
-		runner.check(truck.status_text.contains("cm") and (truck.status_text.to_lower().contains("wheel") or truck.status_text.to_lower().contains("bank")), "%s: the game says what's blocking (%s)" % [mode, truck.status_text])
-		runner.check(truck.status_text.contains("about %d cm" % stuck_cm), "%s: …with the pickup's limit from the balance (%d cm)" % [mode, stuck_cm])
+		var back := (truck.global_position - p0).dot(tfwd3)
+		runner.info("%s: backed up %.2f m, status '%s'" % [mode, back, truck.status_text])
+		# Polish 5 §12: the pickup's snow thresholds are balance values. Polish 7 playtest fix 1: the
+		# opening's snow around the wheels is under the stuck depth, so the truck backs up in it, and
+		# pushes forward through the driveway's snow until the snow ahead is more than it pushes from a
+		# standstill (the bog depth from the balance, counted from its own shoved track).
+		var b := Catalog.balance
+		runner.check(truck.wheel_snow_depth() < b.pickup_stuck_depth and not truck.stuck, "%s: the opening's snow around the wheels (%d cm) is under the stuck depth (%d cm)" % [mode, int(round(truck.wheel_snow_depth() * 100.0)), int(round(b.pickup_stuck_depth * 100.0))])
+		runner.check(back < -0.3, "%s: the truck backs up in the opening's snow (%.2f m)" % [mode, back])
+		var p1 := truck.global_position
+		Input.action_press("veh_accelerate")
+		for f in range(600):
+			await _frames(1)
+			if truck.blocked_reason != "" and f > 30:
+				break
+		Input.action_release("veh_accelerate")
+		await _frames(2)
+		var ahead := (truck.global_position - p1).dot(tfwd3)
+		runner.check(ahead > 1.0, "%s: …and drives forward in it (%.1f m)" % [mode, ahead])
+		runner.check(truck.status_text.begins_with("Snowbank ahead") and truck.status_text.contains("cm deep") and truck.status_text.contains("Back up with %s" % Settings.action_label("veh_reverse")), "%s: the game says what's blocking (%s)" % [mode, truck.status_text])
+		runner.check(truck.status_text.contains("about %d cm" % int(round(b.pickup_bog_depth * 100.0))), "%s: …with the bog depth from the balance (%d cm)" % [mode, int(round(b.pickup_bog_depth * 100.0))])
+		# Back to where it stood, so the dig-out below starts as it did.
+		await _hold("veh_reverse", 300)
 		await _press_event("interact")
 		await _frames(3)
 		runner.check(pl.state == "foot", "%s: out of the truck again" % mode)
@@ -1631,16 +1657,40 @@ func test_truck_keys_end_to_end() -> void:
 		var drv: Rect2 = Boxes.get_box(Boxes.lot_box(Layout.player_lot, "driveway"))["rects"][0]
 		Snow.set_rect(drv, 0.03)
 		Snow.set_rect(Rect2(drv.position.x - 1.0, drv.position.y - 9.0, drv.size.x + 2.0, 9.0), 0.03, true)
+		# Polish 7 §10: the windrow a grader leaves across the apron, as deep as the pickup pushes from
+		# a standstill (pickup_bog_depth), with shoulders: 2 m across, along the curb.
+		var wh := Catalog.balance.pickup_bog_depth
+		var wx := drv.position.x - 1.0
+		var ww := drv.size.x + 2.0
+		Snow.set_rect(Rect2(wx, drv.position.y - 2.0, ww, 0.5), wh * 0.5)
+		Snow.set_rect(Rect2(wx, drv.position.y - 1.5, ww, 1.0), wh)
+		Snow.set_rect(Rect2(wx, drv.position.y - 0.5, ww, 0.5), wh * 0.5)
 		await _face_truck(door, truck)
 		await _press_event("interact")
 		await _frames(3)
 		p0 = truck.global_position
-		await _hold("veh_accelerate", 240)
+		var shoved0 := Snow.stat_player_moved
+		var stuck := 0
+		Input.action_press("veh_accelerate")
+		for f in range(360):
+			await _frames(1)
+			stuck += 1 if truck.stuck else 0
+			if truck.global_position.z + truck.data.length * 0.5 < drv.position.y - 2.0:
+				break       # its tailgate past the windrow
+		Input.action_release("veh_accelerate")
+		await _frames(1)
 		var moved := truck.global_position.distance_to(p0)
 		var tz := truck.global_position.z
 		runner.info("%s: dug out, drove %.1f m (truck z %.1f, driveway apron at %.1f), status '%s'" % [mode, moved, tz, drv.position.y, truck.status_text])
 		runner.check(moved > 6.0, "%s: dug out, the truck drives down the driveway (%.1f m)" % [mode, moved])
 		runner.check(tz < drv.position.y + 1.0, "%s: …and out onto the street" % mode)
+		runner.check(not truck.tool_on and stuck == 0 and truck.global_position.z + truck.data.length * 0.5 < drv.position.y - 2.0 and Snow.stat_player_moved > shoved0 + 0.05,
+			"%s: …with the blade up, through the %d cm windrow across the apron, never stuck, shoving %.2f m³ aside" % [mode, int(round(wh * 100.0)), Snow.stat_player_moved - shoved0])
+		# Lower the blade and plow (the far side of the street still has the opening's snow).
+		await _press_event("veh_tool")
+		var plowed0 := Snow.stat_player_moved
+		await _hold("veh_accelerate", 90)
+		runner.check(truck.tool_on and Snow.stat_player_moved > plowed0 + 0.1, "%s: …the blade lowered, it plows (%.2f m³, status '%s')" % [mode, Snow.stat_player_moved - plowed0, truck.status_text])
 		_release_all()
 		await _press_event("interact")
 		await _frames(2)

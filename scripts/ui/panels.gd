@@ -477,6 +477,9 @@ static func vehicle_help(parent: Control, v: Node) -> Control:
 		"%s  handbrake" % Settings.action_label("veh_brake")]
 	if v.data.has_plow:
 		lines.append("%s  lower / raise the blade" % Settings.action_label("veh_tool"))
+		# Polish 7 §11: the blade keys, and back-drag.
+		lines.append("%s / %s  raise / lower the blade" % [Settings.action_label("veh_blade_up"), Settings.action_label("veh_blade_down")])
+		lines.append("%s, blade down  drag the snow back" % Settings.action_label("veh_reverse"))
 		lines.append("%s / %s  angle the blade" % [Settings.action_label("veh_aim_left"), Settings.action_label("veh_aim_right")])
 	if v.data.has_blower:
 		lines.append("%s  blower on / off" % Settings.action_label("veh_tool"))

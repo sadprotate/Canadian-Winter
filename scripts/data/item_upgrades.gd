@@ -341,8 +341,9 @@ static func level(item: StringName, t: StringName) -> int:
 
 
 ## The heated cab is sold in Survival only (Decision 9: cab heat doesn't matter in Fun Mode).
+## Polish 7 §10: the front plow isn't sold (the truck starts with it); its track stays for old saves.
 static func track_shown(_item: StringName, t: StringName) -> bool:
-	return t != &"cab" or Game.is_survival()
+	return t != &"front_plow" and (t != &"cab" or Game.is_survival())
 
 
 ## The combined multiplier of an item's owned levels for a stat (1.0 without any): the only place
@@ -378,13 +379,12 @@ static func owns(item: StringName) -> bool:
 
 ## Why a level can't be bought now ("" if it can — money and orders aside: Economy.can_buy).
 static func why_not(u: UpgradeData) -> String:
+	if u.track == &"front_plow":
+		return "No longer sold."      # polish 7 §10: the truck starts with its plow
 	if not track_shown(u.item, u.track):
 		return "Survival Mode only."
-	if u.track == &"front_plow":
-		if not owns(&"pickup"):
-			return "You need your pickup truck."
-	elif not owns(u.item):
-		return "Fit the front plow first." if GROUP.has(u.item) else "Buy the %s first." % Catalog.item_name(u.item)
+	if not owns(u.item):
+		return "You don't have this truck." if GROUP.has(u.item) else "Buy the %s first." % Catalog.item_name(u.item)
 	if u.level > max_level(u.item, u.track):
 		return "Fully upgraded."
 	if u.level > 1 and level(u.item, u.track) < u.level - 1:

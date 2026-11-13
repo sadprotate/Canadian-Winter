@@ -164,6 +164,33 @@ extends Node
 ##                            op). Use with --setup=medium (35 cm everywhere) and --fixed-fps 60;
 ##                            --pile_frames=n pushes (default 90) / drives (600) that long; prints
 ##                            the pile's top
+## Polish 7 additions:
+##   --back_drag=frames       (§11) the truck (the pickup with its plow) up to the garage door with
+##                            snow piled against the door, the blade lowered (set_blade, as its
+##                            Down key does), reversing `frames` frames (default 70): back-dragging,
+##                            held there for the shot; --drag_lift=1 then raises the blade, backs off and
+##                            settles the snow: the pile left. Without --cam the camera looks across
+##                            the driveway from the lawn. Use with --unlock=1 and --fixed-fps 60
+##   --plow_out=down|up       (playtest fix 1) a new game's truck, nothing shovelled, out of the
+##                            driveway to the street as test_pf1_plow_out_blade_down / _run_ups_blade_up
+##                            do it (down: the blade lowered, push, raise, back up, again; up: push,
+##                            back up to the garage, again) until all four wheels are on the road;
+##                            then braked there. Without --cam the camera looks back up the driveway
+##                            from across the street. Use with --fixed-fps 60
+##   --long_push=m            (playtest fix 2) Maple Street and its sidewalks under level snow
+##                            (--push_depth, default 0.3 m), the pickup with its plow in the middle of
+##                            the street at x 6 facing east, the blade lowered (set_blade, as its Down
+##                            key does), full throttle until the blade has gone m metres, then braked
+##                            and held there: the pile as the driver sees it (the game's driving
+##                            camera behind the truck; --cab=1 the cab view, --cam_pitch=r its pitch).
+##                            Use with --unlock=1 and --fixed-fps 60
+##   --solid_blade=wall|front (playtest fix 3) the truck (the pickup with its plow), the yard bare, the
+##                            player in it. wall: driven at the garage door at full throttle, the blade
+##                            angled --blade_angle (default 30) and lowered with --blade_down=1, until it
+##                            stops, held there; the camera from the lawn. front: at its spot, the blade
+##                            lowered; the camera in front of it. --blade_upgrade=1 grants the plow
+##                            width upgrade first (with --hour=22 its lamps light with the headlights).
+##                            Use with --unlock=1 and --fixed-fps 60
 
 var args := {}
 var game: Node = null
@@ -616,6 +643,14 @@ func _setup_after_spawn() -> void:
 		await _pickup_bank(w)
 	if args.has("pile"):
 		await _pile(w)
+	if args.has("back_drag"):
+		await _back_drag(w)
+	if args.has("plow_out"):
+		await _plow_out(w)
+	if args.has("long_push"):
+		await _long_push(w)
+	if args.has("solid_blade"):
+		await _solid_blade(w)
 	if args.has("cam") or args.has("lotcam") or args.has("hcam"):
 		_cam = Camera3D.new()
 		_cam.fov = float(args.get("fov", "62"))
@@ -776,6 +811,222 @@ func _pickup_bank(w) -> void:
 		var fx := v.global_position.x + v.data.length * 0.5
 		args["cam"] = "%f,2.4,%f" % [fx + 5.5, lane - 5.2]
 		args["look"] = "%f,0.6,%f" % [fx - 1.2, lane + 0.3]
+
+
+## Polish 7 §11: --back_drag=frames [--drag_lift=1] (see the top).
+func _back_drag(w) -> void:
+	var hi := Layout.house_info(Layout.player_lot)
+	var drv: Rect2 = hi["driveway"]
+	var door_z: float = (hi["garage"] as Rect2).position.y
+	var cx := drv.get_center().x
+	Game.force_input = true
+	Game.flags["truck_keys"] = true
+	Game.flags["help_vehicle_%d" % VehicleData.Kind.PICKUP_PLOW] = true   # no controls panel over the shot
+	Clock.running = false
+	Snow.set_rect(Rect2(drv.position.x - 3.0, door_z - 14.0, drv.size.x + 6.0, 14.0), 0.0)
+	Snow.set_rect(Rect2(cx - 1.0, door_z - 1.4, 2.0, 1.4), 0.8)     # as test_s11_back_drag_from_the_garage_door
+	Snow.relax_until_stable()
+	for n in w.vehicle_nodes():          # the truck parked in the driveway: put up to the door instead
+		Game.vehicles.erase((n as Vehicle).entry)
+		n.queue_free()
+	await get_tree().physics_frame
+	var vd: VehicleData = Catalog.vehicle(&"pickup_plow")
+	var reach := -float(VehicleModels.build(vd)["blade_z"])
+	var e := {"uid": Game.uid(), "id": "pickup_plow", "pos": Vector3(cx, 0, door_z - 0.15 - reach), "yaw": PI, "snow": 0.0}
+	Game.vehicles.append(e)
+	var v: Vehicle = w.spawn_vehicle_node(e)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	v.enter_vehicle(w.player)
+	await get_tree().physics_frame
+	v.set_blade(true)
+	Input.action_press("veh_reverse")
+	for i in range(int(args["back_drag"]) if str(args["back_drag"]).is_valid_int() else 70):
+		await get_tree().physics_frame
+	Input.action_release("veh_reverse")
+	if args.has("drag_lift"):
+		v.set_blade(false)
+		Input.action_press("veh_reverse")
+		for i in range(50):
+			await get_tree().physics_frame
+		Input.action_release("veh_reverse")
+		Input.action_press("veh_brake")
+		await _wait(60)
+		Input.action_release("veh_brake")
+		Snow.relax_until_stable()
+		await _wait(4)
+	else:
+		v.set_physics_process(false)   # hold it there, dragging, for the shot
+	var bz := v.global_position.z + reach
+	print("back_drag: blade at z %.2f (the door at %.2f), status '%s', snow at the door %.3f m³; in the blade's swath: door side %.3f, the 1.5 m behind it %.3f m³" % [bz, door_z, v.status_text, Snow.volume_in_rect(Rect2(cx - 1.2, door_z - 1.0, 2.4, 1.0)),
+		Snow.volume_in_rect(Rect2(cx - 1.2, bz + Snow.CELL, 2.4, maxf(door_z - bz - Snow.CELL, 0.0))), Snow.volume_in_rect(Rect2(cx - 1.2, bz - 1.5, 2.4, 1.5))])
+	if not args.has("cam"):
+		args["cam"] = "%f,2.6,%f" % [drv.position.x - 3.2, door_z - 6.5]
+		args["look"] = "%f,0.5,%f" % [cx + 0.6, door_z - 2.4]
+
+
+## Playtest fix 3: --solid_blade=wall|front (see the top).
+func _solid_blade(w) -> void:
+	var lot := Layout.player_lot
+	var hi := Layout.house_info(lot)
+	var drv: Rect2 = hi["driveway"]
+	var door_z: float = (hi["garage"] as Rect2).position.y
+	var cx := drv.get_center().x
+	Game.force_input = true
+	Game.flags["truck_keys"] = true
+	Game.flags["help_vehicle_%d" % VehicleData.Kind.PICKUP_PLOW] = true   # no controls panel over the shot
+	Clock.running = false
+	Snow.set_rect((lot["rect"] as Rect2).merge(drv).grow(3.0), 0.0)
+	Snow.relax_until_stable()
+	if args.has("blade_upgrade"):
+		Game.grant_upgrade(StringName(ItemUpgrades.level_id(&"pickup_plow", &"plow_width", 1)))
+	var v: Vehicle = w.vehicle_nodes()[0]
+	if str(args["solid_blade"]) == "wall":
+		var vd: VehicleData = Catalog.vehicle(&"pickup_plow")
+		v.global_position = Vector3(cx, 0, door_z - vd.length * 0.5 - 4.0)
+		v.rotation.y = PI
+		await get_tree().physics_frame
+	v.enter_vehicle(w.player)
+	await get_tree().physics_frame
+	v.set_blade(args.has("blade_down") or str(args["solid_blade"]) == "front")
+	v.blade_angle = float(args.get("blade_angle", "30")) if str(args["solid_blade"]) == "wall" else 0.0
+	await _wait(90)
+	if str(args["solid_blade"]) == "wall":
+		Input.action_press("veh_accelerate")
+		var still := 0
+		var last := v.global_position
+		for i in range(600):
+			await get_tree().physics_frame
+			still = still + 1 if i > 30 and v.global_position.distance_to(last) < 0.0005 else 0
+			last = v.global_position
+			if still > 45:
+				break
+		Input.action_release("veh_accelerate")
+		await _wait(3)
+		v.set_physics_process(false)   # hold it there for the shot
+		var fr := 1e9
+		var size := (v.blade_cs.shape as BoxShape3D).size
+		for sx in [-0.5, 0.5]:
+			for sz in [-0.5, 0.5]:
+				fr = minf(fr, door_z - (v.blade_cs.global_transform * Vector3(sx * size.x, 0, sz * size.z)).z)
+		print("solid_blade: stopped %.3f m from the door with its blade's shape (%.2f m wide, %+d°)" % [fr, size.x, int(v.blade_angle)])
+		if not args.has("cam"):
+			args["cam"] = "%f,2.3,%f" % [drv.position.x - 3.4, door_z - 5.2]
+			args["look"] = "%f,0.6,%f" % [cx + 0.3, door_z - 0.6]
+	elif not args.has("cam"):
+		var bp: Vector3 = v.global_transform * Vector3(0, 0, float(v.info["blade_z"]))
+		var fwd := -v.global_transform.basis.z
+		var side := v.global_transform.basis.x
+		var c := bp + fwd * 5.5 + side * 2.2
+		args["cam"] = "%f,1.7,%f" % [c.x, c.z]
+		args["look"] = "%f,0.75,%f" % [bp.x, bp.z]
+
+
+## Playtest fix 1: --plow_out=down|up (see the top).
+func _plow_out(w) -> void:
+	Game.force_input = true
+	Game.flags["truck_keys"] = true
+	Game.flags["help_vehicle_%d" % VehicleData.Kind.PICKUP_PLOW] = true   # no controls panel over the shot
+	Clock.running = false
+	var v: Vehicle = w.vehicle_nodes()[0]
+	v.enter_vehicle(w.player)
+	await get_tree().physics_frame
+	var down := str(args["plow_out"]) != "up"
+	var p0 := v.global_position
+	var f := 0
+	var pushes := 0
+	while f < 10800 and _plow_out_on_road(v) < 4:
+		pushes += 1
+		v.set_blade(down)     # as its Down key does
+		Input.action_press("veh_accelerate")
+		var slow := 0
+		var ff := 0
+		while f < 10800 and _plow_out_on_road(v) < 4:
+			await get_tree().physics_frame
+			f += 1
+			ff += 1
+			slow = slow + 1 if absf(v.speed) < 0.4 and ff > 45 else 0
+			if slow > 40:
+				break
+		Input.action_release("veh_accelerate")
+		if _plow_out_on_road(v) == 4:
+			break
+		v.set_blade(false)    # as its Up key does
+		Input.action_press("veh_reverse")
+		for i in range(90 if down else 240):
+			await get_tree().physics_frame
+			f += 1
+		Input.action_release("veh_reverse")
+		Input.action_press("veh_brake")
+		for i in range(20):
+			await get_tree().physics_frame
+			f += 1
+		Input.action_release("veh_brake")
+	Input.action_press("veh_brake")
+	for i in range(40):
+		await get_tree().physics_frame
+	Input.action_release("veh_brake")
+	print("plow_out %s: wheels on the road %d/4 after %.1f s, %d pushes, %.1f m from where it was parked" % [args["plow_out"], _plow_out_on_road(v), f / 60.0, pushes, v.global_position.distance_to(p0)])
+	if not args.has("cam"):
+		args["cam"] = "%f,4.2,%f" % [p0.x + 6.5, p0.z - 19.0]
+		args["look"] = "%f,0.4,%f" % [p0.x - 0.5, p0.z - 4.0]
+
+
+## Playtest fix 2: --long_push=m [--push_depth=d] (see the top).
+func _long_push(w) -> void:
+	Game.force_input = true
+	Game.flags["truck_keys"] = true
+	Game.flags["help_vehicle_%d" % VehicleData.Kind.PICKUP_PLOW] = true   # no controls panel over the shot
+	Clock.running = false
+	var d := float(args.get("push_depth", "0.3"))
+	Snow.set_rect(Rect2(0, 77, Layout.MAP_W, 12), d)
+	Snow.relax_until_stable()
+	var e := {"uid": Game.uid(), "id": "pickup_plow", "pos": Vector3(6.0, 0, 83.0), "yaw": -PI * 0.5, "snow": 0.0}
+	Game.vehicles.append(e)
+	var v: Vehicle = w.spawn_vehicle_node(e)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	v.enter_vehicle(w.player)
+	await get_tree().physics_frame
+	v.set_blade(true)     # as its Down key does
+	var b0: Vector3 = v.global_transform * Vector3(0, 0, v.info["blade_z"])
+	var dist := float(args["long_push"])
+	var gone := 0.0
+	var f := 0
+	Input.action_press("veh_accelerate")
+	while f < 7200:
+		await get_tree().physics_frame
+		f += 1
+		var b: Vector3 = v.global_transform * Vector3(0, 0, v.info["blade_z"])
+		gone = b.x - b0.x
+		if gone >= dist:
+			break
+	Input.action_release("veh_accelerate")
+	Input.action_press("veh_brake")
+	for i in range(60):
+		await get_tree().physics_frame
+	Input.action_release("veh_brake")
+	# The game's driving camera (behind the truck), looking along it. The cab view (its camera key) sits
+	# inside the cab's own box and shows only that, so it can't show the pile; --cab=1 still takes it.
+	v.cab_view = args.get("cab", "0") == "1"
+	v.cam_yaw = 0.0
+	v.cam_pitch = float(args.get("cam_pitch", "-0.25"))
+	v._set_camera()
+	var bx: float = (v.global_transform * Vector3(0, 0, v.info["blade_z"])).x
+	var top := 0.0
+	for z in range(Snow.cell_z(77.0), Snow.cell_z(89.0)):
+		for x in range(Snow.cell_x(bx - 2.0), Snow.cell_x(bx + 10.0)):
+			top = maxf(top, Snow.depth[z * Snow.W + x])
+	print("long_push: the blade went %.1f m in %.1f s (snow %.2f m); the pile's top ahead of it %.2f m; the truck's pitch %.1f°" % [gone, f / 60.0, d, top, rad_to_deg(v.rotation.x)])
+
+
+func _plow_out_on_road(v: Vehicle) -> int:
+	var n := 0
+	for wh in v.info["wheels"]:
+		var wp: Vector3 = v.global_transform * (wh["pos"] as Vector3)
+		if Snow.surface_at(wp.x, wp.z) == Snow.S_ROAD:
+			n += 1
+	return n
 
 
 ## Polish 6 §9: --pile=hand|plow|pickup|throws — a pile made with the real controls (see the top),

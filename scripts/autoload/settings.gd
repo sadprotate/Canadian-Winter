@@ -42,6 +42,9 @@ const ACTIONS := {
 	"veh_right": ["Steer right", "vehicle", ["key:%d" % KEY_D]],
 	"veh_brake": ["Handbrake", "vehicle", ["key:%d" % KEY_SPACE]],
 	"veh_tool": ["Blade / blower on-off", "vehicle", ["mouse:%d" % MOUSE_BUTTON_LEFT]],
+	# Polish 7 §11: the blade up and down (vehicles with a blade).
+	"veh_blade_up": ["Raise the blade", "vehicle", ["key:%d" % KEY_UP]],
+	"veh_blade_down": ["Lower the blade", "vehicle", ["key:%d" % KEY_DOWN]],
 	"veh_aim_left": ["Blade angle / chute left", "vehicle", ["key:%d" % KEY_Z]],
 	"veh_aim_right": ["Blade angle / chute right", "vehicle", ["key:%d" % KEY_C]],
 	"veh_horn": ["Horn", "vehicle", ["key:%d" % KEY_H]],
@@ -79,7 +82,8 @@ const PLACES := ["foot", "vehicle", "machine", "computer", "menu"]
 ## Polish 5 §2: world-changing presses, capped per action at Catalog.balance.input_max_presses_per_s
 ## (accept_press). UI clicks, F1, movement, the camera, map, Tab, slots, horn and radio aren't.
 ## Polish 5 §9: the fast-forward key (it changes the clock's speed) is capped too.
-const RATE_LIMITED := ["primary", "secondary", "interact", "drop", "store", "use_pouch", "tool_angle", "veh_tool", "fast_forward"]
+const RATE_LIMITED := ["primary", "secondary", "interact", "drop", "store", "use_pouch", "tool_angle", "veh_tool", "fast_forward",
+	"veh_blade_up", "veh_blade_down"]
 
 var cfg := ConfigFile.new()
 var bindings: Dictionary = {}   # action -> Array of encoded events

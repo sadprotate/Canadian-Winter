@@ -3,7 +3,8 @@ extends CharacterBody3D
 ## Shared vehicle controller (Part 10) driven by VehicleData. Arcade handling with snow-dependent
 ## traction and resistance, getting stuck, snowbank collision, plows, blowers and the dump truck.
 ## Controls (remappable): W/S drive & brake/reverse, A/D steer, Space handbrake, LMB blade/blower
-## on-off (or dump), Z/C blade angle / chute, V camera, H horn, T radio, E exit.
+## on-off (or dump), Up/Down raise / lower the blade (polish 7 §11), Z/C blade angle / chute,
+## V camera, H horn, T radio, E exit.
 
 # Polish 6 §2: classes added in polish 5, by path rather than global name, so this script still
 # loads when the editor's class cache predates a pull.
@@ -54,6 +55,45 @@ var _land_timer := 0.0
 var status_text := ""
 var _status_t := 0.0
 var blocked_reason := ""     # what stops the vehicle right now ("" when nothing does)
+var dragging := false        # polish 7 §11: the blade down and reversing (back-drag) this frame
+var _drag_side := false      # polish 7 §11: the blade last dragged (reversing) rather than pushed
+var _drag_stop := Vector2.ZERO   # polish 7 §11: the blade's centre when it last dragged
+var _leaving_drag := false   # polish 7 §11: driving forward off a dragged pile (see the push)
+var _sunk := -1.0            # polish 7 playtest fix 1: the snow it stands in, for the bog depth (-1: not read yet)
+var blade_cs: CollisionShape3D   # polish 7 playtest fix 3: the blade's solid shape (see BLADE_CLEAR)
+var blade_mult := 1.0            # polish 7 playtest fix 3: the plow width upgrade the blade is built for
+var blade_lamps: MeshInstance3D  # polish 7 playtest fix 3: the upgraded blade's lamp lenses (lit with the headlights)
+var _blade_mi: MeshInstance3D
+var _lamps_lit := false
+
+## Polish 7 §11: back-drag (the blade down, reversing). The blade takes the snow it passes over on its
+## far side and carries it toward the vehicle: Snow.blade_push with the face turned to the vehicle,
+## the band the frame's reverse travel + 0.1 m (as a push's), the snow landing DRAG_CAST behind the
+## blade (0.1–0.62 m with blade_push's band and draw), against its back face and clear of every
+## blade vehicle's front wheels (1 m behind the blade or more). Polish 7 playtest fix 2: what lands
+## there tumbles on toward the vehicle as any pushed pile does, so a big drag's pile runs out at the
+## moved-snow slope toward the front wheels at once (it used to settle there over a few seconds).
+const DRAG_CAST := 0.3
+## Polish 7 playtest fix 2: how far ahead of the blade's face the plow's berm drag reads its pile
+## (Snow.blade_push's berm_reach, m): BERM_REACH_BASE + BERM_REACH_PER_HW x the blade's half-width
+## (berm_reach()). Past the first 0.65 m (all the snow, as before) only the pushed snow counts. The
+## pushed pile now tumbles forward instead of stacking at the face, so the same load lies further out,
+## and further for a wider blade (its pile is bigger). Read this far, a long push is no easier than
+## before for any plow: 3–9 % slower on level snow (report/playtest_fix_2.md). 0.65 m before.
+const BERM_REACH_BASE := 0.5
+const BERM_REACH_PER_HW := 0.6
+const DRAG_STATUS := "Blade down — dragging"
+## Polish 7 playtest fix 3: the blade is solid. Its shape (VehicleModels' blade_box: the plate, its
+## cutting edge and any lamps, not the arms behind it) follows the blade as it stands each frame — its
+## width, its angle and how high it is raised — so the blade stops against whatever stops the body.
+## Its bottom is the blade's, but never under BLADE_CLEAR above the ground, the only collider that low
+## (curbs, sidewalks and snow have none), so it never catches on it as the vehicle settles each frame
+## (2 m/s down for one step).
+const BLADE_CLEAR := 0.1
+## How far the raised blade stands above the lowered one (m).
+const BLADE_LIFT := 0.18
+## The lit lamps on the upgraded blade: the headlights' colour.
+const BLADE_LAMP_LIT := Color(1.0, 0.93, 0.8)
 
 
 func setup(vd: VehicleData, e: Dictionary) -> void:
@@ -69,7 +109,8 @@ func _ready() -> void:
 	collision_layer = 1 << 3
 	collision_mask = 1 | (1 << 2) | (1 << 3)
 	floor_snap_length = 0.5
-	info = VehicleModels.build(data)
+	blade_mult = _ItemUpgrades.mult(data.id, &"vehicle_blade_width")   # polish 7 playtest fix 3: its model shows it
+	info = VehicleModels.build(data, blade_mult)
 	var mi := MeshInstance3D.new()
 	mi.mesh = info["mesh"]
 	add_child(mi)
@@ -86,6 +127,8 @@ func _ready() -> void:
 		var bm := MeshInstance3D.new()
 		bm.mesh = info["blade_mesh"]
 		blade_node.add_child(bm)
+		_blade_mi = bm
+		_add_blade_lamps()
 	snow_mi = MeshInstance3D.new()
 	add_child(snow_mi)
 	var cs := CollisionShape3D.new()
@@ -94,6 +137,13 @@ func _ready() -> void:
 	cs.shape = box
 	cs.position = Vector3(0, data.height * 0.45, 0)
 	add_child(cs)
+	# Polish 7 playtest fix 3: the blade's solid shape, and its model and shape change with the upgrade.
+	if blade_node:
+		blade_cs = CollisionShape3D.new()
+		blade_cs.shape = BoxShape3D.new()
+		add_child(blade_cs)
+		_fit_blade_shape()
+		Game.upgrades_changed.connect(_on_upgrades_changed)
 	# Interaction area around the vehicle (driver door).
 	interact_area = Area3D.new()
 	interact_area.collision_layer = 1 << 1
@@ -158,14 +208,20 @@ func _ready() -> void:
 	_prev_pos = Vector2(global_position.x, global_position.z)
 
 
+## Polish 7 §10: the player's own truck: the pickup with its plow (a new game's) or the plain pickup
+## (older saves). The truck keys lock it, and it has round 5 §12's snow handling.
+func is_pickup() -> bool:
+	return data.kind == VehicleData.Kind.PICKUP or data.kind == VehicleData.Kind.PICKUP_PLOW
+
+
 func interact_prompt(_p: Player) -> String:
-	if data.kind == VehicleData.Kind.PICKUP and not Game.flags.get("truck_keys", false):
+	if is_pickup() and not Game.flags.get("truck_keys", false):
 		return "[E] Pickup truck (locked)"
 	return "[E] Drive %s" % data.display_name
 
 
 func interact(p: Player) -> void:
-	if data.kind == VehicleData.Kind.PICKUP and not Game.flags.get("truck_keys", false):
+	if is_pickup() and not Game.flags.get("truck_keys", false):
 		AudioMgr.play_at("truck_locked", global_position, -2.0)
 		Notify.push("The truck is locked and the keys are missing. You had them before the storm — they must be out there somewhere.", Notify.INFO)
 		return
@@ -183,11 +239,13 @@ func enter_vehicle(p: Player) -> void:
 	p.tools.indicator.visible = false
 	engine_on = true
 	cam_yaw = 0.0
+	_sunk = -1.0     # polish 7 playtest fix 1: getting in reads the snow it stands in, as a load does
 	_set_camera()
 	# Snowed in? Say so straight away rather than letting the wheels spin in silence.
+	# Polish 7 playtest fix 1: the truck still creeps (its reverse always does), so it says that.
 	var wd := wheel_snow_depth()
 	if wd > stuck_depth():
-		Notify.push("The %s is snowed in: about %d cm of snow around the wheels. It won't move until you dig around them and clear a path." % [data.display_name.to_lower(), int(round(wd * 100.0))], Notify.WARN)
+		Notify.push("The %s is snowed in: about %d cm of snow around the wheels. %s until you dig around them and clear a path." % [data.display_name.to_lower(), int(round(wd * 100.0)), "It only creeps" if is_pickup() else "It won't move"], Notify.WARN)
 	AudioMgr.play_at("engine_start", global_position, -3.0)
 	AudioMgr.play_at("door_close", global_position, -8.0, 1.3)
 	engine_snd.play()
@@ -223,7 +281,10 @@ func exit_vehicle() -> void:
 		hl.visible = false
 	var side := -global_transform.basis.x
 	var spots := [global_position + side * (data.width * 0.5 + 0.8), global_position - side * (data.width * 0.5 + 0.8), global_position + global_transform.basis.z * (data.length * 0.5 + 1.0)]
-	var out: Vector3 = spots[0]
+	# Polish 7 playtest fix 3: never into the blade's solid shape (the grader's, beside its cab, with
+	# the width upgrade and angled).
+	spots = spots.filter(func(s: Vector3) -> bool: return not _in_blade(s, p.capsule.radius + 0.1))
+	var out: Vector3 = spots[0] if not spots.is_empty() else global_position + global_transform.basis.z * (data.length * 0.5 + 1.0)
 	for s in spots:
 		if Snow.depth_at(s.x, s.z) < 0.7:
 			out = s
@@ -267,6 +328,30 @@ func _unhandled_input(event: InputEvent) -> void:
 		Notify.push("Radio: " + Weather.radio_bulletin(), Notify.INFO)
 
 
+## Polish 7 §11: the blade keys (Up / Down by default) are read here, before the GUI: the arrows are
+## also Godot's ui_up / ui_down, which a focused control would take as a focus move.
+func _input(event: InputEvent) -> void:
+	if not occupied or not has_blade() or not Game.input_captured() or Game.typing():
+		return
+	var down := event.is_action_pressed("veh_blade_down")
+	if not down and not event.is_action_pressed("veh_blade_up"):
+		return
+	get_viewport().set_input_as_handled()
+	if Settings.accept_press("veh_blade_down" if down else "veh_blade_up"):   # capped per second
+		set_blade(down)
+
+
+## Polish 7 §11: a blade the player raises and lowers (a plow; the dump truck's veh_tool dumps).
+func has_blade() -> bool:
+	return data.has_plow and data.dump_capacity <= 0.0
+
+
+## Polish 7 §11: lower (true) or raise the blade; a press that changes nothing does nothing.
+func set_blade(down: bool) -> void:
+	if has_blade() and tool_on != down:
+		_toggle_tool()
+
+
 func _toggle_tool() -> void:
 	if data.dump_capacity > 0.0:
 		_dump()
@@ -274,6 +359,8 @@ func _toggle_tool() -> void:
 	if not (data.has_plow or data.has_blower):
 		return
 	tool_on = not tool_on
+	_drag_side = false           # polish 7 §11: a blade lowered starts as a push (standing still: as before)
+	_leaving_drag = false
 	AudioMgr.play_at("ui_click", global_position, -4.0, 0.7)
 	if data.has_plow:
 		set_status("Blade down" if tool_on else "Blade up")
@@ -315,7 +402,10 @@ func _physics_process(delta: float) -> void:
 			_aim(1.0, delta)
 	# Resistance: deep snow slows and eventually stops the vehicle.
 	# Polish 5 §12: the plain pickup reads its snow handling from the balance data.
-	var pickup := data.kind == VehicleData.Kind.PICKUP
+	# Polish 7 §10: so does the pickup with its plow while the blade is up; with the blade down it
+	# plows as before. Its wheels are the pickup's either way (stuck_depth()).
+	var truck := is_pickup()
+	var pickup := truck and not (tool_on and data.has_plow)
 	var bal: BalanceData = Catalog.balance
 	var max_fwd := data.max_speed
 	var sink := d_wheels / (bal.pickup_drag_depth if pickup else c)
@@ -327,21 +417,51 @@ func _physics_process(delta: float) -> void:
 	max_fwd *= drag
 	var accel := data.acceleration * lerpf(0.35, 1.0, data.traction) * (1.0 / (1.0 + sink))
 	var work_drag := 1.0
+	dragging = false
 	# Plow / blower operation.
 	if occupied and tool_on and data.has_plow and blade_node:
 		var bp: Vector3 = global_transform * Vector3(0, 0, info["blade_z"])
 		var face := fwd.rotated(deg_to_rad(blade_angle))
 		var adv := maxf(travel.dot(fwd), 0.0)
 		var hw := data.blade_width * 0.5 * _ItemUpgrades.mult(data.id, &"vehicle_blade_width")
-		# Polish 5 §3 (Decision 12): no road rule — a plow carries yard snow over the curb.
-		var r := Snow.blade_push(Vector2(bp.x, bp.z), face, hw, adv + 0.1, data.blade_floor, false, 0.6)
-		player_guard(Vector2(bp.x, bp.z), fwd, hw + 0.2)
+		# Polish 7 §11: reversing, the blade drags the snow back; driving forward it pushes. Standing
+		# still adds nothing new: the blade holds the side it last worked (a push's band as before, or
+		# a drag's on the ground it uncovered, so a dragged pile stays against its back face).
+		var back := maxf(-travel.dot(fwd), 0.0)
+		if speed < 0.0 and back > 0.0:
+			_drag_side = true
+		elif adv > 0.0 and _drag_side:
+			_drag_side = false
+			_leaving_drag = true
+		dragging = _drag_side and back > 0.0
+		var r: Dictionary
+		if _drag_side:
+			r = back_drag(Vector2(bp.x, bp.z), face, fwd, hw, back)
+			_drag_stop = Vector2(bp.x, bp.z)
+			if dragging and status_text in ["", "Blade down", DRAG_STATUS]:     # a blocked reason stays first
+				set_status(DRAG_STATUS, 0.5)
+		else:
+			# Polish 7 §11: driving off a dragged pile, the blade takes only the ground it has crossed
+			# since it stopped dragging, half a cell clear of that line (the cell on it holds some of the
+			# pile), not the pile behind it; once it is a push's margin past, it pushes as always.
+			var band := adv + 0.1
+			if _leaving_drag:
+				var gone := (Vector2(bp.x, bp.z) - _drag_stop).dot(fwd) - Snow.CELL * 0.5
+				if gone >= band:
+					_leaving_drag = false
+				else:
+					band = maxf(gone, 0.0)
+			# Polish 5 §3 (Decision 12): no road rule — a plow carries yard snow over the curb.
+			r = Snow.blade_push(Vector2(bp.x, bp.z), face, hw, band, data.blade_floor, false, 0.6, true, berm_reach(hw))
+			# Polish 7 §11: leaving a drag, the guard reaches a cell past the face, so the pile's front
+			# can't slump into the gap the blade opens (and be carried off with it).
+			player_guard(Vector2(bp.x, bp.z) + (fwd * Snow.CELL if _leaving_drag else Vector2.ZERO), fwd, hw + 0.2)
 		var ratio: float = r["berm"] / (data.blade_capacity * _ItemUpgrades.mult(data.id, &"vehicle_clear_speed"))
 		work_drag = 1.0 / (1.0 + ratio * ratio)
 		Snow.stat_player_moved += r["moved"]
 		Game.stats_add("snow_moved", r["moved"])
 		work_snd.volume_db = move_toward(work_snd.volume_db, -4.0 if absf(speed) > 0.5 else -20.0, delta * 40.0)
-		if r["moved"] > 0.002 and randf() < 0.4:
+		if not _drag_side and r["moved"] > 0.002 and randf() < 0.4:
 			var side := Vector2(face.x, face.y).rotated(deg_to_rad(90.0 * signf(blade_angle))) if blade_angle != 0.0 else face
 			SnowFX.burst(Vector3(bp.x, 0.6, bp.z) + Vector3(side.x, 0, side.y) * hw * 0.6, 10, 1.2, Vector3(side.x, 1.0, side.y).normalized())
 		ahead = minf(ahead, c * 1.5)   # the plow cuts through banks (with drag)
@@ -355,12 +475,25 @@ func _physics_process(delta: float) -> void:
 			_shove(fwd, travel)
 	# Polish 5 §12: how hard the snow ahead pushes back on the pickup — its depth above the shove
 	# floor as a fraction of the bog depth's (1 = as hard as the engine pulls).
+	# Polish 7 playtest fix 1: the bog depth counts from the snow the truck stands in (_axle_depth())
+	# — its depth above the shove floor adds to it. On bare ground or its own shoved track it is
+	# pickup_bog_depth, as before. It is read when the driver gets in and while the truck moves, and
+	# kept while it stands still, so snow that slumps in under a stopped truck doesn't lift it out
+	# of a bog.
+	if truck and (_sunk < 0.0 or absf(speed) > 0.05):
+		_sunk = maxf(_axle_depth() - bal.pickup_shove_floor, 0.0)
 	var shove_x := 0.0
+	var bog_at := bal.pickup_bog_depth + maxf(_sunk, 0.0)
 	if pickup:
-		shove_x = maxf(ahead - bal.pickup_shove_floor, 0.0) / maxf(bal.pickup_bog_depth - bal.pickup_shove_floor, 0.01)
+		shove_x = maxf(ahead - bal.pickup_shove_floor, 0.0) / maxf(bog_at - bal.pickup_shove_floor, 0.01)
 	if blade_node:
 		blade_node.rotation.y = lerp_angle(blade_node.rotation.y, -deg_to_rad(blade_angle), delta * 6.0)
-		blade_node.position.y = lerpf(blade_node.position.y, 0.0 if tool_on else 0.18, delta * 6.0)
+		blade_node.position.y = lerpf(blade_node.position.y, 0.0 if tool_on else BLADE_LIFT, delta * 6.0)
+		_fit_blade_shape()     # polish 7 playtest fix 3: before the move, so the blade stops it too
+		if blade_lamps:
+			var lit: bool = not headlights.is_empty() and (headlights[0] as Node3D).visible
+			if lit != _lamps_lit:
+				_light_blade_lamps(lit)
 	max_fwd *= work_drag
 	# Snowbanks are solid for vehicles without a plow down.
 	var bank_block := ahead > (bal.pickup_bank_max if pickup else c * 1.9) and throttle > 0.0
@@ -370,7 +503,7 @@ func _physics_process(delta: float) -> void:
 	blocked_reason = ""
 	if stuck:
 		blocked_reason = "Stuck: %d cm of snow under the wheels — this %s only clears about %d cm. Dig around the wheels and clear a path." % [
-			int(round(d_wheels * 100.0)), data.display_name.to_lower(), int(round(bal.pickup_stuck_depth * 100.0)) if pickup else int(round(c * 115.0))]
+			int(round(d_wheels * 100.0)), data.display_name.to_lower(), int(round(bal.pickup_stuck_depth * 100.0)) if truck else int(round(c * 115.0))]
 	elif bank_block and pickup:
 		blocked_reason = "Snowbank ahead: %d cm deep — too much to drive through (about %d cm at most, with a run-up). Clear it or back up." % [
 			int(round(ahead * 100.0)), int(round(bal.pickup_bank_max * 100.0))]
@@ -379,13 +512,16 @@ func _physics_process(delta: float) -> void:
 			int(round(ahead * 100.0)), int(round(c * 190.0))]
 	elif bogged:
 		blocked_reason = "Snowbank ahead: %d cm deep — too much to push from a standstill (about %d cm). Back up with %s and take a run at it, or clear it." % [
-			int(round(ahead * 100.0)), int(round(bal.pickup_bog_depth * 100.0)), Settings.action_label("veh_reverse")]
+			int(round(ahead * 100.0)), int(round(bog_at * 100.0)), Settings.action_label("veh_reverse")]
 	if bank_block or bogged:
 		max_fwd = 0.0
 		if _warn_timer <= 0.0:
 			_warn_timer = 2.0
 			set_status(blocked_reason, 3.0)
-	var target := throttle * (max_fwd if throttle > 0.0 else minf(data.reverse_speed, max_fwd * 0.6 + 1.0))
+	var rev_max := minf(data.reverse_speed, max_fwd * 0.6 + 1.0)
+	if dragging:
+		rev_max = minf(rev_max, data.reverse_speed * work_drag)   # polish 7 §11: the dragged snow slows it as a berm slows a push
+	var target := throttle * (max_fwd if throttle > 0.0 else rev_max)
 	if stuck and absf(throttle) > 0.0:
 		target *= 0.15
 		if _warn_timer <= 0.0:
@@ -437,6 +573,101 @@ func _physics_process(delta: float) -> void:
 	_refresh_snow_visual(false)
 
 
+## Polish 7 playtest fix 3: the blade's solid shape where the blade stands now (see BLADE_CLEAR).
+func _fit_blade_shape() -> void:
+	if blade_cs == null:
+		return
+	var b: AABB = info["blade_box"]
+	var y := blade_node.position.y                 # how high the blade stands (raised: BLADE_LIFT)
+	var lo := maxf(b.position.y + y, BLADE_CLEAR)
+	var hi := b.end.y + y
+	var size := Vector3(b.size.x, hi - lo, b.size.z)
+	var box := blade_cs.shape as BoxShape3D
+	if not box.size.is_equal_approx(size):
+		box.size = size
+	var mid := blade_node.basis * Vector3(b.get_center().x, 0.0, b.get_center().z)
+	var xf := Transform3D(blade_node.basis, Vector3(blade_node.position.x, (lo + hi) * 0.5, blade_node.position.z) + mid)
+	if not blade_cs.transform.is_equal_approx(xf):
+		blade_cs.transform = xf
+
+
+## Polish 7 playtest fix 3: whether a point on the ground is within `margin` of the blade's solid shape
+## (seen from above), as the blade stands or once it has turned to its angle (it trails the angle keys).
+func _in_blade(p: Vector3, margin: float) -> bool:
+	if blade_cs == null:
+		return false
+	var b: AABB = info["blade_box"]
+	var lp0 := global_transform.affine_inverse() * p
+	for rot in [blade_node.rotation.y, -deg_to_rad(blade_angle)]:
+		var basis := Basis(Vector3.UP, rot)
+		var mid := Vector3(blade_node.position.x, 0.0, blade_node.position.z) + basis * Vector3(b.get_center().x, 0.0, b.get_center().z)
+		var lp := basis.inverse() * (lp0 - mid)
+		if absf(lp.x) < b.size.x * 0.5 + margin and absf(lp.z) < b.size.z * 0.5 + margin:
+			return true
+	return false
+
+
+## Polish 7 playtest fix 3: the plow width upgrade shows as soon as it takes effect: the blade's model
+## (as wide as the strip it clears, taller, blue, two lamps on top) and its solid shape.
+func _on_upgrades_changed() -> void:
+	var m := _ItemUpgrades.mult(data.id, &"vehicle_blade_width")
+	if blade_node == null or is_equal_approx(m, blade_mult):
+		return
+	blade_mult = m
+	var nb := VehicleModels.build(data, m)
+	for k in ["blade_mesh", "blade_box", "blade_lamps"]:
+		if nb.has(k):
+			info[k] = nb[k]
+		else:
+			info.erase(k)
+	_blade_mi.mesh = info["blade_mesh"]
+	_add_blade_lamps()
+	_fit_blade_shape()
+
+
+## Polish 7 playtest fix 3: the upgraded blade's lamp lenses, on the blade (none without the upgrade).
+func _add_blade_lamps() -> void:
+	if blade_lamps:
+		blade_lamps.free()
+		blade_lamps = null
+	if info.has("blade_lamps"):
+		blade_lamps = MeshInstance3D.new()
+		blade_lamps.mesh = info["blade_lamps"]
+		blade_node.add_child(blade_lamps)
+		_light_blade_lamps(_lamps_lit)
+
+
+## Polish 7 playtest fix 3: the blade's lamps glow while the headlights are on (no light of their own).
+func _light_blade_lamps(on: bool) -> void:
+	_lamps_lit = on
+	if blade_lamps:
+		blade_lamps.material_override = Mats.emissive(BLADE_LAMP_LIT, 2.5) if on else null
+
+
+## Polish 7 playtest fix 3: put the vehicle at `pos` facing `yaw`, stopped, its blade raised (the
+## truck going home when the player sleeps). Its blade angle, load and roof snow stay; the snow
+## isn't touched.
+func park_at(pos: Vector3, yaw: float) -> void:
+	if occupied:
+		exit_vehicle()
+	speed = 0.0
+	steer = 0.0
+	velocity = Vector3.ZERO
+	tool_on = false
+	dragging = false
+	_drag_side = false
+	_leaving_drag = false
+	_sunk = -1.0
+	global_position = pos
+	rotation.y = yaw
+	_prev_pos = Vector2(pos.x, pos.z)
+	if blade_node:
+		blade_node.position.y = BLADE_LIFT
+		blade_node.rotation.y = -deg_to_rad(blade_angle)
+		_fit_blade_shape()
+	save_entry()
+
+
 ## Polish 5 §12: the pickup's front shoves the snow above `pickup_shove_floor` ahead and out to
 ## both sides — the existing blade op, once for each half of the truck's width: a fixed V with its
 ## point at the middle of the bumper and its arms SHOVE_SPLAY_DEG back to the front corners, each
@@ -445,6 +676,9 @@ func _physics_process(delta: float) -> void:
 ## snow).
 const SHOVE_SPLAY_DEG := 45.0
 const SHOVE_CAST := 1.5
+## Polish 7 §10: SHOVE_CAST is for the plain pickup's 2 m. The pickup with its plow (2.4 m with the
+## blade raised) casts in proportion, so its snow too lands clear of its path.
+const SHOVE_CAST_WIDTH := 2.0
 
 func _shove(fwd: Vector2, travel: Vector2) -> void:
 	var bp: Vector3 = global_transform * Vector3(0, 0, -data.length * 0.5)
@@ -453,10 +687,12 @@ func _shove(fwd: Vector2, travel: Vector2) -> void:
 	var ang := deg_to_rad(SHOVE_SPLAY_DEG)
 	var hw := data.width * 0.25 / cos(ang)   # each arm spans half the truck's width
 	var adv := maxf(travel.dot(fwd), 0.0)
+	var cast := SHOVE_CAST * data.width / SHOVE_CAST_WIDTH
 	var moved := 0.0
 	for s in [-1.0, 1.0]:
 		var mid: Vector2 = front - fwd * (data.width * 0.25 * tan(ang)) + right * (data.width * 0.25 * s)
-		var r := Snow.blade_push(mid, fwd.rotated(ang * s), hw, adv + 0.1, Catalog.balance.pickup_shove_floor, false, SHOVE_CAST)
+		# Polish 7 playtest fix 2: the shove's snow lands as before (no tumble): its driving rules stay.
+		var r := Snow.blade_push(mid, fwd.rotated(ang * s), hw, adv + 0.1, Catalog.balance.pickup_shove_floor, false, cast, false)
 		moved += float(r["moved"])
 	# The truck's body holds back the snow that slumps around it, as the strip behind a plow's
 	# blade does (player_guard).
@@ -473,11 +709,43 @@ func _shove(fwd: Vector2, travel: Vector2) -> void:
 		SnowFX.burst(Vector3(front.x, 0.5, front.y) + Vector3(right.x, 0, right.y) * (data.width * 0.45 * s2), 8, 1.0, Vector3(out.x, 0.9, out.y).normalized())
 
 
+## Polish 7 playtest fix 1: the snow the truck stands in, for its bog depth: the lower wheel of each
+## axle, averaged over the axles. A wheel line its shove doesn't clear (the plain pickup's 2 m V ends
+## at its wheels) or a wheel off its cleared track in a turn adds nothing.
+func _axle_depth() -> float:
+	var ws: Array = info["wheels"]
+	var sum := 0.0
+	var n := 0
+	for k in range(0, ws.size() - 1, 2):
+		var a: Vector3 = global_transform * (ws[k]["pos"] as Vector3)
+		var b: Vector3 = global_transform * (ws[k + 1]["pos"] as Vector3)
+		sum += minf(Snow.depth_at(a.x, a.z), Snow.depth_at(b.x, b.z))
+		n += 1
+	return sum / maxf(n, 1)
+
+
 ## Polish 5 §12: the average snow depth under the wheels (m) at which this vehicle is stuck.
+## Polish 7 §10: the pickup's, for the pickup with its plow too (blade up or down).
 func stuck_depth() -> float:
-	if data.kind == VehicleData.Kind.PICKUP:
+	if is_pickup():
 		return Catalog.balance.pickup_stuck_depth
 	return data.clearance * 1.15
+
+
+## Polish 7 §11: one frame of back-drag at the blade's centre `bp`: the blade's face turned toward the
+## vehicle, the band the frame's reverse travel `back` + 0.1 m, the snow landing DRAG_CAST behind
+## the blade (spread over blade_push's band, one push_rng draw per moved cell, marked soft); the
+## ground it uncovers (the blade's far side) guarded from slumping back, as behind a push.
+func back_drag(bp: Vector2, face: Vector2, fwd: Vector2, hw: float, back: float) -> Dictionary:
+	var r := Snow.blade_push(bp, -face, hw, back + 0.1, data.blade_floor, false, DRAG_CAST, true, berm_reach(hw))
+	player_guard(bp, -fwd, hw + 0.2)
+	return r
+
+
+## Polish 7 playtest fix 2: how far ahead of the face the berm drag reads, for a blade `hw` m to either
+## side (BERM_REACH_BASE).
+func berm_reach(hw: float) -> float:
+	return BERM_REACH_BASE + BERM_REACH_PER_HW * hw
 
 
 func player_guard(center: Vector2, fwd: Vector2, hw: float) -> void:
@@ -629,6 +897,8 @@ func hud_text() -> String:
 	var s := data.display_name
 	if data.has_plow:
 		s += "  |  Blade %s %+d°" % ["DOWN" if tool_on else "up", int(blade_angle)]
+		if dragging:
+			s += " — dragging"      # polish 7 §11
 	if data.has_blower:
 		s += "  |  Blower %s, chute %+d°" % ["ON" if tool_on else "off", int(chute_angle)]
 	if data.dump_capacity > 0.0:

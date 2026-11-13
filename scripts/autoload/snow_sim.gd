@@ -1520,12 +1520,20 @@ func _spill(p: Vector2, amount: float, allow_road := false, moved := false) -> f
 ## all landed before: push_dist plus the cell's 0–12 cm draw), not on one line, so the berm grows
 ## rounded instead of as a one-cell ridge. Still one draw per moved cell from push_rng. The snow it
 ## moves is marked soft (player-moved).
+## Polish 7 playtest fix 2: a share doesn't stack where it lands: whatever would stand more than
+## moved_repose above its cell's lowest open neighbour rolls on down the pile (_roll), so the pile in
+## front of a moving blade tumbles forward and out past the blade's ends instead of spiking. `berm` is
+## the snow across the blade within BERM_FACE (0.65 m) ahead of its face, as before, plus, out to
+## `berm_reach`, the pushed (player-moved, loose) snow there: the plows read their pile, which now lies
+## further from the face; hand pushes read 0.65 m as before. Without `tumble` the shares land as before
+## (the pickup's shove, blade up: its driving rules stay as they were).
 ## Returns {moved, berm, blocked_volume}.
 const PUSH_BAND := [1.0 / 12.0, 3.0 / 12.0, 4.0 / 12.0, 3.0 / 12.0, 1.0 / 12.0]
 const PUSH_BAND_STEP := 0.2
+const BERM_FACE := 0.65
 
 
-func blade_push(center: Vector2, face_n: Vector2, half_w: float, band: float, floor_d: float, player_rule := true, push_dist := 0.4) -> Dictionary:
+func blade_push(center: Vector2, face_n: Vector2, half_w: float, band: float, floor_d: float, player_rule := true, push_dist := 0.4, tumble := true, berm_reach := 0.65) -> Dictionary:
 	face_n = face_n.normalized()
 	var tang := Vector2(-face_n.y, face_n.x)
 	var reach := half_w + 0.3
@@ -1535,7 +1543,25 @@ func blade_push(center: Vector2, face_n: Vector2, half_w: float, band: float, fl
 	var z0 := clampi(int(floor(mn.y * INV_CELL)) - 2, 0, H - 1)
 	var x1 := clampi(int(floor(mx.x * INV_CELL)) + 2, 0, W - 1)
 	var z1 := clampi(int(floor(mx.y * INV_CELL)) + 2, 0, H - 1)
-	_sync_cells(maxi(x0 - 4, 0), maxi(z0 - 4, 0), mini(x1 + 4, W - 1), mini(z1 + 4, H - 1))
+	# Polish 7 playtest fix 2: the cells read for `berm`. The push works on x0..z1 as before (its dirty
+	# and relaxed rect too); only a reach longer than BERM_FACE reads further, where it passes that rect.
+	# No cell outside x0..z1 is pushed: the band lies within half_w + band of the centre.
+	var sx0 := x0
+	var sz0 := z0
+	var sx1 := x1
+	var sz1 := z1
+	if berm_reach > BERM_FACE:
+		var br := sqrt(berm_reach * berm_reach + half_w * half_w) + CELL
+		sx0 = mini(x0, clampi(int(floor((center.x - br) * INV_CELL)), 0, W - 1))
+		sz0 = mini(z0, clampi(int(floor((center.y - br) * INV_CELL)), 0, H - 1))
+		sx1 = maxi(x1, clampi(int(floor((center.x + br) * INV_CELL)), 0, W - 1))
+		sz1 = maxi(z1, clampi(int(floor((center.y + br) * INV_CELL)), 0, H - 1))
+	_sync_cells(maxi(sx0 - 4, 0), maxi(sz0 - 4, 0), mini(sx1 + 4, W - 1), mini(sz1 + 4, H - 1))
+	# Polish 7 playtest fix 2: the roll needn't sync these again.
+	_synced_x0 = maxi(sx0 - 4, 0)
+	_synced_z0 = maxi(sz0 - 4, 0)
+	_synced_x1 = mini(sx1 + 4, W - 1)
+	_synced_z1 = mini(sz1 + 4, H - 1)
 	var moved := 0.0
 	var kept := 0.0
 	var berm := 0.0
@@ -1545,16 +1571,21 @@ func blade_push(center: Vector2, face_n: Vector2, half_w: float, band: float, fl
 	var ez0 := z0
 	var ex1 := x1
 	var ez1 := z1
-	for z in range(z0, z1 + 1):
-		for x in range(x0, x1 + 1):
+	for z in range(sz0, sz1 + 1):
+		for x in range(sx0, sx1 + 1):
 			var i := z * W + x
 			var c := Vector2((x + 0.5) * CELL, (z + 0.5) * CELL) - center
 			var along := c.dot(tang)
 			if absf(along) > half_w:
 				continue
 			var ahead := c.dot(face_n)
-			if ahead > 0.0 and ahead < 0.65:
-				berm += depth[i]
+			if ahead > 0.0 and ahead < berm_reach:
+				# Polish 7 playtest fix 2: past BERM_FACE only the pile the blade drives counts (its pushed,
+				# player-moved loose snow), not the untouched snow it hasn't reached.
+				if ahead < BERM_FACE:
+					berm += depth[i]
+				elif soft[i] == 1:
+					berm += loose[i]
 			if ahead > 0.0 or ahead < -band:
 				continue
 			var s := surf[i]
@@ -1585,30 +1616,203 @@ func blade_push(center: Vector2, face_n: Vector2, half_w: float, band: float, fl
 				if player_rule and ts == S_ROAD and s != S_ROAD:
 					kept += share   # curb acts as a wall: snow stays on the property side
 					continue
-				# The berm can't rise above the ceiling: whatever doesn't fit stays in front of the blade.
-				var mv := minf(share, maxf(ceiling - ground[t] - depth[t], 0.0))
+				# Polish 7 playtest fix 2: it lands on t and rolls on down the pile (_roll). The berm still
+				# can't rise above the ceiling: whatever finds no room stays in front of the blade.
+				var mv := 0.0
+				if tumble:
+					mv = _roll(t, share, center, face_n, tang, half_w, player_rule)
+				else:
+					mv = minf(share, maxf(ceiling - ground[t] - depth[t], 0.0))
+					if mv > 0.0:
+						depth[t] += mv
+						loose[t] += mv
+						if soft[t] == 0:
+							_set_soft(t)
+						ex0 = mini(ex0, tx)
+						ez0 = mini(ez0, tz)
+						ex1 = maxi(ex1, tx)
+						ez1 = maxi(ez1, tz)
 				if mv < share:
 					kept += share - mv
 				if mv <= 0.0:
 					continue
-				depth[t] += mv
-				loose[t] += mv
-				if soft[t] == 0:
-					_set_soft(t)
 				took += mv
-				ex0 = mini(ex0, tx)
-				ez0 = mini(ez0, tz)
-				ex1 = maxi(ex1, tx)
-				ez1 = maxi(ez1, tz)
 			if took <= 0.0:
 				continue
 			depth[i] -= took
 			loose[i] = minf(loose[i], depth[i])
 			moved += took
 	if moved > 0.0:
+		ex0 = mini(ex0, _roll_x0)
+		ez0 = mini(ez0, _roll_z0)
+		ex1 = maxi(ex1, _roll_x1)
+		ez1 = maxi(ez1, _roll_z1)
 		mark_dirty(ex0, ez0, ex1, ez1)
 		_queue_relax(ex0, ez0, ex1, ez1)
+	_roll_x0 = W
+	_roll_z0 = H
+	_roll_x1 = -1
+	_roll_z1 = -1
 	return {"moved": moved * CELL_AREA, "berm": berm * CELL_AREA, "kept": kept * CELL_AREA}
+
+
+## Polish 7 playtest fix 2: how far (cells) a share of pushed snow rolls at most; the cells the rolls
+## of the current blade_push reached (for its dirty rect and relaxation); and the cells it synced.
+const ROLL_STEPS := 48
+var _roll_x0 := W
+var _roll_z0 := H
+var _roll_x1 := -1
+var _roll_z1 := -1
+var _synced_x0 := 0
+var _synced_z0 := 0
+var _synced_x1 := -1
+var _synced_z1 := -1
+
+
+## Polish 7 playtest fix 2: `amt` (depth units) of snow a blade drops on cell t. It doesn't stack: what
+## would make a cell stand more than moved_repose above its lowest open neighbour rolls on to that
+## neighbour, and on down the pile, as loose snow does: over the pile's front and out past the blade's
+## ends, never back through the blade (the cells behind its face, across its width) and never where
+## the relaxation wouldn't slump it (a wall, a completed box from outside, the guarded strip behind the
+## face, off the map). It is part of the push, so the curb stops it only where it stops the push
+## (player_rule): a plow or a hand tool carries its snow over the curb, and its pile tumbles over it
+## too. The ceiling still caps every cell. What it lands on is marked soft. No random draws; volume
+## conserved. Returns what it placed: the rest found no room within ROLL_STEPS cells and stays where
+## the blade found it.
+func _roll(t: int, amt: float, center: Vector2, face_n: Vector2, tang: Vector2, half_w: float, player_rule: bool) -> float:
+	var placed := 0.0
+	var cur := t
+	var g := guard_ttl > 0
+	var ms := moved_repose
+	var ax := face_n.x * CELL
+	var az := face_n.y * CELL
+	var lx := tang.x * CELL
+	var lz := tang.y * CELL
+	# Where the current cell is from the blade's middle: along its face normal (a) and across it (l).
+	@warning_ignore("integer_division")
+	var c0 := Vector2((t % W + 0.5) * CELL, (t / W + 0.5) * CELL) - center
+	var a := c0.dot(face_n)
+	var l := c0.dot(tang)
+	var chunk := -1
+	var bx0 := W
+	var bz0 := H
+	var bx1 := -1
+	var bz1 := -1
+	for k in range(ROLL_STEPS + 1):
+		var cx := cur % W
+		@warning_ignore("integer_division")
+		var cz := cur / W
+		# A roll can leave the chunks blade_push synced: bring each one it enters up to date first.
+		if cx < _synced_x0 or cx > _synced_x1 or cz < _synced_z0 or cz > _synced_z1:
+			@warning_ignore("integer_division")
+			var ch := (cz / CHUNK) * CW + cx / CHUNK
+			if ch != chunk:
+				chunk = ch
+				_sync_cells(cx, cz, cx, cz)
+		# The four neighbours, written out (this is the hot loop): the lowest open one; between equal
+		# ones the furthest ahead of the blade, then the furthest out from its middle, so a pile forms
+		# the same whichever way the blade faces. Walls: a building, the street from the property side
+		# where the push keeps to the curb, a completed box from outside, the blade (behind its face,
+		# across its width) and the guarded strip behind the face.
+		var yard := player_rule and surf[cur] != S_ROAD
+		var out := hold[cur] == 0
+		var hc := ground[cur] + depth[cur]
+		var low := -1
+		var hl := INF
+		var la := 0.0
+		var ll := 0.0
+		var n := 0
+		var na := 0.0
+		var nl := 0.0
+		var sn := 0
+		var hn := 0.0
+		if cx + 1 < W:
+			n = cur + 1
+			na = a + ax
+			nl = l + lx
+			sn = surf[n]
+			if sn != S_BLOCKED and not (yard and sn == S_ROAD) and not (out and hold[n] == 1) and not (na <= 0.0 and (absf(nl) <= half_w or (g and _guarded(n)))):
+				hn = ground[n] + depth[n]
+				if hn < hl or (hn == hl and (na > la or (na == la and absf(nl) > absf(ll)))):
+					hl = hn
+					low = n
+					la = na
+					ll = nl
+		if cx > 0:
+			n = cur - 1
+			na = a - ax
+			nl = l - lx
+			sn = surf[n]
+			if sn != S_BLOCKED and not (yard and sn == S_ROAD) and not (out and hold[n] == 1) and not (na <= 0.0 and (absf(nl) <= half_w or (g and _guarded(n)))):
+				hn = ground[n] + depth[n]
+				if hn < hl or (hn == hl and (na > la or (na == la and absf(nl) > absf(ll)))):
+					hl = hn
+					low = n
+					la = na
+					ll = nl
+		if cz + 1 < H:
+			n = cur + W
+			na = a + az
+			nl = l + lz
+			sn = surf[n]
+			if sn != S_BLOCKED and not (yard and sn == S_ROAD) and not (out and hold[n] == 1) and not (na <= 0.0 and (absf(nl) <= half_w or (g and _guarded(n)))):
+				hn = ground[n] + depth[n]
+				if hn < hl or (hn == hl and (na > la or (na == la and absf(nl) > absf(ll)))):
+					hl = hn
+					low = n
+					la = na
+					ll = nl
+		if cz > 0:
+			n = cur - W
+			na = a - az
+			nl = l - lz
+			sn = surf[n]
+			if sn != S_BLOCKED and not (yard and sn == S_ROAD) and not (out and hold[n] == 1) and not (na <= 0.0 and (absf(nl) <= half_w or (g and _guarded(n)))):
+				hn = ground[n] + depth[n]
+				if hn < hl or (hn == hl and (na > la or (na == la and absf(nl) > absf(ll)))):
+					hl = hn
+					low = n
+					la = na
+					ll = nl
+		var room := ceiling - hc
+		if low >= 0:
+			room = minf(room, hl + ms - hc)
+		var add := minf(maxf(room, 0.0), amt)
+		if add > 0.0:
+			# What the cell stores (32-bit) is what is counted, so the targets get exactly what the source
+			# gives up (its own subtraction still rounds once). A store that rounds up past what is left
+			# is redone a step lower, so the source isn't overdrawn below its floor.
+			var was := depth[cur]
+			depth[cur] = was + add
+			var got := depth[cur] - was
+			if got > amt:
+				depth[cur] = was + (amt - (got - amt))
+				got = depth[cur] - was
+			if got > 0.0:
+				loose[cur] += got
+				if soft[cur] == 0:
+					_set_soft(cur)
+				placed += got
+				amt -= got
+				bx0 = mini(bx0, cx)
+				bz0 = mini(bz0, cz)
+				bx1 = maxi(bx1, cx)
+				bz1 = maxi(bz1, cz)
+			elif add >= amt:
+				break     # too little for the cell to hold: it stays where the blade found it
+		elif low >= 0 and hl >= hc:
+			break         # no room here and no way down (a plateau at the ceiling): it stays where the blade found it
+		if amt <= 1e-9 or low < 0:
+			break
+		cur = low
+		a = la
+		l = ll
+	if bx1 >= 0:
+		_roll_x0 = mini(_roll_x0, bx0)
+		_roll_z0 = mini(_roll_z0, bz0)
+		_roll_x1 = maxi(_roll_x1, bx1)
+		_roll_z1 = maxi(_roll_z1, bz1)
+	return placed
 
 
 ## Remove snow from an intake footprint (blowers, electric shovels, sleigh loading),
