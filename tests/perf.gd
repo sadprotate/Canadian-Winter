@@ -36,6 +36,9 @@ extends Node
 ## the player in the front yard beside the driveway, at 1× and at fast-forward (capped at 2× in the
 ## snow). On older builds the same storm without the heating (the upgrades do nothing, no pad).
 ##   -- --only=heat    runs just the world and the heating
+## Polish 7 playtest fix 2: -- --only=plow runs just the world, idle outdoors, the blizzard +
+## shovelling (it sets up the next), the hand push (RMB) in deep snow and the plow truck pushing a berm:
+## a quicker before/after for a change to the snow ops.
 ## Polish 6 §9: after each scenario's line, a "snow counters" line from the snow renderer: the
 ## relaxation's µs a frame (relax_us_last, budget relax_usec) and the chunk meshes' (mesh_us_last,
 ## budget mesh_usec; -1 on a build without that counter), p95 and max, and chunk updates a frame.
@@ -77,7 +80,7 @@ func _ready() -> void:
 	# Headless runs in low-processor mode (sleeps ~7 ms per frame); measure real work instead.
 	OS.low_processor_usage_mode = false
 	await get_tree().process_frame
-	if only != "ff":
+	if only != "ff" and only != "plow":
 		# Polish 3 §1: the main menu's live background (camera path, falling snow, figures).
 		var mt := Time.get_ticks_msec()
 		menu = load("res://scenes/main_menu.tscn").instantiate()
@@ -131,15 +134,18 @@ func _ready() -> void:
 		AudioMgr.quit()
 		return
 	# Polish 4: indoors, the desk with the computer screen and the photo by the door in view.
-	var L := HouseBuilder.lot_transform(lot)
-	var inside := L * Vector3(-6.0, InteriorBuilder.FY + 0.05, 17.5)
-	var aim := L * Vector3(-1.0, InteriorBuilder.FY + 1.4, 13.5)
-	pl.teleport(inside, atan2(-(aim.x - inside.x), -(aim.z - inside.z)))
-	pl.pitch = 0.0
-	pl.head.rotation.x = 0.0
-	Clock.running = true
-	await _measure("indoors (screen + photo)", 300, func(_i): pass)
-	print("  indoors: in the house %s, screen re-renders %d" % [str(pl.in_player_house), int(world.interior["screen"].renders) if world.get("interior") and world.interior.has("screen") else -1])
+	if only != "plow":
+		var L := HouseBuilder.lot_transform(lot)
+		var inside := L * Vector3(-6.0, InteriorBuilder.FY + 0.05, 17.5)
+		var aim := L * Vector3(-1.0, InteriorBuilder.FY + 1.4, 13.5)
+		pl.teleport(inside, atan2(-(aim.x - inside.x), -(aim.z - inside.z)))
+		pl.pitch = 0.0
+		pl.head.rotation.x = 0.0
+		Clock.running = true
+		await _measure("indoors (screen + photo)", 300, func(_i): pass)
+		print("  indoors: in the house %s, screen re-renders %d" % [str(pl.in_player_house), int(world.interior["screen"].renders) if world.get("interior") and world.interior.has("screen") else -1])
+	else:
+		Clock.running = true
 	pl.teleport(Vector3(p.x, 0.05, p.y), PI)
 	await get_tree().process_frame
 	Weather.force(Weather.C.BLIZZARD, 10.0, 12.0)   # exaggerated snowfall rate: worst case syncs
@@ -183,6 +189,9 @@ func _ready() -> void:
 	Input.action_press("veh_accelerate")
 	await _measure("plow truck pushing a berm", 480, func(_i): pass)
 	Input.action_release("veh_accelerate")
+	if only == "plow":
+		AudioMgr.quit()
+		return
 	# Late winter: 4 m of snow over the whole map (near the lamp-height ceiling) and a major event.
 	Snow.add_layer_rect(Rect2(0, 0, Layout.MAP_W, Layout.MAP_D), 4.0)
 	Snow.set_rect(Rect2(0, 79, 192, 8), 0.3)

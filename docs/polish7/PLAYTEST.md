@@ -69,7 +69,7 @@ Try these in **Fun Mode**, then repeat the truck checks (1–5) in **Survival Mo
 14. Blade down, the main way: press Down and drive forward out of the driveway to the street.
     - It starts slow (about 2 km/h) while its wheels are in the deep snow, then picks up once they
       run on what the blade has cleared.
-    - It should reach the street in one push (about 9 s). If you stop and back up, raise the blade
+    - It should reach the street in one push (about 10 s). If you stop and back up, raise the blade
       first (Up), or it drags the snow back with you.
     - The driveway's snow ends up as a big pile on the street in front of the blade. Say whether
       that's OK.
@@ -85,3 +85,32 @@ Try these in **Fun Mode**, then repeat the truck checks (1–5) in **Survival Mo
 18. Start another new game and dig out only around the truck's wheels with the shovel, not the
     driveway. Blade up, it now stops at once ("…too much to push from a standstill… Back up…"), where
     without digging it pushes off slowly. Back up and take a run at it. Say whether that feels right.
+
+## Playtest fix 2: pushed snow tumbles instead of spiking (re-check)
+
+19. Push a long row with the truck, blade down and straight: 50 m, then 100 m along a street with
+    fresh snow on it.
+    - The pile in front of the blade should tumble: snow rolls down its front and off both ends of
+      the blade into ridges along your lane. Nothing should stick up out of it.
+    - It reaches its full size within the first 10–20 m (about 1.5 m tall in 30 cm of snow) and then
+      stays that size. The extra snow goes into the ridges, so after 100 m the pile is the same as
+      after 50 m, with longer ridges.
+    - The truck should still feel the load: a little slower than before the fix (about 20 km/h in
+      30 cm of snow; every plow is 3–9 % slower on a long push). Say whether it feels too heavy.
+20. Stop. It should leave one big rounded mound where you stopped, plus the ridges along the way.
+    Raise the blade (Up) and back off: the mound settles lower and stays rounded.
+21. Angle the blade (Z / C) and push a long row: the snow should roll off the trailing end into a
+    ridge, with no stack of snow at the end of the blade. Try it driving diagonally across a parking
+    lot too.
+22. On the first morning, plow out of the driveway blade down: no tall column of snow at the curb.
+    The pile tumbles over it into the street (about 2.3 m tall at most; before the fix about 4 m).
+    It takes a little longer than before (about 11 s for the first 15 m, holding forward).
+23. Hand push (RMB, walking) a long row with the wide pusher and with the standard shovel: the same,
+    the pile tumbles and never spikes.
+    - In deep snow (30 cm) with the wide pusher: before the fix the pile in front grew above your hips
+      after about 2 m and stopped you. Now it tumbles away, so you keep pushing, slowly. Say whether
+      that feels right.
+24. Back-drag (blade down, reverse) from a garage door: the snow builds against the blade's back face
+    without spiking, and stays as a pile when you raise the blade. On a long drag the pile now runs out
+    toward the front wheels right away: check that the truck (and the ATV, if you have it) doesn't get
+    stuck in its own pile.

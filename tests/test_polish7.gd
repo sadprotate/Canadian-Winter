@@ -1092,3 +1092,393 @@ func test_pf1_a_long_stretch_bogs_anywhere_across_the_street() -> void:
 			await _drop(v)
 	runner.check(bad.is_empty(), "PF1 %d cm untouched (the bog depth), a 13 m run-up, at four places across the street: every truck bogs and stays bogged %s %s" % [int(round(b.pickup_bog_depth * 100.0)), str(runs), str(bad)])
 	await _unload()
+
+
+# =============================================================================
+# Playtest fix 2: pushed snow tumbles instead of spiking
+# =============================================================================
+
+## The level snow of the long pushes (m).
+const PF2_DEPTH := 0.3
+## The highest the pickup's pile may stand while it pushes PF2_DEPTH of level snow, once it has
+## stopped and once it has settled (m). Measured (report/playtest_fix_2.md): 1.54–1.58 m while
+## pushing, 1.50–1.52 m stopped, 1.22 m settled; before the fix 2.19 m and 1.93 m.
+const PF2_TOP := 1.7
+## The same through the opening (a new game's driveway, ~80 cm, and the street's snow). Measured:
+## 2.27 m (every seed and mode alike); before the fix 4.11 m, snow stacked against the curb.
+const PF2_TOP_OPENING := 2.6
+## How far a cell of pushed snow may stand over the moved-snow step while the relaxation runs (m). The
+## push itself leaves none, straight or angled (test_pf2_the_push_alone_never_spikes, to 1e-6 m); the
+## relaxation then moves snow one edge at a time and rounds the tops, so a cell can be a little over
+## the step until its next pass (measured: at most 1.5 cm with a straight blade, the plow truck; 2.4 cm
+## with the pickup's blade angled 30°). Before the fix the pile stood up to 0.45 m over it (the pickup,
+## 30 cm) and 0.82 m (the plow truck).
+const PF2_SPIKE := 0.03
+## "Not taller" after 100 m than after 50 m: the tops may differ by this much (m), a snapshot's rounding.
+const PF2_SAME := 0.05
+## How far behind the blade the checks look (m): inside the strip its guard holds (2 m). Further back,
+## the edge of the lane it has cut settles by the relaxation once the guard has passed, as before the
+## fix (report/playtest_fix_2.md).
+const PF2_BEHIND := 1.5
+## The pickup's mean speed pushing PF2_DEPTH once its pile has formed, before the fix (km/h): a long
+## push may not get easier.
+const PF2_KMH_BEFORE := 20.9
+
+
+## Maple Street and its sidewalks under `d` m of level snow, in the test world (noon, the clock
+## stopped, the sky clear, relaxation by tile count), push_rng reseeded: the same every run.
+func _pf2_road(d: float) -> void:
+	await _world()
+	Snow.set_rect(Rect2(0, 77, Layout.MAP_W, 12), d)
+	Snow.relax_until_stable()
+	Snow.push_rng.seed = Snow.PUSH_SEED
+
+
+## The blade's middle (world XZ).
+func _pf2_blade(v: Vehicle) -> Vector2:
+	var p: Vector3 = v.global_transform * Vector3(0, 0, v.info["blade_z"])
+	return Vector2(p.x, p.z)
+
+
+## The player-moved snow around a blade whose face's middle is at `at`, travelling along `fwd`, `hw` m
+## to either side: the cells from a0 to a1 m along fwd and up to `side` m across. Returns {top, spike,
+## spike_at, len, wid, carried, spill}:
+## - spike: the most any player-moved cell's loose snow stands above moved_repose over a neighbour it
+##   could slide onto — not a building, a completed box from outside or the guarded strip behind a
+##   blade; with `curb`, not the street from the property side (as for the relaxation); with `blade`,
+##   not the cells behind the face across the blade's width (the blade, as for the push itself; the
+##   face is `face`, or fwd) (m); spike_at: where (m ahead, m aside, along fwd);
+## - top: the deepest player-moved cell (m);
+## - len, wid: how far the player-moved snow standing over 5 cm above `d0` reaches along and across fwd
+##   from a cell behind the face on: the pile in front of the blade (m);
+## - carried: that pile's snow above d0; spill: the player-moved snow above d0 behind the face and past
+##   the blade's ends, what rolled off them (m³).
+func _pf2_scan(at: Vector2, fwd: Vector2, hw: float, d0: float, a0: float, a1: float, side: float, curb := true, blade := false, face := Vector2.ZERO) -> Dictionary:
+	var tang := Vector2(-fwd.y, fwd.x)
+	var bf := face if face != Vector2.ZERO else fwd
+	var bt := Vector2(-bf.y, bf.x)
+	var mn := Vector2(INF, INF)
+	var mx := Vector2(-INF, -INF)
+	for c in [at + fwd * a0 + tang * side, at + fwd * a0 - tang * side, at + fwd * a1 + tang * side, at + fwd * a1 - tang * side]:
+		mn = mn.min(c)
+		mx = mx.max(c)
+	var W := Snow.W
+	var ms := Snow.moved_repose
+	var g := Snow.guard_ttl > 0
+	var r := {"top": 0.0, "spike": 0.0, "spike_at": Vector2.ZERO, "carried": 0.0, "spill": 0.0}
+	var amin := INF
+	var amax := -INF
+	var lmin := INF
+	var lmax := -INF
+	for z in range(clampi(Snow.cell_z(mn.y), 1, Snow.H - 2), clampi(Snow.cell_z(mx.y), 1, Snow.H - 2) + 1):
+		for x in range(clampi(Snow.cell_x(mn.x), 1, W - 2), clampi(Snow.cell_x(mx.x), 1, W - 2) + 1):
+			var i := z * W + x
+			if Snow.soft[i] != 1 or Snow.surf[i] == Snow.S_BLOCKED:
+				continue
+			var c := Vector2((x + 0.5) * Snow.CELL, (z + 0.5) * Snow.CELL) - at
+			var ah := c.dot(fwd)
+			var al := c.dot(tang)
+			if ah < a0 or ah > a1 or absf(al) > side or (blade and c.dot(bf) <= 0.0 and absf(c.dot(bt)) <= hw):
+				continue
+			var d: float = Snow.depth[i]
+			r["top"] = maxf(r["top"], d)
+			var ex := maxf(d - d0, 0.0)
+			if ah >= -Snow.CELL:
+				r["carried"] += ex * Snow.CELL_AREA
+				if ex > 0.05:
+					amin = minf(amin, ah)
+					amax = maxf(amax, ah)
+					lmin = minf(lmin, al)
+					lmax = maxf(lmax, al)
+			elif absf(al) > hw:
+				r["spill"] += ex * Snow.CELL_AREA
+			var h: float = Snow.ground[i] + d
+			for e in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				var n: int = i + e.x + e.y * W
+				var sn: int = Snow.surf[n]
+				if sn == Snow.S_BLOCKED or (Snow.hold[n] == 1 and Snow.hold[i] == 0) or (g and Snow._guarded(n)):
+					continue
+				if curb and sn == Snow.S_ROAD and Snow.surf[i] != Snow.S_ROAD:
+					continue
+				if blade:
+					var cn := c + Vector2(e.x, e.y) * Snow.CELL
+					if cn.dot(bf) <= 0.0 and absf(cn.dot(bt)) <= hw:
+						continue
+				var sl := minf(h - Snow.ground[n] - Snow.depth[n] - ms, Snow.loose[i])
+				if sl > r["spike"]:
+					r["spike"] = sl
+					r["spike_at"] = Vector2(snappedf(ah, 0.01), snappedf(al, 0.01))
+	r["len"] = amax - amin if amax > amin else 0.0
+	r["wid"] = lmax - lmin if lmax > lmin else 0.0
+	return r
+
+
+## Drive the truck `v` with its blade lowered (its key) — and with `aim`, angled by holding that key
+## 0.75 s — at full throttle until the blade has gone `dist` m; every frame, the pile in front of the
+## blade and what rolls off its ends (_pf2_scan from PF2_BEHIND behind the blade on, the blade itself
+## a wall). Then braked to a stop (scanned again), and left: the blade raised (its key),
+## backed off, out of the truck, the guard run out and the snow settled (the whole path scanned, no
+## blade). The truck is then removed. Returns {gone, secs, spike, spike_at, top, kmh (the mean speed
+## once the blade is past half way), angle, stopped, left, vol}.
+func _pf2_push(v: Vehicle, dist: float, d0: float, limit_s := 60.0, aim := "") -> Dictionary:
+	var fwd3 := -v.global_transform.basis.z
+	var fwd := Vector2(fwd3.x, fwd3.z).normalized()
+	var hw: float = v.data.blade_width * 0.5
+	var vol0 := Snow.total_volume() + Snow.melted
+	await _s11_key(_s11_bound("veh_blade_down"))
+	if aim != "":
+		Input.action_press(aim)
+		await _frames(45)
+		Input.action_release(aim)
+		await _frames(2)
+	var face := fwd.rotated(deg_to_rad(v.blade_angle))
+	var b0 := _pf2_blade(v)
+	var r := {"spike": 0.0, "spike_at": Vector2.ZERO, "top": 0.0, "kmh": 0.0, "angle": v.blade_angle}
+	var n := 0
+	var f := 0
+	var gone := 0.0
+	Input.action_press("veh_accelerate")
+	while f < int(limit_s * 60.0) and gone < dist:
+		await _tree().physics_frame
+		f += 1
+		var bp := _pf2_blade(v)
+		gone = (bp - b0).dot(fwd)
+		var s := _pf2_scan(bp, fwd, hw, d0, -PF2_BEHIND, 12.0, 6.0, true, true, face)
+		r["top"] = maxf(r["top"], s["top"])
+		if s["spike"] > r["spike"]:
+			r["spike"] = s["spike"]
+			r["spike_at"] = s["spike_at"]
+		if gone > dist * 0.5:
+			r["kmh"] += absf(v.speed) * 3.6
+			n += 1
+	Input.action_release("veh_accelerate")
+	r["kmh"] /= maxf(n, 1)
+	r["gone"] = gone
+	r["secs"] = f / 60.0
+	Input.action_press("veh_brake")
+	await _frames(60)
+	Input.action_release("veh_brake")
+	var bp1 := _pf2_blade(v)
+	r["stopped"] = _pf2_scan(bp1, fwd, hw, d0, -PF2_BEHIND, 12.0, 6.0, true, true, face)
+	await _s11_key(_s11_bound("veh_blade_up"))
+	Input.action_press("veh_reverse")
+	await _frames(60)
+	Input.action_release("veh_reverse")
+	Input.action_press("veh_brake")
+	await _frames(30)
+	Input.action_release("veh_brake")
+	v.exit_vehicle()
+	await _frames(60)      # the guard runs out and its tiles are queued (Snow.GUARD_SETTLE_STEPS)
+	Snow.relax_until_stable()
+	r["left"] = _pf2_scan(bp1, fwd, hw, d0, -(gone + 3.0), 12.0, 6.0)
+	r["vol"] = Snow.total_volume() + Snow.melted - vol0
+	Game.vehicles.erase(v.entry)
+	v.queue_free()
+	await _frames(2)
+	return r
+
+
+func _pf2_pile(s: Dictionary) -> String:
+	return "top %.2f m, %.1f m long x %.1f m wide, %.2f m³ above the level snow" % [s["top"], s["len"], s["wid"], s["carried"]]
+
+
+## The op itself (Snow.blade_push), with no relaxation in between: a plow's blade (2.4 m, cast 0.6 m),
+## straight and angled 30°, a hand tool's (0.9 m, 0.38 m) and the plow back-dragging (its face toward
+## the vehicle, Vehicle.DRAG_CAST) each step 5 cm at a time, 15 m along Maple Street's 30 cm of level
+## snow, the guard set behind the blade as the vehicles do (a box along the travel). After every step no player-moved cell stands over the
+## moved-snow step above a neighbour its snow could roll onto (1e-6 m; the street open to it: these
+## pushes carry snow over the curb); one push_rng draw per moved cell; the snow conserved. Before the
+## fix a plow's pile stood 0.5 m over the step within a few metres.
+func test_pf2_the_push_alone_never_spikes() -> void:
+	await _unload()
+	Game.world = null
+	Game.player = null
+	for blade in [["plow", 1.2, 0.1, 0.6, 1.0, 0.0], ["plow angled 30°", 1.2, 0.1, 0.6, 1.0, 30.0], ["hand tool", 0.45, 0.07, 0.38, 1.0, 0.0], ["back-drag", 1.2, 0.1, Vehicle.DRAG_CAST, -1.0, 0.0]]:
+		Game.new_game("fun", 2024)
+		var hw: float = blade[1]
+		var fwd := Vector2(float(blade[4]), 0.0)
+		var face := fwd.rotated(deg_to_rad(float(blade[5])))
+		var tang := Vector2(-face.y, face.x)
+		var area := Rect2(0, 76, 60, 14)
+		Snow.set_rect(area, 0.0)
+		Snow.set_rect(Rect2(0, 79, 60, 8), PF2_DEPTH)
+		var v0 := Snow.volume_in_rect(area)
+		Snow.push_rng.seed = Snow.PUSH_SEED + 11
+		var ref := RandomNumberGenerator.new()
+		ref.seed = Snow.PUSH_SEED + 11
+		var at := Vector2(15.0 if face.x > 0.0 else 45.0, 83.0)
+		var worst := 0.0
+		var worst_at := ""
+		var draws_ok := true
+		var top := 0.0
+		for k in range(300):
+			at += fwd * 0.05
+			var band: float = 0.05 + float(blade[2])
+			# The cells the step lifts: each gets one draw.
+			var cells := 0
+			for z in range(Snow.cell_z(at.y - hw - band - 0.5), Snow.cell_z(at.y + hw + band + 0.5) + 1):
+				for x in range(Snow.cell_x(at.x - hw - band - 0.5), Snow.cell_x(at.x + hw + band + 0.5) + 1):
+					var c := Vector2((x + 0.5) * Snow.CELL, (z + 0.5) * Snow.CELL) - at
+					var ah := c.dot(face)
+					var i := z * Snow.W + x
+					if absf(c.dot(tang)) <= hw and ah <= 0.0 and ah >= -band and Snow.surf[i] != Snow.S_BLOCKED and Snow.depth[i] > 0.0:
+						cells += 1
+			Snow.blade_push(at, face, hw, band, 0.0, false, float(blade[3]))
+			for j in range(cells):
+				ref.randf()
+			draws_ok = draws_ok and Snow.push_rng.state == ref.state
+			# The guard behind the blade, as Vehicle.player_guard sets it (along the travel, not the face).
+			var back := at - fwd * 2.0
+			Snow.set_blade_guard(Rect2(Vector2(minf(at.x, back.x), at.y - hw - 0.2), Vector2(2.0, 2.0 * (hw + 0.2))))
+			var s := _pf2_scan(at, fwd, hw, PF2_DEPTH, -PF2_BEHIND, 4.0, 3.5, false, true, face)
+			top = maxf(top, s["top"])
+			if s["spike"] > worst:
+				worst = s["spike"]
+				worst_at = "%.2f m along, %s" % [k * 0.05, str(s["spike_at"])]
+		var dv := Snow.volume_in_rect(area) - v0
+		runner.check(worst <= 1e-6, "PF2 the push alone, %s: after every 5 cm step no player-moved cell over the moved-snow step (%.2f m) above a neighbour it could roll onto (the most %.7f m %s); the pile's top %.2f m" % [blade[0], Snow.moved_repose, worst, worst_at, top])
+		runner.check(draws_ok and absf(dv) < 1e-5, "PF2 the push alone, %s: one push_rng draw per moved cell, the volume exact (%+.7f m³)" % [blade[0], dv])
+
+
+## Done-when: the pickup with its plow pushes 50 m and 100 m of PF2_DEPTH level snow, blade down,
+## straight, with its keys. Every frame no cell of the pile in front of the blade or of what rolls off
+## its ends stands over the moved-snow step (PF2_SPIKE: the relaxation's passes), and the top stays
+## under PF2_TOP. Stopped, it leaves one mound; settled, every cell at the step. After 100 m the mound
+## is the same as after 50 m, not taller (the owner's call: the extra snow goes into the ridges past the
+## blade's ends). The truck still feels it: no faster than before the fix. Volume exact.
+func test_pf2_long_pushes_tumble() -> void:
+	var piles := {}
+	for dist in [50.0, 100.0]:
+		await _pf2_road(PF2_DEPTH)
+		var v := await _truck("pickup_plow", 6.0, 83.0)
+		var r := await _pf2_push(v, dist, PF2_DEPTH)
+		var st: Dictionary = r["stopped"]
+		var lf: Dictionary = r["left"]
+		var tag := "PF2 %.0f m through %d cm:" % [dist, int(round(PF2_DEPTH * 100.0))]
+		runner.info(tag + " stopped: %s; left: %s, %.1f m³ rolled off the blade's ends" % [_pf2_pile(st), _pf2_pile(lf), lf["spill"]])
+		runner.check(r["gone"] >= dist, tag + " the blade went %.1f m in %.1f s" % [r["gone"], r["secs"]])
+		runner.check(r["spike"] <= PF2_SPIKE, tag + " every frame no cell of the pile over the moved-snow step by more than %.2f m (the most %.4f m, at %s)" % [PF2_SPIKE, r["spike"], str(r["spike_at"])])
+		runner.check(r["top"] < PF2_TOP and st["top"] < PF2_TOP and lf["top"] < PF2_TOP, tag + " the pile's top under %.2f m: %.2f m while pushing, %.2f m stopped, %.2f m settled" % [PF2_TOP, r["top"], st["top"], lf["top"]])
+		runner.check(lf["spike"] <= 1e-4 and st["len"] > 1.0 and st["wid"] > 2.4, tag + " …one mound in front of the blade (%.1f x %.1f m), every cell at the step once settled (%.6f m over)" % [st["len"], st["wid"], lf["spike"]])
+		runner.check(r["kmh"] <= PF2_KMH_BEFORE, tag + " the truck still feels it: %.1f km/h over the second half (before the fix %.1f)" % [r["kmh"], PF2_KMH_BEFORE])
+		runner.check(absf(r["vol"]) < 1e-4, tag + " the snow volume is conserved (%+.7f m³)" % r["vol"])
+		piles[dist] = [st, lf]
+	# The same mound, not taller: within PF2_SAME of the top (where the truck stops on the 25 cm grid
+	# moves a snapshot's top by a cell's rounding: 2 cm measured; a pile that kept growing would differ
+	# by tens of cm), its size within two cells, stopped and settled.
+	var same := true
+	var txt := []
+	for k in range(2):
+		var a: Dictionary = piles[50.0][k]
+		var b: Dictionary = piles[100.0][k]
+		same = same and b["top"] <= a["top"] + PF2_SAME and absf(b["len"] - a["len"]) <= 0.5 and absf(b["wid"] - a["wid"]) <= 0.5
+		txt.append("%s: %s / %s" % [["stopped", "settled"][k], _pf2_pile(b), _pf2_pile(a)])
+	runner.check(same, "PF2 after 100 m the mound is the same as after 50 m, not taller %s" % str(txt))
+	await _unload()
+
+
+## The opening: from where a new game's truck is parked (the driveway's ~80 cm, nothing shovelled),
+## blade down, 15 m out over the curb into the street. The same rules every frame; the top under
+## PF2_TOP_OPENING (no stack against the curb: the pile tumbles over it); volume exact. Three seeds in
+## both modes.
+func test_pf2_the_opening() -> void:
+	for g in PF1_GAMES:
+		var tag := "PF2 opening %s seed %d:" % g
+		await _pf1_world(g[0], g[1])
+		Snow.push_rng.seed = Snow.PUSH_SEED
+		var v := await _pf1_get_in()
+		var r := await _pf2_push(v, 15.0, Catalog.balance.initial_road_depth_year1, 60.0)
+		runner.info(tag + " %.1f m in %.1f s, stopped: %s" % [r["gone"], r["secs"], _pf2_pile(r["stopped"])])
+		runner.check(r["gone"] >= 15.0 and r["spike"] <= PF2_SPIKE,
+			tag + " 15 m blade down (in %.1f s); every frame no cell of the pile over the moved-snow step by more than %.2f m (the most %.4f m at %s)" % [r["secs"], PF2_SPIKE, r["spike"], str(r["spike_at"])])
+		runner.check(r["top"] < PF2_TOP_OPENING and r["left"]["spike"] <= 1e-4 and absf(r["vol"]) < 1e-4,
+			tag + " …the top %.2f m (under %.2f), every cell at the step once settled (%.6f m over), the volume exact (%+.7f m³)" % [r["top"], PF2_TOP_OPENING, r["left"]["spike"], r["vol"]])
+	await _unload()
+
+
+## Every blade the player uses: every plow (30 m through PF2_DEPTH; the pickup's and the plow truck's
+## also angled, the review's case: the guard's box reaches past an angled face), a hand push (RMB,
+## walking 5 s) with bare hands, the standard shovel and the wide pusher, and the pickup's plow
+## back-dragging (reversing 3 s, blade down). Every frame no cell of the snow they move stands over the moved-snow
+## step by more than PF2_SPIKE; settled, none at all; volume exact.
+func test_pf2_every_blade_tumbles() -> void:
+	var bad := []
+	var tops := []
+	for id in S11_BLADES:
+		await _pf2_road(PF2_DEPTH)
+		var v := await _truck(id, 6.0, 83.0)
+		var r := await _pf2_push(v, 30.0, PF2_DEPTH)
+		tops.append("%s %.2f m" % [id, r["top"]])
+		if not (r["gone"] >= 30.0 and r["spike"] <= PF2_SPIKE and r["left"]["spike"] <= 1e-4 and absf(r["vol"]) < 1e-4):
+			bad.append("%s: %.1f m, over the step %.4f at %s, settled %.6f, volume %+.7f" % [id, r["gone"], r["spike"], str(r["spike_at"]), r["left"]["spike"], r["vol"]])
+	# Angled (Z / C held): the snow rolls off the trailing end into a ridge, no stack there.
+	for a in [["pickup_plow", "veh_aim_left"], ["plow_truck", "veh_aim_right"]]:
+		await _pf2_road(PF2_DEPTH)
+		var v := await _truck(a[0], 6.0, 83.0)
+		var r := await _pf2_push(v, 30.0, PF2_DEPTH, 60.0, a[1])
+		tops.append("%s angled %+.0f° %.2f m" % [a[0], r["angle"], r["top"]])
+		if not (absf(r["angle"]) > 20.0 and r["gone"] >= 30.0 and r["spike"] <= PF2_SPIKE and r["top"] < PF2_TOP and r["left"]["spike"] <= 1e-4 and absf(r["vol"]) < 1e-4):
+			bad.append("%s angled %+.0f°: %.1f m, top %.2f, over the step %.4f at %s, settled %.6f, volume %+.7f" % [a[0], r["angle"], r["gone"], r["top"], r["spike"], str(r["spike_at"]), r["left"]["spike"], r["vol"]])
+	runner.check(bad.is_empty(), "PF2 every plow, 30 m through %d cm, straight and angled: no spike (tops %s) %s" % [int(round(PF2_DEPTH * 100.0)), str(tops), str(bad)])
+	# By hand: RMB held, walking 5 s along the street.
+	var hand_bad := []
+	for t in [["", 0.15], ["standard_shovel", 0.15], ["wide_pusher", PF2_DEPTH]]:
+		await _pf2_road(float(t[1]))
+		var pl: Player = world.player
+		Game.slots = [t[0], "", "", ""]
+		Game.selected = 0
+		Game.inventory_changed.emit()
+		await _frames(2)
+		pl.teleport(Vector3(20.0, Snow.surface_height(20.0, 83.0) + 0.05, 83.0), -PI * 0.5)
+		pl.pitch = deg_to_rad(-30.0)
+		pl.head.rotation.x = pl.pitch
+		await _frames(2)
+		var td: ToolData = pl.tools.data
+		var hw := td.push_width * 0.5
+		var lead := 0.5 if td.kind == ToolData.Kind.HANDS else 0.62
+		var vol0 := Snow.total_volume() + Snow.melted
+		var p0 := pl.global_position
+		var worst := 0.0
+		Input.action_press("secondary")
+		Input.action_press("move_forward")
+		for f in range(300):
+			await _tree().physics_frame
+			var at := Vector2(pl.global_position.x + lead, pl.global_position.z)
+			worst = maxf(worst, _pf2_scan(at, Vector2(1, 0), hw, float(t[1]), -Snow.CELL, 4.0, 3.0)["spike"])
+		Input.action_release("move_forward")
+		Input.action_release("secondary")
+		await _frames(60)
+		Snow.relax_until_stable()
+		var walked := pl.global_position.x - p0.x
+		var settled: float = _pf2_scan(Vector2(pl.global_position.x + lead, pl.global_position.z), Vector2(1, 0), hw, float(t[1]), -(walked + 2.0), 4.0, 3.0)["spike"]
+		var dv := Snow.total_volume() + Snow.melted - vol0
+		runner.info("PF2 by hand, %s in %d cm: walked %.1f m in 5 s" % [t[0] if t[0] != "" else "bare hands", int(round(float(t[1]) * 100.0)), walked])
+		if not (walked > 1.0 and worst <= PF2_SPIKE and settled <= 1e-4 and absf(dv) < 1e-4):
+			hand_bad.append("%s: walked %.1f m, over the step %.4f, settled %.6f, volume %+.7f" % [t[0], walked, worst, settled, dv])
+	runner.check(hand_bad.is_empty(), "PF2 by hand (bare hands, the standard shovel, the wide pusher): no spike while pushing or once settled, volume exact %s" % str(hand_bad))
+	# Back-drag: the pickup's plow lowered, reversing 3 s through the level snow: the snow comes toward
+	# the truck against the blade's back face (the "front" of a drag is the truck's side).
+	await _pf2_road(PF2_DEPTH)
+	var v2 := await _truck("pickup_plow", 40.0, 83.0)
+	await _s11_key(_s11_bound("veh_blade_down"))
+	var fwd3 := -v2.global_transform.basis.z
+	var back := -Vector2(fwd3.x, fwd3.z).normalized()
+	var vol1 := Snow.total_volume() + Snow.melted
+	var b0 := _pf2_blade(v2)
+	var worst2 := 0.0
+	var top2 := 0.0
+	Input.action_press("veh_reverse")
+	for f in range(180):
+		await _tree().physics_frame
+		var s := _pf2_scan(_pf2_blade(v2), back, v2.data.blade_width * 0.5, PF2_DEPTH, -Snow.CELL, 6.0, 4.0)
+		worst2 = maxf(worst2, s["spike"])
+		top2 = maxf(top2, s["top"])
+	Input.action_release("veh_reverse")
+	var dragged := (_pf2_blade(v2) - b0).dot(back)
+	Input.action_press("veh_brake")
+	await _frames(30)
+	Input.action_release("veh_brake")
+	runner.check(dragged > 2.0 and worst2 <= PF2_SPIKE and absf(Snow.total_volume() + Snow.melted - vol1) < 1e-4,
+		"PF2 back-drag: %.1f m in 3 s, every frame no cell of the dragged pile over the moved-snow step by more than %.2f m (the most %.4f m), its top %.2f m, the volume exact" % [dragged, PF2_SPIKE, worst2, top2])
+	await _drop(v2)
+	await _unload()

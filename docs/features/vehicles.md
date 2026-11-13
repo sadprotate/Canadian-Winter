@@ -20,7 +20,10 @@
 - **Plows** (your truck, the ATV, the tractor with blade, the plow truck, the grader):
   - Down lowers the blade and Up raises it. The blade toggle (left mouse) does either.
   - The angle keys turn it.
-  - Blade down, driving forward pushes the snow ahead into a berm.
+  - Blade down, driving forward pushes the snow ahead into a pile. The pile tumbles: snow rolls down
+    its front and off both ends of the blade into ridges along the lane, and nothing sticks up out of
+    it. It reaches its full size within 10–20 m (about 1.5 m tall in 30 cm of snow) and then stays that
+    size; the rest goes into the ridges. Stopping leaves one rounded mound. The truck feels the load.
   - **Blade down, reversing drags the snow back with you (back-drag).** Drive up to a garage door or
     a wall with the blade up, lower it, and back away: the snow comes away with the blade. Raise the
     blade or drive forward and it stays where it is as a pile, which you can then push away. The status
@@ -86,14 +89,43 @@
   - band = the frame's advance + 0.1 m, cast 0.6 m, floor `blade_floor`, no road rule;
   - `player_guard` keeps the 2 m behind the blade from slumping back;
   - the berm ahead slows the vehicle (`blade_capacity`), and caps the bank check (`clearance × 1.5`).
+    The berm is the snow across the blade (playtest fix 2; before, all of it within 0.65 m):
+    - all of it within 0.65 m ahead of the face (`Snow.BERM_FACE`), as before;
+    - plus, out to `berm_reach(hw)` = `BERM_REACH_BASE` + `BERM_REACH_PER_HW` × the blade's half-width,
+      the pushed snow there (player-moved, loose): the pile the blade drives, not untouched snow it
+      hasn't reached. That is 0.95 m for the ATV, 1.22 m for the pickup and the tractor, 1.52 m for
+      the plow truck, and 1.61 m for the grader.
+    - Back-drag reads the same. Hand pushes read 0.65 m, as before.
   - The `vehicle_blade_width` and `vehicle_clear_speed` upgrades (`ItemUpgrades.mult`) widen the blade
     and lower its drag.
+- **How a pushed pile forms** (playtest fix 2; `Snow.blade_push` and `Snow._roll`, the same op for
+  every plow, back-drag and hand pushes):
+  - Each lifted cell's snow lands spread over round 6 §9's band ahead of the face, as before (one
+    `push_rng` draw per moved cell, marked `soft`).
+  - A share doesn't stack where it lands. Whatever would make a cell stand more than `moved_repose`
+    above its lowest open neighbour rolls on to that neighbour, and on down the pile (steepest descent,
+    up to `ROLL_STEPS` cells), in the same op: over the pile's front and out past the blade's ends.
+    Ties go to the neighbour furthest ahead of the blade, then furthest out, so the pile forms the same
+    whichever way the blade faces. No random draws; volume exact (what the cells store is counted).
+  - Walls for the roll: buildings, a completed box from outside, off the map, the blade (the cells
+    behind its face across its width), and the guarded strip behind the face. The curb stops it only
+    where it stops the push (`player_rule`): every plow and hand tool carries its snow over the curb,
+    so its pile tumbles over it too. The relaxation still treats the curb as a wall.
+  - The 6 m ceiling still caps every cell; what finds no room stays in front of the blade (`kept`).
+  - So the pile's height comes from the moved-snow slope and the ground it covers. On level snow the
+    pile in front stops growing after 10–20 m: the snow rolling off the blade's ends balances what the
+    blade takes in (about two thirds of a 100 m push ends up in the ridges).
+  - The relaxation then rounds the tops as before (round 6 §9's `moved_crest`), a few millimetres at a
+    time. The edge of the lane the blade cut settles once the guard has passed, as before.
+  - The pickup's shove (blade up) passes `tumble = false`: its snow lands as before, so its driving
+    rules (round 5 §12, playtest fix 1) don't change.
 - **Back-drag** (blade down, reversing: `speed < 0` and the frame's travel backward):
   - `back_drag()` calls `Snow.blade_push` with the face turned toward the vehicle.
   - The band is the frame's reverse travel + 0.1 m, the same rule as a push's.
   - The snow lands `DRAG_CAST` (0.3 m) behind the blade: 0.1–0.62 m with blade_push's band and its
-    draw. That keeps it against the back face and clear of every blade vehicle's front wheels, which
-    stand 1 m or more behind the blade.
+    draw, against the back face. It tumbles on toward the vehicle as any pushed pile does (playtest
+    fix 2), so a big drag's pile runs out toward the front wheels at once (before, it settled there
+    over a few seconds).
   - `player_guard` guards the ground it uncovers, on the blade's far side.
   - Polish 6 §9's rules hold: the spread band, `soft` marks, one `push_rng` draw per moved cell.
     Volume is exact.
@@ -192,10 +224,20 @@
   - back-drag from the garage door: the snow away from the door, the volume exact, the slowdown,
     standing still, driving forward, the pile left after the blade lifts;
   - driving off the pile from five starts across a cell.
+- `--only=polish7 --test=test_pf2_` (playtest fix 2):
+  - the op alone (no relaxation between steps), for a plow straight and angled, a hand tool and
+    back-drag: after every step no player-moved cell over the moved-snow step (1e-6 m), one draw per
+    moved cell, the volume exact;
+  - the pickup pushing 50 m and 100 m of 30 cm: no cell over the step every frame (`PF2_SPIKE`, the
+    relaxation's passes), the top under `PF2_TOP`, one mound, the same after 100 m as after 50 m, no
+    faster than before the fix, the volume exact;
+  - the opening, 15 m blade down, 3 seeds in both modes;
+  - every plow (straight; the pickup's and the plow truck's also angled), hand pushes, back-drag.
 - Pushing unchanged: `--only=gameplay --test=vehicle_plow`, `--test=plow_pushes`,
   `--only=snow --test=test_blade_push`, `--only=polish6 --test=test_s3_blade`, `--test=test_s9_`.
 - Shots: `tests/shot.gd --back_drag=frames [--drag_lift=1]`; `--plow_out=down|up` (the way out on the
-  first morning).
+  first morning); `--long_push=m [--push_depth=d]` (the pile after a long push, from the driving camera;
+  `--cab=1` the cab view, which shows only the inside of the cab).
 
 ## Decisions
 
@@ -221,6 +263,16 @@
     the driver gets in and while it moves, and held while it stands still.
   - The pickups' snowed-in message says the truck only creeps, which is what it does.
   - Nothing else changed: no other value, the plow path, the shove, the other vehicles.
+- Round 7 playtest fix 2: pushed snow tumbles instead of spiking. In the playtest the pile in front of
+  a long push spiked: each frame the blade dropped a row of its own pile back onto the pile, and the
+  relaxation couldn't keep up (cells up to 0.45 m over the moved-snow step at 30 cm, 0.8 m for the
+  plow truck; the pile's top 2.2 m, 4.1 m in the opening against the curb).
+  - The blade op rolls what would stand over the step on down the pile (`_roll`), for every blade.
+  - The owner's call: keep the pile as it comes out, a steady mound at the moved-snow slope (the same
+    after 50 m and 100 m), not one held to the blade's height that keeps growing longer.
+  - The pile's roll crosses the curb where the push does.
+  - The plows' berm drag reads further ahead (`berm_reach()`), so a long push is no easier.
+  - The shove keeps its old placement (its driving rules stay).
 
 ## Known issues
 
@@ -228,9 +280,22 @@
   than the pickup (round 6 §3, left for a later round).
 - With the blade down, the plowed truck's drag under the wheels is still scaled by its clearance (the
   plow path as before). Only its stuck depth is the pickup's.
-- On the first morning the blade-down truck plows out in one pass (about 9 s). It pushes the
-  driveway's snow onto the street as a pile about 2.5–3.9 m high in front of the blade. That is the
-  plow path's tuning, shared with every plow, and left as it is.
+- On the first morning the blade-down truck plows out of the driveway. Since playtest fix 2 its pile
+  stands about 2.3 m at most (3.9–4.1 m before, stacked against the curb).
+- Playtest fix 2's drag reading is a little harder than before for every plow: 3–9 % slower on level
+  30 cm snow, the opening's first 15 m about 11 s (10 s before). No single reading matches each
+  plow's old drag, which depended on how high its spike stood, so it was set so that none is easier.
+- Hand pushes keep their 0.65 m berm reading. Most walk within 3 % of before; the wide pusher in 15 cm
+  is 6 % and the large scraper 12 % faster (their pile lies a little further out).
+  But in deep snow the wide pusher no longer walls you in: before playtest fix 2 its pile stood above
+  the hips in front of it after about 2 m (the wading rule stopped you); now it tumbles away and you
+  keep pushing, slowly.
+- While the blade passes, the edge of the lane it cuts stands steep for a moment just past its guard
+  (the guard holds 2 m), until the relaxation settles it, as before the fix.
+- The roll costs time inside the push: one `blade_push` call takes about 0.27 ms for the pickup's
+  plow and 1.05 ms for the plow truck, against 0.06 ms and 0.18 ms before playtest fix 2. In
+  `perf.tscn`'s plow scenario that is about 1 ms more per frame on average, and 0.5 ms more
+  relaxation at p95.
 - Backing up onto its own track where snow has slumped back in raises the bog depth by that snow (a
   few cm for the plowed truck; up to about 25 cm for the plain pickup, whose track is narrower), so
   a run-up carries a little further there.

@@ -65,8 +65,18 @@ var _sunk := -1.0            # polish 7 playtest fix 1: the snow it stands in, f
 ## far side and carries it toward the vehicle: Snow.blade_push with the face turned to the vehicle,
 ## the band the frame's reverse travel + 0.1 m (as a push's), the snow landing DRAG_CAST behind the
 ## blade (0.1–0.62 m with blade_push's band and draw), against its back face and clear of every
-## blade vehicle's front wheels (1 m behind the blade or more).
+## blade vehicle's front wheels (1 m behind the blade or more). Polish 7 playtest fix 2: what lands
+## there tumbles on toward the vehicle as any pushed pile does, so a big drag's pile runs out at the
+## moved-snow slope toward the front wheels at once (it used to settle there over a few seconds).
 const DRAG_CAST := 0.3
+## Polish 7 playtest fix 2: how far ahead of the blade's face the plow's berm drag reads its pile
+## (Snow.blade_push's berm_reach, m): BERM_REACH_BASE + BERM_REACH_PER_HW x the blade's half-width
+## (berm_reach()). Past the first 0.65 m (all the snow, as before) only the pushed snow counts. The
+## pushed pile now tumbles forward instead of stacking at the face, so the same load lies further out,
+## and further for a wider blade (its pile is bigger). Read this far, a long push is no easier than
+## before for any plow: 3–9 % slower on level snow (report/playtest_fix_2.md). 0.65 m before.
+const BERM_REACH_BASE := 0.5
+const BERM_REACH_PER_HW := 0.6
 const DRAG_STATUS := "Blade down — dragging"
 
 
@@ -413,7 +423,7 @@ func _physics_process(delta: float) -> void:
 				else:
 					band = maxf(gone, 0.0)
 			# Polish 5 §3 (Decision 12): no road rule — a plow carries yard snow over the curb.
-			r = Snow.blade_push(Vector2(bp.x, bp.z), face, hw, band, data.blade_floor, false, 0.6)
+			r = Snow.blade_push(Vector2(bp.x, bp.z), face, hw, band, data.blade_floor, false, 0.6, true, berm_reach(hw))
 			# Polish 7 §11: leaving a drag, the guard reaches a cell past the face, so the pile's front
 			# can't slump into the gap the blade opens (and be carried off with it).
 			player_guard(Vector2(bp.x, bp.z) + (fwd * Snow.CELL if _leaving_drag else Vector2.ZERO), fwd, hw + 0.2)
@@ -552,7 +562,8 @@ func _shove(fwd: Vector2, travel: Vector2) -> void:
 	var moved := 0.0
 	for s in [-1.0, 1.0]:
 		var mid: Vector2 = front - fwd * (data.width * 0.25 * tan(ang)) + right * (data.width * 0.25 * s)
-		var r := Snow.blade_push(mid, fwd.rotated(ang * s), hw, adv + 0.1, Catalog.balance.pickup_shove_floor, false, cast)
+		# Polish 7 playtest fix 2: the shove's snow lands as before (no tumble): its driving rules stay.
+		var r := Snow.blade_push(mid, fwd.rotated(ang * s), hw, adv + 0.1, Catalog.balance.pickup_shove_floor, false, cast, false)
 		moved += float(r["moved"])
 	# The truck's body holds back the snow that slumps around it, as the strip behind a plow's
 	# blade does (player_guard).
@@ -597,9 +608,15 @@ func stuck_depth() -> float:
 ## the blade (spread over blade_push's band, one push_rng draw per moved cell, marked soft); the
 ## ground it uncovers (the blade's far side) guarded from slumping back, as behind a push.
 func back_drag(bp: Vector2, face: Vector2, fwd: Vector2, hw: float, back: float) -> Dictionary:
-	var r := Snow.blade_push(bp, -face, hw, back + 0.1, data.blade_floor, false, DRAG_CAST)
+	var r := Snow.blade_push(bp, -face, hw, back + 0.1, data.blade_floor, false, DRAG_CAST, true, berm_reach(hw))
 	player_guard(bp, -fwd, hw + 0.2)
 	return r
+
+
+## Polish 7 playtest fix 2: how far ahead of the face the berm drag reads, for a blade `hw` m to either
+## side (BERM_REACH_BASE).
+func berm_reach(hw: float) -> float:
+	return BERM_REACH_BASE + BERM_REACH_PER_HW * hw
 
 
 func player_guard(center: Vector2, fwd: Vector2, hw: float) -> void:
