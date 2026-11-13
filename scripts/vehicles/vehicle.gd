@@ -60,6 +60,11 @@ var _drag_side := false      # polish 7 §11: the blade last dragged (reversing)
 var _drag_stop := Vector2.ZERO   # polish 7 §11: the blade's centre when it last dragged
 var _leaving_drag := false   # polish 7 §11: driving forward off a dragged pile (see the push)
 var _sunk := -1.0            # polish 7 playtest fix 1: the snow it stands in, for the bog depth (-1: not read yet)
+var blade_cs: CollisionShape3D   # polish 7 playtest fix 3: the blade's solid shape (see BLADE_CLEAR)
+var blade_mult := 1.0            # polish 7 playtest fix 3: the plow width upgrade the blade is built for
+var blade_lamps: MeshInstance3D  # polish 7 playtest fix 3: the upgraded blade's lamp lenses (lit with the headlights)
+var _blade_mi: MeshInstance3D
+var _lamps_lit := false
 
 ## Polish 7 §11: back-drag (the blade down, reversing). The blade takes the snow it passes over on its
 ## far side and carries it toward the vehicle: Snow.blade_push with the face turned to the vehicle,
@@ -78,6 +83,17 @@ const DRAG_CAST := 0.3
 const BERM_REACH_BASE := 0.5
 const BERM_REACH_PER_HW := 0.6
 const DRAG_STATUS := "Blade down — dragging"
+## Polish 7 playtest fix 3: the blade is solid. Its shape (VehicleModels' blade_box: the plate, its
+## cutting edge and any lamps, not the arms behind it) follows the blade as it stands each frame — its
+## width, its angle and how high it is raised — so the blade stops against whatever stops the body.
+## Its bottom is the blade's, but never under BLADE_CLEAR above the ground, the only collider that low
+## (curbs, sidewalks and snow have none), so it never catches on it as the vehicle settles each frame
+## (2 m/s down for one step).
+const BLADE_CLEAR := 0.1
+## How far the raised blade stands above the lowered one (m).
+const BLADE_LIFT := 0.18
+## The lit lamps on the upgraded blade: the headlights' colour.
+const BLADE_LAMP_LIT := Color(1.0, 0.93, 0.8)
 
 
 func setup(vd: VehicleData, e: Dictionary) -> void:
@@ -93,7 +109,8 @@ func _ready() -> void:
 	collision_layer = 1 << 3
 	collision_mask = 1 | (1 << 2) | (1 << 3)
 	floor_snap_length = 0.5
-	info = VehicleModels.build(data)
+	blade_mult = _ItemUpgrades.mult(data.id, &"vehicle_blade_width")   # polish 7 playtest fix 3: its model shows it
+	info = VehicleModels.build(data, blade_mult)
 	var mi := MeshInstance3D.new()
 	mi.mesh = info["mesh"]
 	add_child(mi)
@@ -110,6 +127,8 @@ func _ready() -> void:
 		var bm := MeshInstance3D.new()
 		bm.mesh = info["blade_mesh"]
 		blade_node.add_child(bm)
+		_blade_mi = bm
+		_add_blade_lamps()
 	snow_mi = MeshInstance3D.new()
 	add_child(snow_mi)
 	var cs := CollisionShape3D.new()
@@ -118,6 +137,13 @@ func _ready() -> void:
 	cs.shape = box
 	cs.position = Vector3(0, data.height * 0.45, 0)
 	add_child(cs)
+	# Polish 7 playtest fix 3: the blade's solid shape, and its model and shape change with the upgrade.
+	if blade_node:
+		blade_cs = CollisionShape3D.new()
+		blade_cs.shape = BoxShape3D.new()
+		add_child(blade_cs)
+		_fit_blade_shape()
+		Game.upgrades_changed.connect(_on_upgrades_changed)
 	# Interaction area around the vehicle (driver door).
 	interact_area = Area3D.new()
 	interact_area.collision_layer = 1 << 1
@@ -255,7 +281,10 @@ func exit_vehicle() -> void:
 		hl.visible = false
 	var side := -global_transform.basis.x
 	var spots := [global_position + side * (data.width * 0.5 + 0.8), global_position - side * (data.width * 0.5 + 0.8), global_position + global_transform.basis.z * (data.length * 0.5 + 1.0)]
-	var out: Vector3 = spots[0]
+	# Polish 7 playtest fix 3: never into the blade's solid shape (the grader's, beside its cab, with
+	# the width upgrade and angled).
+	spots = spots.filter(func(s: Vector3) -> bool: return not _in_blade(s, p.capsule.radius + 0.1))
+	var out: Vector3 = spots[0] if not spots.is_empty() else global_position + global_transform.basis.z * (data.length * 0.5 + 1.0)
 	for s in spots:
 		if Snow.depth_at(s.x, s.z) < 0.7:
 			out = s
@@ -459,7 +488,12 @@ func _physics_process(delta: float) -> void:
 		shove_x = maxf(ahead - bal.pickup_shove_floor, 0.0) / maxf(bog_at - bal.pickup_shove_floor, 0.01)
 	if blade_node:
 		blade_node.rotation.y = lerp_angle(blade_node.rotation.y, -deg_to_rad(blade_angle), delta * 6.0)
-		blade_node.position.y = lerpf(blade_node.position.y, 0.0 if tool_on else 0.18, delta * 6.0)
+		blade_node.position.y = lerpf(blade_node.position.y, 0.0 if tool_on else BLADE_LIFT, delta * 6.0)
+		_fit_blade_shape()     # polish 7 playtest fix 3: before the move, so the blade stops it too
+		if blade_lamps:
+			var lit: bool = not headlights.is_empty() and (headlights[0] as Node3D).visible
+			if lit != _lamps_lit:
+				_light_blade_lamps(lit)
 	max_fwd *= work_drag
 	# Snowbanks are solid for vehicles without a plow down.
 	var bank_block := ahead > (bal.pickup_bank_max if pickup else c * 1.9) and throttle > 0.0
@@ -537,6 +571,101 @@ func _physics_process(delta: float) -> void:
 	else:
 		heat = maxf(0.0, heat - delta / 60.0)
 	_refresh_snow_visual(false)
+
+
+## Polish 7 playtest fix 3: the blade's solid shape where the blade stands now (see BLADE_CLEAR).
+func _fit_blade_shape() -> void:
+	if blade_cs == null:
+		return
+	var b: AABB = info["blade_box"]
+	var y := blade_node.position.y                 # how high the blade stands (raised: BLADE_LIFT)
+	var lo := maxf(b.position.y + y, BLADE_CLEAR)
+	var hi := b.end.y + y
+	var size := Vector3(b.size.x, hi - lo, b.size.z)
+	var box := blade_cs.shape as BoxShape3D
+	if not box.size.is_equal_approx(size):
+		box.size = size
+	var mid := blade_node.basis * Vector3(b.get_center().x, 0.0, b.get_center().z)
+	var xf := Transform3D(blade_node.basis, Vector3(blade_node.position.x, (lo + hi) * 0.5, blade_node.position.z) + mid)
+	if not blade_cs.transform.is_equal_approx(xf):
+		blade_cs.transform = xf
+
+
+## Polish 7 playtest fix 3: whether a point on the ground is within `margin` of the blade's solid shape
+## (seen from above), as the blade stands or once it has turned to its angle (it trails the angle keys).
+func _in_blade(p: Vector3, margin: float) -> bool:
+	if blade_cs == null:
+		return false
+	var b: AABB = info["blade_box"]
+	var lp0 := global_transform.affine_inverse() * p
+	for rot in [blade_node.rotation.y, -deg_to_rad(blade_angle)]:
+		var basis := Basis(Vector3.UP, rot)
+		var mid := Vector3(blade_node.position.x, 0.0, blade_node.position.z) + basis * Vector3(b.get_center().x, 0.0, b.get_center().z)
+		var lp := basis.inverse() * (lp0 - mid)
+		if absf(lp.x) < b.size.x * 0.5 + margin and absf(lp.z) < b.size.z * 0.5 + margin:
+			return true
+	return false
+
+
+## Polish 7 playtest fix 3: the plow width upgrade shows as soon as it takes effect: the blade's model
+## (as wide as the strip it clears, taller, blue, two lamps on top) and its solid shape.
+func _on_upgrades_changed() -> void:
+	var m := _ItemUpgrades.mult(data.id, &"vehicle_blade_width")
+	if blade_node == null or is_equal_approx(m, blade_mult):
+		return
+	blade_mult = m
+	var nb := VehicleModels.build(data, m)
+	for k in ["blade_mesh", "blade_box", "blade_lamps"]:
+		if nb.has(k):
+			info[k] = nb[k]
+		else:
+			info.erase(k)
+	_blade_mi.mesh = info["blade_mesh"]
+	_add_blade_lamps()
+	_fit_blade_shape()
+
+
+## Polish 7 playtest fix 3: the upgraded blade's lamp lenses, on the blade (none without the upgrade).
+func _add_blade_lamps() -> void:
+	if blade_lamps:
+		blade_lamps.free()
+		blade_lamps = null
+	if info.has("blade_lamps"):
+		blade_lamps = MeshInstance3D.new()
+		blade_lamps.mesh = info["blade_lamps"]
+		blade_node.add_child(blade_lamps)
+		_light_blade_lamps(_lamps_lit)
+
+
+## Polish 7 playtest fix 3: the blade's lamps glow while the headlights are on (no light of their own).
+func _light_blade_lamps(on: bool) -> void:
+	_lamps_lit = on
+	if blade_lamps:
+		blade_lamps.material_override = Mats.emissive(BLADE_LAMP_LIT, 2.5) if on else null
+
+
+## Polish 7 playtest fix 3: put the vehicle at `pos` facing `yaw`, stopped, its blade raised (the
+## truck going home when the player sleeps). Its blade angle, load and roof snow stay; the snow
+## isn't touched.
+func park_at(pos: Vector3, yaw: float) -> void:
+	if occupied:
+		exit_vehicle()
+	speed = 0.0
+	steer = 0.0
+	velocity = Vector3.ZERO
+	tool_on = false
+	dragging = false
+	_drag_side = false
+	_leaving_drag = false
+	_sunk = -1.0
+	global_position = pos
+	rotation.y = yaw
+	_prev_pos = Vector2(pos.x, pos.z)
+	if blade_node:
+		blade_node.position.y = BLADE_LIFT
+		blade_node.rotation.y = -deg_to_rad(blade_angle)
+		_fit_blade_shape()
+	save_entry()
 
 
 ## Polish 5 §12: the pickup's front shoves the snow above `pickup_shove_floor` ahead and out to

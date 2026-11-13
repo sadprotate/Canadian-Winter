@@ -1482,3 +1482,534 @@ func test_pf2_every_blade_tumbles() -> void:
 		"PF2 back-drag: %.1f m in 3 s, every frame no cell of the dragged pile over the moved-snow step by more than %.2f m (the most %.4f m), its top %.2f m, the volume exact" % [dragged, PF2_SPIKE, worst2, top2])
 	await _drop(v2)
 	await _unload()
+
+
+
+# =============================================================================
+# Playtest fix 3: a solid blade, a visible width upgrade, the truck home overnight
+# =============================================================================
+
+## How far a point of the blade's solid shape may stand inside a building's footprint (m): none, to
+## the physics' contact margin.
+const PF3_INSIDE := 0.005
+## A run-up of this much (m) from the vehicle's front to the wall it is driven at (the grader's rear
+## then stands on the sidewalk in front of the house).
+const PF3_RUN := 3.0
+const PF3_YELLOW := Color(0.95, 0.75, 0.1)
+
+
+## The bottom of a solid box (a vehicle's CollisionShape3D) as points on the ground (world XZ): 11
+## along its width by 3 through its depth, the corners among them.
+func _pf3_points(cs: CollisionShape3D) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	var size := (cs.shape as BoxShape3D).size
+	var xf := cs.global_transform
+	for i in range(11):
+		for j in range(3):
+			var p := xf * Vector3((i / 10.0 - 0.5) * size.x, -size.y * 0.5, (j / 2.0 - 0.5) * size.z)
+			out.append(Vector2(p.x, p.z))
+	return out
+
+
+## The vehicle's body box (its solid shape other than the blade's).
+func _pf3_body(v: Vehicle) -> CollisionShape3D:
+	for c in v.get_children():
+		if c is CollisionShape3D and c != v.blade_cs:
+			return c
+	return null
+
+
+## How deep the deepest of `pts` stands inside `r` (m; 0 when none is).
+static func _pf3_inside(pts: PackedVector2Array, r: Rect2) -> float:
+	var deepest := 0.0
+	for p in pts:
+		if r.has_point(p):
+			deepest = maxf(deepest, minf(minf(p.x - r.position.x, r.end.x - p.x), minf(p.y - r.position.y, r.end.y - p.y)))
+	return deepest
+
+
+## How far the nearest of `pts` stands from `r` (m; 0 inside).
+static func _pf3_gap(pts: PackedVector2Array, r: Rect2) -> float:
+	var g := INF
+	for p in pts:
+		var dx := maxf(maxf(r.position.x - p.x, p.x - r.end.x), 0.0)
+		var dz := maxf(maxf(r.position.y - p.y, p.y - r.end.y), 0.0)
+		g = minf(g, Vector2(dx, dz).length())
+	return g
+
+
+## Hold `keys` until the vehicle has stood still for 45 frames (at most `frames`); every frame, how
+## deep its blade's shape stands inside `r`. Returns {inside, stopped, blade (its gap to r at the end),
+## body (the body's)}.
+func _pf3_press(v: Vehicle, r: Rect2, keys: Array, frames := 600) -> Dictionary:
+	var inside := 0.0
+	var still := 0
+	var last := v.global_position
+	for k in keys:
+		Input.action_press(k)
+	var f := 0
+	while f < frames and still < 45:
+		await _tree().physics_frame
+		f += 1
+		inside = maxf(inside, _pf3_inside(_pf3_points(v.blade_cs), r))
+		still = still + 1 if f > 30 and v.global_position.distance_to(last) < 0.0005 else 0
+		last = v.global_position
+	for k in keys:
+		Input.action_release(k)
+	for i in range(3):
+		await _tree().physics_frame
+		inside = maxf(inside, _pf3_inside(_pf3_points(v.blade_cs), r))
+	return {"inside": inside, "stopped": still >= 45, "blade": _pf3_gap(_pf3_points(v.blade_cs), r), "body": _pf3_gap(_pf3_points(_pf3_body(v)), r)}
+
+
+## A lot facing inward: a vehicle's yaw driving toward its house.
+static func _pf3_yaw_in(lot: Dictionary) -> float:
+	var inward := Vector2(lot["inward"]).normalized()
+	return atan2(-inward.x, -inward.y)
+
+
+## How far ahead of its centre a vehicle reaches: its body, or its blade at its widest swing (m).
+static func _pf3_reach(vd: VehicleData) -> float:
+	return maxf(vd.length * 0.5, -float((VehicleModels.build(vd)["blade_pivot"] as Vector3).z) + vd.blade_width * 0.5)
+
+
+## A house wall to drive at: the first lot (the player's first) and spot along its front (lot u) with
+## nothing solid between the sidewalk and the wall, 4.5 m wide (the trees on the lawns stand where the
+## seed puts them: one stands in front of the player's). {lot, u}, or {} if there's none.
+func _pf3_clear_wall() -> Dictionary:
+	var space: PhysicsDirectSpaceState3D = world.get_world_3d().direct_space_state
+	var lots := [Layout.player_lot]
+	for l in Layout.lots:
+		if not l.get("vacant", false) and l != Layout.player_lot:
+			lots.append(l)
+	for lot in lots:
+		var sb: float = lot["setback"]
+		for u in [-6.0, -5.5, -6.5, -5.0, -7.0]:
+			var a := Layout.lot_to_world(lot, Layout.gu(lot, u), -1.0)
+			var b := Layout.lot_to_world(lot, Layout.gu(lot, u), sb - 0.4)
+			var q := PhysicsShapeQueryParameters3D.new()
+			var sh := BoxShape3D.new()
+			sh.size = Vector3(4.5, 1.9, a.distance_to(b))
+			q.shape = sh
+			q.transform = Transform3D(Basis(Vector3.UP, _pf3_yaw_in(lot)), Vector3((a.x + b.x) * 0.5, 1.0, (a.y + b.y) * 0.5))
+			q.collision_mask = 1
+			if space.intersect_shape(q, 1).is_empty():
+				return {"lot": lot, "u": u}
+	return {}
+
+
+## §1: every plow vehicle driven at the player's garage door and at a house's front wall, its blade
+## up and down, straight and angled both ways: it stops against the building, and no point of the
+## blade's solid shape is ever inside the building's footprint (before the fix the body stopped and the
+## blade went on into the garage). Then, pressed against the garage door with the blade angled,
+## steered both ways and the blade swung across: still nothing goes in.
+func test_pf3_the_blade_stops_at_walls() -> void:
+	await _world()
+	var lot := Layout.player_lot
+	var hi := Layout.house_info(lot)
+	var sb: float = hi["setback"]
+	# The truck the game started with is parked in the driveway: out of the way. The yard bare.
+	var parked: Vehicle = world.vehicle_nodes()[0]
+	Game.vehicles.erase(parked.entry)
+	parked.queue_free()
+	await _frames(2)
+	Snow.set_rect((lot["rect"] as Rect2).merge(hi["driveway"]).grow(3.0), 0.0)
+	var wall := _pf3_clear_wall()
+	if not runner.check(not wall.is_empty(), "PF3 a house with nothing between the sidewalk and its front wall: %s %s, u %.1f" % [str(wall.get("lot", {}).get("number", "")), str(wall.get("lot", {}).get("street", "")), float(wall.get("u", NAN))]):
+		await _unload()
+		return
+	var wl: Dictionary = wall["lot"]
+	var whi := Layout.house_info(wl)
+	Snow.set_rect((wl["rect"] as Rect2).grow(3.0), 0.0)
+	# [what, its footprint, the lot, along its front (u), its face (v)]
+	var targets := [["the garage door", hi["garage"], lot, 6.0, sb - 0.5], ["the house wall", whi["body"], wl, float(wall["u"]), float(whi["setback"])]]
+	var worst := 0.0
+	var bad := []
+	var runs := 0
+	var blade_first := 0
+	for t in targets:
+		var r: Rect2 = t[1]
+		for id in S11_BLADES:
+			var vd: VehicleData = Catalog.vehicle(StringName(id))
+			for down in [false, true]:
+				for a in [0.0, -vd.blade_max_angle_deg, vd.blade_max_angle_deg]:
+					var p := Layout.lot_to_world(t[2], Layout.gu(t[2], t[3]), t[4] - _pf3_reach(vd) - PF3_RUN)
+					var v := await _truck(id, p.x, p.y, _pf3_yaw_in(t[2]))
+					v.set_blade(down)
+					v.blade_angle = a
+					await _frames(90)          # the blade settles where it is set
+					var res: Dictionary = await _pf3_press(v, r, ["veh_accelerate"])
+					runs += 1
+					worst = maxf(worst, res["inside"])
+					blade_first += 1 if res["blade"] < res["body"] else 0
+					runner.info("PF3 %s, %s, blade %s %+d°: inside %.4f m, stopped %s, blade %.3f m from it, body %.3f m" % [t[0], id, "down" if down else "up", int(a), res["inside"], str(res["stopped"]), res["blade"], res["body"]])
+					if res["inside"] > PF3_INSIDE or not res["stopped"] or minf(res["blade"], res["body"]) > 0.15:
+						bad.append("%s %s %s %+d°" % [t[0], id, "down" if down else "up", int(a)])
+					await _drop(v)
+	runner.check(bad.is_empty() and runs == 60,
+		"PF3 every plow vehicle driven at the garage door and the house wall (%d runs: blade up and down, straight and angled both ways) stops against it, the blade's shape never more than %.3f m inside the footprint (the most %.4f m; the blade met it first %d times) %s" % [runs, PF3_INSIDE, worst, blade_first, str(bad)])
+	# Pressed against the garage door, the blade angled, steering both ways, then the blade swung across.
+	var bad2 := []
+	var worst2 := 0.0
+	for id in S11_BLADES:
+		var vd: VehicleData = Catalog.vehicle(StringName(id))
+		var p := Layout.lot_to_world(lot, Layout.gu(lot, 6.0), sb - 0.5 - _pf3_reach(vd) - 1.0)
+		var v := await _truck(id, p.x, p.y, _pf3_yaw_in(lot))
+		v.set_blade(true)
+		v.blade_angle = vd.blade_max_angle_deg
+		await _frames(90)
+		var w := 0.0
+		for keys in [["veh_accelerate"], ["veh_accelerate", "veh_left"], ["veh_accelerate", "veh_right"]]:
+			var res: Dictionary = await _pf3_press(v, hi["garage"], keys, 600 if keys.size() == 1 else 90)
+			w = maxf(w, res["inside"])
+		v.blade_angle = -vd.blade_max_angle_deg
+		var res3: Dictionary = await _pf3_press(v, hi["garage"], ["veh_accelerate"], 120)
+		w = maxf(w, res3["inside"])
+		worst2 = maxf(worst2, w)
+		runner.info("PF3 %s pressed against the garage door, steered and swung: inside %.4f m" % [id, w])
+		if w > PF3_INSIDE:
+			bad2.append(id)
+		await _drop(v)
+	runner.check(bad2.is_empty(), "PF3 …pressed against the garage door, steered both ways and the blade swung across: never more than %.3f m inside (the most %.4f m) %s" % [PF3_INSIDE, worst2, str(bad2)])
+	await _unload()
+
+
+## The solid things a vehicle's boxes overlap (not itself).
+func _pf3_touching(v: Vehicle) -> Array:
+	var out := []
+	var space: PhysicsDirectSpaceState3D = world.get_world_3d().direct_space_state
+	var skip: Array[RID] = [v.get_rid()]
+	for b in world._solid_boxes(v, v.global_transform):
+		for h in space.intersect_shape(world._box_query(b, 0.0, 1 | (1 << 2) | (1 << 3), skip)):
+			out.append("%s: %s" % [v.data.id, str(h["collider"])])
+	return out
+
+
+## §1: the truck still starts at truck_start() overlapping nothing, its blade solid, with the plow
+## width upgrade as well; every plow vehicle's blade has its solid shape, BLADE_CLEAR above the ground
+## with the blade lowered.
+func test_pf3_the_truck_starts_clear() -> void:
+	await _world()
+	var truck: Vehicle = world.vehicle_nodes()[0]
+	var ts := Game.truck_start()
+	var at_start := truck.global_position.distance_to(ts["pos"]) < 0.001 and is_equal_approx(truck.rotation.y, float(ts["yaw"]))
+	var h0 := _pf3_touching(truck)
+	runner.check(truck.blade_cs != null and at_start and h0.is_empty(), "PF3 the truck starts at truck_start() with a solid blade, overlapping nothing %s" % str(h0))
+	Game.grant_upgrade(StringName(ItemUpgrades.level_id(&"pickup_plow", &"plow_width", 1)))
+	await _frames(3)
+	var h1 := _pf3_touching(truck)
+	runner.check(h1.is_empty() and truck.global_position.distance_to(ts["pos"]) < 0.001, "PF3 …with the plow width upgrade too (its wider blade) %s" % str(h1))
+	var low := []
+	var outside := []
+	for id in S11_BLADES:
+		var vd: VehicleData = Catalog.vehicle(StringName(id))
+		var v := await _truck(id, 30.0)
+		v.set_blade(true)
+		await _frames(90)
+		var cs := v.blade_cs
+		var bottom := cs.global_position.y - (cs.shape as BoxShape3D).size.y * 0.5 - v.global_position.y if cs else -1.0
+		runner.info("PF3 %s: the lowered blade's shape from %.3f m up" % [id, bottom])
+		if cs == null or bottom < Vehicle.BLADE_CLEAR - 1e-4:
+			low.append(id)
+		# The shape holds the blade as it stands: the plate's every vertex inside it (below BLADE_CLEAR
+		# only under it), blade down and up, straight and angled both ways, as the blade turns and lifts.
+		for down in [true, false]:
+			for a in [0.0, -vd.blade_max_angle_deg, vd.blade_max_angle_deg]:
+				v.set_blade(down)
+				v.blade_angle = a
+				var worst := 0.0
+				for f in range(40):
+					await _tree().physics_frame
+					worst = maxf(worst, _pf3_plate_outside(v, id))
+				if worst > 0.001:
+					outside.append("%s %s %+d°: %.3f m" % [id, "down" if down else "up", int(a), worst])
+		await _drop(v)
+	runner.check(low.is_empty(), "PF3 every plow vehicle's blade is solid, its shape at least %.2f m above the ground with the blade lowered %s" % [Vehicle.BLADE_CLEAR, str(low)])
+	runner.check(outside.is_empty(), "PF3 …and its shape holds the visible plate every frame as the blade turns and lifts (down and up, straight and angled both ways) %s" % str(outside))
+	await _unload()
+
+
+## How far the furthest vertex of the blade's plate (its first surface of its own colour: blue with the
+## width upgrade) stands outside the blade's solid shape (m), the part under BLADE_CLEAR aside.
+func _pf3_plate_outside(v: Vehicle, id: String) -> float:
+	var mesh: Mesh = v._blade_mi.mesh
+	var si := _pf3_surface(mesh, VehicleModels.UPGRADED_BLUE if v.blade_mult > 1.0 else _pf3_base_colour(id))
+	if si < 0:
+		return INF
+	var to_box := v.blade_cs.global_transform.affine_inverse() * v._blade_mi.global_transform
+	var half := (v.blade_cs.shape as BoxShape3D).size * 0.5
+	var out := 0.0
+	for p in (mesh.surface_get_arrays(si)[Mesh.ARRAY_VERTEX] as PackedVector3Array):
+		var w := v._blade_mi.global_transform * p
+		var lp := to_box * p
+		var dy := maxf(lp.y - half.y, 0.0) if w.y - v.global_position.y < Vehicle.BLADE_CLEAR else maxf(absf(lp.y) - half.y, 0.0)
+		out = maxf(out, maxf(maxf(absf(lp.x) - half.x, absf(lp.z) - half.z), dy))
+	return out
+
+
+## Whether a point on the ground is within `margin` of the blade's solid shape (seen from above).
+static func _pf3_in_blade(v: Vehicle, p: Vector3, margin: float) -> bool:
+	var lp := v.blade_cs.global_transform.affine_inverse() * p
+	var half := (v.blade_cs.shape as BoxShape3D).size * 0.5
+	return absf(lp.x) < half.x + margin and absf(lp.z) < half.z + margin
+
+
+## §1: getting out of a plow vehicle never puts the player in its solid blade (to be shoved off it):
+## every plow with the width upgrade (the grader's blade stands beside its cab), at every angle, the
+## blade settled or still turning to its angle (it settles beside the player).
+## (The tall vehicles' shift on getting out is older: see STATUS.md Issues.)
+func test_pf3_getting_out_beside_the_blade() -> void:
+	await _world()
+	var bad := []
+	for id in S11_BLADES:
+		var vd: VehicleData = Catalog.vehicle(StringName(id))
+		Game.grant_upgrade(StringName(ItemUpgrades.level_id(vd.id, &"plow_width", 1)))
+		var m := vd.blade_max_angle_deg
+		for a in [-m, -20.0, -10.0, -8.0, 0.0, 8.0, 10.0, 20.0, m]:
+			for turning in ([false, true] if a != 0.0 else [false]):
+				var v := await _truck(id, 30.0)
+				v.blade_angle = a
+				await _frames(60)
+				if turning:     # still turning to its angle, 6° behind it (as while Z / C is held)
+					v.blade_node.rotation.y = -deg_to_rad(a - 6.0 * signf(a))
+					v._fit_blade_shape()
+				v.exit_vehicle()
+				var at: Vector3 = world.player.global_position
+				# The blade as it settles (at its angle), the vehicle where it stood. (Waiting for it
+				# would mix in the tall vehicles' shift on getting out, which is older: STATUS.md.)
+				v.blade_node.rotation.y = -deg_to_rad(a)
+				v._fit_blade_shape()
+				if _pf3_in_blade(v, at, world.player.capsule.radius):
+					bad.append("%s %+d°%s" % [id, int(a), " (turning)" if turning else ""])
+				await _drop(v)
+	runner.check(bad.is_empty(), "PF3 getting out of every plow with the width upgrade, at every blade angle: never into the blade %s" % str(bad))
+	await _unload()
+
+
+## The first surface of `mesh` whose material is colour `c` (a prop shader's albedo or a standard
+## material's colour), or -1.
+static func _pf3_surface(mesh: Mesh, c: Color) -> int:
+	for i in range(mesh.get_surface_count()):
+		var m := mesh.surface_get_material(i)
+		var col: Variant = null
+		if m is ShaderMaterial:
+			col = (m as ShaderMaterial).get_shader_parameter("albedo")
+		elif m is StandardMaterial3D:
+			col = (m as StandardMaterial3D).albedo_color
+		if col is Color and (col as Color).is_equal_approx(c):
+			return i
+	return -1
+
+
+## The box a surface's vertices fill.
+static func _pf3_surface_box(mesh: Mesh, i: int) -> AABB:
+	var verts: PackedVector3Array = mesh.surface_get_arrays(i)[Mesh.ARRAY_VERTEX]
+	var box := AABB(verts[0], Vector3.ZERO)
+	for p in verts:
+		box = box.expand(p)
+	return box
+
+
+## Whether two meshes are the same: their surfaces' materials and vertices.
+static func _pf3_same_mesh(a: Mesh, b: Mesh) -> bool:
+	if a.get_surface_count() != b.get_surface_count():
+		return false
+	for i in range(a.get_surface_count()):
+		if a.surface_get_material(i) != b.surface_get_material(i) or a.surface_get_arrays(i)[Mesh.ARRAY_VERTEX] != b.surface_get_arrays(i)[Mesh.ARRAY_VERTEX]:
+			return false
+	return true
+
+
+## The base colour of each plow vehicle's blade (VehicleModels).
+static func _pf3_base_colour(id: String) -> Color:
+	match id:
+		"plow_truck":
+			return Color(0.15, 0.15, 0.16)
+		"grader":
+			return Color(0.3, 0.3, 0.32)
+	return PF3_YELLOW
+
+
+## §2: without plow_width every plow vehicle's blade is exactly as before (the same mesh: the yellow
+## blades yellow), no lamps, its solid shape as wide as the strip it clears. Granted (as collecting its
+## crate does) on the vehicle already in the world: the blade model and its solid shape are as wide as
+## the strip it now clears (within 5 cm), the plate about 20 % taller, blue, with two lamps on top that
+## glow while the headlights are on (at night) and not by day. No balance value changes. The truck
+## parked in the driveway changes too, and save → load keeps it.
+func test_pf3_the_width_upgrade_shows() -> void:
+	await _world()
+	var blue := VehicleModels.UPGRADED_BLUE
+	var bad := []
+	var lens := MeshKit.new()
+	lens.box(Mats.std(VehicleModels.LAMP_LENS, 0.3), Transform3D(), Vector3.ONE)
+	var one_lens: int = lens.commit().surface_get_array_len(0)
+	var bal := var_to_str(inst_to_dict(Catalog.balance))
+	for id in S11_BLADES:
+		var vd: VehicleData = Catalog.vehicle(StringName(id))
+		var v := await _truck(id, 30.0)
+		var base: Dictionary = VehicleModels.build(vd)
+		var mesh0: Mesh = v._blade_mi.mesh
+		var cleared0 := vd.blade_width * ItemUpgrades.mult(vd.id, &"vehicle_blade_width")
+		var w0 := (v.blade_cs.shape as BoxShape3D).size.x
+		var as_before := _pf3_same_mesh(mesh0, base["blade_mesh"]) and v.blade_lamps == null and _pf3_surface(mesh0, blue) < 0
+		var colour := _pf3_surface(mesh0, _pf3_base_colour(id)) >= 0
+		runner.info("PF3 %s without: as before %s, its colour %s, the shape %.3f m wide, the strip %.3f m" % [id, str(as_before), str(colour), w0, cleared0])
+		if not (as_before and colour and absf(w0 - cleared0) <= 0.05):
+			bad.append("%s without" % id)
+		Game.grant_upgrade(StringName(ItemUpgrades.level_id(vd.id, &"plow_width", 1)))
+		await _frames(2)
+		var mesh1: Mesh = v._blade_mi.mesh
+		var cleared := vd.blade_width * ItemUpgrades.mult(vd.id, &"vehicle_blade_width")
+		var si := _pf3_surface(mesh1, blue)
+		var plate1 := _pf3_surface_box(mesh1, si) if si >= 0 else AABB()
+		var si0 := _pf3_surface(base["blade_mesh"], _pf3_base_colour(id))
+		var plate0 := _pf3_surface_box(base["blade_mesh"], si0) if si0 >= 0 else AABB()
+		var w1 := (v.blade_cs.shape as BoxShape3D).size.x
+		var taller := plate1.size.y / maxf(plate0.size.y, 1e-6)
+		var lamps: bool = v.blade_lamps != null and v.blade_lamps.mesh.surface_get_array_len(0) == one_lens * 2
+		var lamp_box: AABB = v.blade_lamps.mesh.get_aabb() if v.blade_lamps else AABB()
+		var on_top: bool = lamps and lamp_box.position.y >= plate1.end.y - 0.15 and lamp_box.size.x > plate1.size.x * 0.4
+		runner.info("PF3 %s with: the model %.3f m wide, the shape %.3f m, the strip %.3f m; the plate %.2f x as tall; blue %s; two lamps %s, on top %s" % [id, plate1.size.x, w1, cleared, taller, str(si >= 0), str(lamps), str(on_top)])
+		if not (si >= 0 and absf(plate1.size.x - cleared) <= 0.05 and absf(w1 - cleared) <= 0.05 and taller > 1.15 and taller < 1.25 and lamps and on_top and cleared > cleared0 + 0.1):
+			bad.append("%s with" % id)
+		# The lamps glow with the headlights: at night, and not by day.
+		Clock.reset(Clock.at(1, 23.0))
+		await _frames(45)          # the game sets the lights every 0.5 s
+		var lit: bool = v.headlights[0].visible and v.blade_lamps != null and v.blade_lamps.material_override is StandardMaterial3D and (v.blade_lamps.material_override as StandardMaterial3D).emission_enabled
+		Clock.reset(Clock.at(1, 12.0))
+		await _frames(45)
+		var unlit: bool = not v.headlights[0].visible and v.blade_lamps != null and v.blade_lamps.material_override == null
+		if not (lit and unlit):
+			bad.append("%s lamps (lit at night %s, unlit by day %s)" % [id, str(lit), str(unlit)])
+		await _drop(v)
+	runner.check(bad.is_empty(), "PF3 the width upgrade shows on every plow vehicle in the world as it is granted: the blade and its shape as wide as the strip it clears (5 cm), about 20 %% taller, blue, two lamps lit with the headlights; without it the blade as before %s" % str(bad))
+	runner.check(var_to_str(inst_to_dict(Catalog.balance)) == bal, "PF3 …no balance value changes")
+	# The truck parked in the driveway changed too, and keeps it through save → load.
+	var truck: Vehicle = world.vehicle_nodes()[0]
+	var cleared_t := truck.data.blade_width * ItemUpgrades.mult(truck.data.id, &"vehicle_blade_width")
+	var wide_now := truck.blade_lamps != null and _pf3_surface(truck._blade_mi.mesh, blue) >= 0 and absf((truck.blade_cs.shape as BoxShape3D).size.x - cleared_t) <= 0.05
+	runner.check(Saves.save_game(), "PF3 saved")
+	await _unload()
+	runner.check(Saves.load_game("fun"), "PF3 loaded")
+	world = load("res://scenes/game.tscn").instantiate()
+	runner.add_child(world)
+	await _frames(3)
+	Clock.running = false
+	var t2: Vehicle = world.vehicle_nodes()[0] if not world.vehicle_nodes().is_empty() else null
+	var kept := t2 != null and t2.blade_lamps != null and _pf3_surface(t2._blade_mi.mesh, blue) >= 0 and absf((t2.blade_cs.shape as BoxShape3D).size.x - cleared_t) <= 0.05
+	runner.check(wide_now and kept, "PF3 the truck parked in the driveway changed too, and save → load keeps its upgraded blade (%.2f m)" % cleared_t)
+	Saves.delete_save("fun")
+	await _unload()
+
+
+## Where the truck may be left before a sleep: on Maple Street, at the store's lot, and pushed off its
+## spot in the driveway (sideways and turned).
+func _pf3_parkings() -> Array:
+	var store := Rect2()
+	for a in Layout.big_areas:
+		if a["id"] == "store_lot":
+			store = a["rect"]
+	var ts := Game.truck_start()
+	var off: Vector3 = ts["pos"] + Vector3(1.6, 0, -1.2)
+	return [["on the street", Vector3(30.0, 0, 84.95), -PI * 0.5], ["at the store lot", Vector3(store.get_center().x, 0, store.get_center().y), 0.4],
+		["pushed off its spot", off, float(ts["yaw"]) + 0.45]]
+
+
+## §3: left on the street, at the store lot or pushed off its spot (its blade angled 20°, the keys
+## found or not), after a sleep the truck is at truck_start(), facing as at the start, its blade raised,
+## its blade angle and roof snow as they were; the ATV on the street hasn't moved. Save → load keeps it
+## at home.
+func test_pf3_the_truck_goes_home_overnight() -> void:
+	await _world()
+	var truck: Vehicle = world.vehicle_nodes()[0]
+	var ts := Game.truck_start()
+	var atv := await _truck("atv_blade", 60.0)
+	atv.exit_vehicle()
+	await _frames(5)
+	var atv_at := atv.global_transform
+	var bad := []
+	var k := 0
+	for p in _pf3_parkings():
+		Game.flags["truck_keys"] = k % 2 == 0
+		truck.global_position = p[1]
+		truck.rotation.y = p[2]
+		truck.blade_angle = 20.0
+		truck.snow_load = 0.3
+		await _frames(30)
+		runner.check(truck.global_position.distance_to(ts["pos"]) > 1.0, "PF3 the truck is %s (%.1f m from its spot)" % [p[0], truck.global_position.distance_to(ts["pos"])])
+		await world._do_sleep()
+		await _frames(2)
+		var home := truck.global_position.distance_to(ts["pos"]) < 0.001 and absf(wrapf(truck.rotation.y - float(ts["yaw"]), -PI, PI)) < 1e-4
+		var raised := not truck.tool_on and is_equal_approx(truck.blade_node.position.y, Vehicle.BLADE_LIFT)
+		var kept := is_equal_approx(truck.blade_angle, 20.0) and truck.snow_load >= 0.3 - 1e-6
+		runner.info("PF3 %s: home %s (%.4f m), the blade raised %s, its angle and the roof snow kept %s, %s" % [p[0], str(home), truck.global_position.distance_to(ts["pos"]), str(raised), str(kept), Clock.format_time(Clock.minutes)])
+		if not (home and raised and kept and Clock.hour() == 7):
+			bad.append(p[0])
+		k += 1
+	runner.check(bad.is_empty(), "PF3 after a sleep the truck is home at truck_start(), facing as at the start, its blade raised, its blade angle and roof snow kept, keys or no keys %s" % str(bad))
+	runner.check(atv.global_transform.is_equal_approx(atv_at), "PF3 …the ATV left on the street hasn't moved")
+	await _unload()
+	runner.check(Saves.load_game("fun"), "PF3 the sleep's save loads")
+	world = load("res://scenes/game.tscn").instantiate()
+	runner.add_child(world)
+	await _frames(5)
+	Clock.running = false
+	var t2: Vehicle = null
+	for v in world.vehicle_nodes():
+		if (v as Vehicle).is_pickup():
+			t2 = v
+	runner.check(t2 != null and t2.global_position.distance_to(ts["pos"]) < 0.001 and absf(wrapf(t2.rotation.y - float(ts["yaw"]), -PI, PI)) < 1e-4,
+		"PF3 save → load keeps the truck at home")
+	Saves.delete_save("fun")
+	await _unload()
+
+
+## §3: a vehicle standing on the truck's spot moves just clear of it, within the driveway or yard,
+## overlapping nothing (nor does the truck at home); the move leaves the snow as it was and moves
+## nothing else.
+func test_pf3_a_vehicle_on_the_spot_moves_clear() -> void:
+	await _world()
+	var truck: Vehicle = world.vehicle_nodes()[0]
+	var ts := Game.truck_start()
+	var lot := Layout.player_lot
+	var yard: Rect2 = lot["rect"]
+	var drive: Rect2 = Layout.house_info(lot)["driveway"]
+	var bad := []
+	for id in ["atv_blade", "tractor_blade"]:
+		truck.global_position = Vector3(30.0, 0, 84.95)
+		truck.rotation.y = -PI * 0.5
+		await _frames(5)
+		var tp: Vector3 = ts["pos"]
+		var o := await _truck(id, tp.x + 0.4, tp.z - 0.6, float(ts["yaw"]) + 0.2)
+		o.exit_vehicle()
+		var other := await _truck("pickup", 50.0)       # elsewhere: stays put
+		other.exit_vehicle()
+		await _frames(5)
+		var o_at := o.global_position
+		var other_at := other.global_transform
+		var vol := Snow.total_volume()
+		await world.send_truck_home()
+		var vol_same := absf(Snow.total_volume() - vol) < 1e-6
+		await _frames(30)                                 # and stays so once the physics has caught up
+		var moved := o.global_position.distance_to(o_at)
+		var overlap := false
+		for a in world._solid_boxes(o, o.global_transform):
+			for b in world._solid_boxes(truck, truck.global_transform):
+				if not Geometry2D.intersect_polygons(world._box_corners(a[0], a[1]), world._box_corners(b[0], b[1])).is_empty():
+					overlap = true
+		var hit := _pf3_touching(o) + _pf3_touching(truck)
+		var inside := true
+		for b in world._solid_boxes(o, o.global_transform):
+			for c in world._box_corners(b[0], b[1]):
+				inside = inside and (yard.has_point(c) or drive.has_point(c))
+		var home := truck.global_position.distance_to(ts["pos"]) < 0.001
+		runner.info("PF3 %s on the spot: moved %.2f m, overlapping the truck %s, touching %s, in the yard %s, the truck home %s, the snow the same %s" % [id, moved, str(overlap), str(hit), str(inside), str(home), str(vol_same)])
+		if not (home and moved > 0.3 and moved < 6.0 and not overlap and hit.is_empty() and inside and vol_same and other.global_transform.is_equal_approx(other_at)):
+			bad.append(id)
+		for v in [o, other]:
+			Game.vehicles.erase((v as Vehicle).entry)
+			(v as Vehicle).queue_free()
+		await _frames(2)
+	runner.check(bad.is_empty(), "PF3 a vehicle on the truck's spot moves just clear of it (under 6 m), within the driveway or yard, overlapping nothing; the truck home; the snow and the other vehicles as they were %s" % str(bad))
+	await _unload()
+

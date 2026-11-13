@@ -80,3 +80,4 @@ Bid on contracts → sleep → wake up and check the weather → do the contract
 
 - The truck and its plow: a new game starts with the player's pickup truck with its front plow in the driveway, locked until the keys are found. With the blade up it drives through deep snow like a pickup; with the blade down it plows. The plow isn't sold. ([vehicles](docs/features/vehicles.md))
 - The blade keys: Up / Down raise and lower the blade on every plow; reversing with the blade down drags snow back (back-drag). All keys are rebindable. ([vehicles](docs/features/vehicles.md), [controls](docs/features/controls.md))
+- The truck goes home when you sleep: wherever it was left, it's back in the driveway in the morning, its blade raised. ([vehicles](docs/features/vehicles.md))

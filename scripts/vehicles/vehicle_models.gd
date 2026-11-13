@@ -2,18 +2,31 @@ class_name VehicleModels
 extends RefCounted
 ## Procedural vehicle models. Vehicle faces local -Z; origin at ground level, centre of the body.
 ## Returns {mesh, wheels:[{pos, r}], blade_z, chute_pos, cab_cam, bed_rect, roof_snow:[Transform3D,size]}.
+## Polish 7 playtest fix 3: a plow vehicle's also has blade_box, the space its blade fills in the
+## blade's frame (the plate, its cutting edge and any lamps; not the arms behind it), which
+## vehicle.gd makes solid; with blade_mult > 1 (the plow width upgrade) it has blade_lamps too, the
+## lamps' lenses as a mesh of their own (the vehicle lights them with its headlights).
+
+## Polish 7 playtest fix 3: the upgraded blade (blade_mult > 1): this blue, as wide as the strip it
+## clears (blade_mult x the base width), UPGRADED_TALL x as tall, with two plow lamps on top.
+const UPGRADED_BLUE := Color(0.1, 0.36, 0.92)
+const UPGRADED_TALL := 1.2
+const LAMP_LENS := Color(0.78, 0.78, 0.72)
 
 
-static func build(vd: VehicleData) -> Dictionary:
+static func build(vd: VehicleData, blade_mult := 1.0) -> Dictionary:
 	var kit := MeshKit.new()
 	var bkit := MeshKit.new()
+	var up := blade_mult > 1.0
+	var tall := UPGRADED_TALL if up else 1.0
+	var lens_kit: MeshKit = MeshKit.new() if up else null
 	var body := Mats.prop(vd.body_color, 0.25, 0.35)
 	var dark := Mats.std(vd.accent_color, 0.6)
 	var glass := Mats.std(Color(0.12, 0.15, 0.2), 0.12, 0.3)
 	var chrome := Mats.metal(Color(0.75, 0.76, 0.78))
 	var lamp := Mats.emissive(Color(1.0, 0.85, 0.55), 1.5)
 	var tail := Mats.emissive(Color(0.9, 0.1, 0.08), 1.2)
-	var blade_m := Mats.prop(Color(0.95, 0.75, 0.1), 0.4, 0.4)
+	var blade_m := Mats.prop(UPGRADED_BLUE if up else Color(0.95, 0.75, 0.1), 0.4, 0.4)
 	var L := vd.length
 	var W := vd.width
 	var info := {"wheels": [], "blade_z": -L * 0.5 - 0.6, "chute": Vector3(0, 2.0, -L * 0.5), "cab_cam": Vector3(-0.35, 1.6, -0.2),
@@ -44,7 +57,7 @@ static func build(vd: VehicleData) -> Dictionary:
 			info["snow"] = [[Transform3D(Basis(), Vector3(0, 1.85, -0.1)), Vector2(1.9, 1.5)], [Transform3D(Basis(), Vector3(0, 1.15, -1.55)), Vector2(1.9, 1.8)], [Transform3D(Basis(), Vector3(0, 1.18, 1.55)), Vector2(1.9, 2.2)]]
 			info["cab_cam"] = Vector3(-0.4, 1.65, -0.15)
 			if vd.kind == VehicleData.Kind.PICKUP_PLOW:
-				_plow(bkit, blade_m, dark, 2.4, 0.0, 0.75)
+				info["blade_box"] = _plow(bkit, blade_m, dark, 2.4 * blade_mult, 0.0, 0.75 * tall, lens_kit)
 				info["blade_pivot"] = Vector3(0, 0, -3.05)
 				info["blade_z"] = -3.15
 		VehicleData.Kind.ATV:
@@ -56,7 +69,7 @@ static func build(vd: VehicleData) -> Dictionary:
 			for z in [-0.7, 0.7]:
 				for s in [-1.0, 1.0]:
 					info["wheels"].append({"pos": Vector3(s * 0.62, 0.32, z), "r": 0.32})
-			_plow(bkit, blade_m, dark, 1.5, 0.0, 0.5)
+			info["blade_box"] = _plow(bkit, blade_m, dark, 1.5 * blade_mult, 0.0, 0.5 * tall, lens_kit)
 			info["blade_pivot"] = Vector3(0, 0, -1.6)
 			info["blade_z"] = -1.7
 			info["cab_cam"] = Vector3(0, 1.75, 0.3)
@@ -70,7 +83,7 @@ static func build(vd: VehicleData) -> Dictionary:
 			info["wheels"] = [{"pos": Vector3(-0.85, 0.75, 0.75), "r": 0.75}, {"pos": Vector3(0.85, 0.75, 0.75), "r": 0.75},
 				{"pos": Vector3(-0.75, 0.45, -1.2), "r": 0.45}, {"pos": Vector3(0.75, 0.45, -1.2), "r": 0.45}]
 			if vd.kind == VehicleData.Kind.TRACTOR_BLADE:
-				_plow(bkit, blade_m, dark, 2.4, 0.0, 0.85)
+				info["blade_box"] = _plow(bkit, blade_m, dark, 2.4 * blade_mult, 0.0, 0.85 * tall, lens_kit)
 				info["blade_pivot"] = Vector3(0, 0, -2.55)
 				info["blade_z"] = -2.65
 			else:
@@ -90,7 +103,12 @@ static func build(vd: VehicleData) -> Dictionary:
 			info["wheels"] = [{"pos": Vector3(-1.05, 0.6, -3.9), "r": 0.6}, {"pos": Vector3(1.05, 0.6, -3.9), "r": 0.6},
 				{"pos": Vector3(-1.05, 0.6, 1.8), "r": 0.6}, {"pos": Vector3(1.05, 0.6, 1.8), "r": 0.6},
 				{"pos": Vector3(-1.05, 0.6, 3.2), "r": 0.6}, {"pos": Vector3(1.05, 0.6, 3.2), "r": 0.6}]
-			bkit.box(Mats.metal(Color(0.3, 0.3, 0.32)), Transform3D(Basis(), Vector3(0, 0.45, 0)), Vector3(3.7, 0.6, 0.12))
+			var gh := 0.6 * tall
+			bkit.box(blade_m if up else Mats.metal(Color(0.3, 0.3, 0.32)), Transform3D(Basis(), Vector3(0, 0.15 + gh * 0.5, 0)), Vector3(3.7 * blade_mult, gh, 0.12))
+			var gb := AABB(Vector3(-3.7 * blade_mult * 0.5, 0.15, -0.06), Vector3(3.7 * blade_mult, gh, 0.12))
+			if lens_kit:
+				gb = gb.merge(_plow_lamps(bkit, lens_kit, dark, gb.size.x * 0.5 - 0.3, Vector3(0, gb.end.y, 0)))
+			info["blade_box"] = gb
 			info["blade_pivot"] = Vector3(0, 0, -0.6)
 			info["blade_z"] = -0.6
 			info["cab_cam"] = Vector3(0, 2.6, 1.0)
@@ -110,7 +128,7 @@ static func build(vd: VehicleData) -> Dictionary:
 			info["snow"] = [[Transform3D(Basis(), Vector3(0, 2.42, -2.4)), Vector2(2.3, 1.8)]]
 			if vd.kind == VehicleData.Kind.PLOW_TRUCK:
 				kit.bevel_box(body, Transform3D(Basis(), Vector3(0, 1.6, 1.8)), Vector3(2.5, 1.6, 3.6), 0.1)
-				_plow(bkit, Mats.prop(Color(0.15, 0.15, 0.16), 0.4, 0.5), dark, 3.4, 0.0, 1.1)
+				info["blade_box"] = _plow(bkit, blade_m if up else Mats.prop(Color(0.15, 0.15, 0.16), 0.4, 0.5), dark, 3.4 * blade_mult, 0.0, 1.1 * tall, lens_kit)
 				info["blade_pivot"] = Vector3(0, 0, -4.3)
 				info["blade_z"] = -4.4
 				info["snow"].append([Transform3D(Basis(), Vector3(0, 2.42, 1.8)), Vector2(2.4, 3.5)])
@@ -144,12 +162,41 @@ static func build(vd: VehicleData) -> Dictionary:
 	info["mesh"] = kit.commit()
 	if not bkit.is_empty():
 		info["blade_mesh"] = bkit.commit()
+	if lens_kit and not lens_kit.is_empty():
+		info["blade_lamps"] = lens_kit.commit()
 	return info
 
 
-static func _plow(kit: MeshKit, blade: Material, dark: Material, width: float, z: float, h: float) -> void:
+## Polish 7 playtest fix 3: returns the space the plate (tilted 12°: its box) and its cutting edge
+## fill, and the lamps when `lens_kit` is given (the upgraded blade), for the blade's solid shape.
+## The arms behind the plate aren't counted.
+static func _plow(kit: MeshKit, blade: Material, dark: Material, width: float, z: float, h: float, lens_kit: MeshKit = null) -> AABB:
 	kit.bevel_box(blade, Transform3D(Basis(Vector3(1, 0, 0), deg_to_rad(-12)), Vector3(0, h * 0.5 + 0.08, z)), Vector3(width, h, 0.1), 0.03)
 	kit.box(Mats.metal(Color(0.4, 0.4, 0.42)), Transform3D(Basis(), Vector3(0, 0.06, z + 0.04)), Vector3(width, 0.06, 0.06))
 	kit.box(dark, Transform3D(Basis(), Vector3(0, h * 0.45, z + 0.4)), Vector3(0.6, 0.15, 0.8))
 	for s in [-0.6, 0.6]:
 		kit.box(dark, Transform3D(Basis(), Vector3(s, h * 0.5, z + 0.25)), Vector3(0.1, 0.1, 0.5))
+	var a := deg_to_rad(12.0)
+	var hy := h * 0.5 * cos(a) + 0.05 * sin(a)
+	var hz := h * 0.5 * sin(a) + 0.05 * cos(a)
+	var out := AABB(Vector3(-width * 0.5, h * 0.5 + 0.08 - hy, z - hz), Vector3(width, hy * 2.0, hz * 2.0))
+	out = out.merge(AABB(Vector3(-width * 0.5, 0.03, z + 0.01), Vector3(width, 0.06, 0.06)))
+	if lens_kit:
+		# The plate leans forward: the lamps stand on the middle of its top edge.
+		out = out.merge(_plow_lamps(kit, lens_kit, dark, width * 0.5 - 0.3, Vector3(0, h * 0.5 + 0.08 + h * 0.5 * cos(a), z - h * 0.5 * sin(a))))
+	return out
+
+
+## Polish 7 playtest fix 3: the upgraded blade's two plow lamps, at ±xs along its top edge (its middle
+## at `top`): housings on short brackets (in `kit`), their lenses facing ahead (in `lens_kit`).
+## Returns the space they fill.
+static func _plow_lamps(kit: MeshKit, lens_kit: MeshKit, dark: Material, xs: float, top: Vector3) -> AABB:
+	var out := AABB()
+	for s in [-1.0, 1.0]:
+		var c := top + Vector3(s * xs, 0, 0)
+		kit.box(dark, Transform3D(Basis(), c + Vector3(0, 0.04, 0)), Vector3(0.05, 0.08, 0.05))
+		kit.bevel_box(dark, Transform3D(Basis(), c + Vector3(0, 0.15, 0)), Vector3(0.24, 0.14, 0.14), 0.03)
+		lens_kit.box(Mats.std(LAMP_LENS, 0.3), Transform3D(Basis(), c + Vector3(0, 0.15, -0.075)), Vector3(0.18, 0.1, 0.02))
+		var box := AABB(c + Vector3(-0.12, 0.0, -0.085), Vector3(0.24, 0.22, 0.155))
+		out = box if s < 0.0 else out.merge(box)
+	return out

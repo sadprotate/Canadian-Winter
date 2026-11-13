@@ -184,6 +184,13 @@ extends Node
 ##                            and held there: the pile as the driver sees it (the game's driving
 ##                            camera behind the truck; --cab=1 the cab view, --cam_pitch=r its pitch).
 ##                            Use with --unlock=1 and --fixed-fps 60
+##   --solid_blade=wall|front (playtest fix 3) the truck (the pickup with its plow), the yard bare, the
+##                            player in it. wall: driven at the garage door at full throttle, the blade
+##                            angled --blade_angle (default 30) and lowered with --blade_down=1, until it
+##                            stops, held there; the camera from the lawn. front: at its spot, the blade
+##                            lowered; the camera in front of it. --blade_upgrade=1 grants the plow
+##                            width upgrade first (with --hour=22 its lamps light with the headlights).
+##                            Use with --unlock=1 and --fixed-fps 60
 
 var args := {}
 var game: Node = null
@@ -642,6 +649,8 @@ func _setup_after_spawn() -> void:
 		await _plow_out(w)
 	if args.has("long_push"):
 		await _long_push(w)
+	if args.has("solid_blade"):
+		await _solid_blade(w)
 	if args.has("cam") or args.has("lotcam") or args.has("hcam"):
 		_cam = Camera3D.new()
 		_cam.fov = float(args.get("fov", "62"))
@@ -854,6 +863,63 @@ func _back_drag(w) -> void:
 	if not args.has("cam"):
 		args["cam"] = "%f,2.6,%f" % [drv.position.x - 3.2, door_z - 6.5]
 		args["look"] = "%f,0.5,%f" % [cx + 0.6, door_z - 2.4]
+
+
+## Playtest fix 3: --solid_blade=wall|front (see the top).
+func _solid_blade(w) -> void:
+	var lot := Layout.player_lot
+	var hi := Layout.house_info(lot)
+	var drv: Rect2 = hi["driveway"]
+	var door_z: float = (hi["garage"] as Rect2).position.y
+	var cx := drv.get_center().x
+	Game.force_input = true
+	Game.flags["truck_keys"] = true
+	Game.flags["help_vehicle_%d" % VehicleData.Kind.PICKUP_PLOW] = true   # no controls panel over the shot
+	Clock.running = false
+	Snow.set_rect((lot["rect"] as Rect2).merge(drv).grow(3.0), 0.0)
+	Snow.relax_until_stable()
+	if args.has("blade_upgrade"):
+		Game.grant_upgrade(StringName(ItemUpgrades.level_id(&"pickup_plow", &"plow_width", 1)))
+	var v: Vehicle = w.vehicle_nodes()[0]
+	if str(args["solid_blade"]) == "wall":
+		var vd: VehicleData = Catalog.vehicle(&"pickup_plow")
+		v.global_position = Vector3(cx, 0, door_z - vd.length * 0.5 - 4.0)
+		v.rotation.y = PI
+		await get_tree().physics_frame
+	v.enter_vehicle(w.player)
+	await get_tree().physics_frame
+	v.set_blade(args.has("blade_down") or str(args["solid_blade"]) == "front")
+	v.blade_angle = float(args.get("blade_angle", "30")) if str(args["solid_blade"]) == "wall" else 0.0
+	await _wait(90)
+	if str(args["solid_blade"]) == "wall":
+		Input.action_press("veh_accelerate")
+		var still := 0
+		var last := v.global_position
+		for i in range(600):
+			await get_tree().physics_frame
+			still = still + 1 if i > 30 and v.global_position.distance_to(last) < 0.0005 else 0
+			last = v.global_position
+			if still > 45:
+				break
+		Input.action_release("veh_accelerate")
+		await _wait(3)
+		v.set_physics_process(false)   # hold it there for the shot
+		var fr := 1e9
+		var size := (v.blade_cs.shape as BoxShape3D).size
+		for sx in [-0.5, 0.5]:
+			for sz in [-0.5, 0.5]:
+				fr = minf(fr, door_z - (v.blade_cs.global_transform * Vector3(sx * size.x, 0, sz * size.z)).z)
+		print("solid_blade: stopped %.3f m from the door with its blade's shape (%.2f m wide, %+d°)" % [fr, size.x, int(v.blade_angle)])
+		if not args.has("cam"):
+			args["cam"] = "%f,2.3,%f" % [drv.position.x - 3.4, door_z - 5.2]
+			args["look"] = "%f,0.6,%f" % [cx + 0.3, door_z - 0.6]
+	elif not args.has("cam"):
+		var bp: Vector3 = v.global_transform * Vector3(0, 0, float(v.info["blade_z"]))
+		var fwd := -v.global_transform.basis.z
+		var side := v.global_transform.basis.x
+		var c := bp + fwd * 5.5 + side * 2.2
+		args["cam"] = "%f,1.7,%f" % [c.x, c.z]
+		args["look"] = "%f,0.75,%f" % [bp.x, bp.z]
 
 
 ## Playtest fix 1: --plow_out=down|up (see the top).

@@ -41,6 +41,26 @@ Branch `cw-polish7-pg` from `main` (`dcd0b78`). Brief: `POLISH_ROUND_7_PROMPT.md
   fix with the roll off, and the plows' op to `e31ffff`. The speed checks: the plow truck at 20 cm
   over 100 m, the pickup driving west, the plow width upgrade; none got easier (the upgraded pickup
   16 % harder, in Issues). The same tests rerun, all pass; a second review found nothing.
+- [x] Playtest fix 3 — a solid blade, a visible width upgrade, the truck home overnight
+  (`PLAYTEST_FIX_3.md`).
+  - Every plow vehicle's blade is now a box on its body (`blade_cs`). It is fitted each frame to the
+    blade's width, angle and lift, and kept `BLADE_CLEAR` above the ground (the only low collider).
+  - With the plow width upgrade the blade is as wide as the strip it clears, 20 % taller, blue, with
+    two lamps lit by the headlights. It changes on the spot when the upgrade is granted; without it
+    the model is the same as before.
+  - Sleeping sends the truck home to `truck_start()`, blade raised, before the night and the save. A
+    vehicle on the spot moves just clear first, and the truck goes two physics frames later.
+  - Tested: polish7 `test_pf3_` (6 new). 60 drives at the garage door and a house wall, every plow,
+    blade up and down, straight and angled: they stop, 0.0000 m inside. Then the shape holding the
+    visible plate as it turns and lifts, getting out beside the blade, the upgrade, the sleep from
+    three places, and a vehicle on the spot.
+  - Also run: the whole polish7 suite (31 after the review's fixes), the gameplay plow, sleep and keys
+    tests, the fixture tests, polish5 `test_s9_`/`s11_`/`s12_`/`s13`, and polish6
+    `test_s81`/`s9_`/`s3_blade`. All pass.
+  - A review workflow found one real problem, fixed: getting out of the upgraded grader with its blade
+    angled put the player in the blade. A second review found the same while the blade is still
+    turning; fixed too. A new check found the raised blade's lowest 1–2 cm not solid; also fixed. 2
+    shots kept (`report/playtest_fix_3.md`).
 
 ## Questions
 
@@ -71,6 +91,12 @@ Playtest fix 2 (asked during the fix, with the measurements):
   path runs with the same arguments as before unless the vehicle has just back-dragged; the full
   suite covers the rest (perf's plow scenario isn't rerun: no new kind of work per frame, as the
   brief says).
+- Playtest fix 3 changed shared code:
+  - every plow vehicle has a second collision box (its blade);
+  - `VehicleModels.build` takes an optional `blade_mult` (the default builds as before);
+  - `_do_sleep` now waits for `send_truck_home()`.
+  The plow, back-drag, plow-out, long-push, keys, sleep and fixture tests and the photo/menu model
+  tests passed. The full suite runs in CI on the PR.
 - The review fixes changed `test_s13_ownership_and_the_front_plow` and `test_s13_upgrades_app` after
   the §10 commit (committed with §11).
 - Playtest fix 2: `Snow.blade_push` (shared by every plow, back-drag and every hand tool's push; the
@@ -155,6 +181,21 @@ needed. The known flaky `test_menu_fixture_load_is_the_same_as_direct` passed in
   where snow lands, so it was left out.
 - Playtest fix 2: `HANDOFF.md` still says the RMB push "Stops at the curb"; pushes carry
   snow over it since round 5 §3. Left as it is: not part of this fix.
+- Playtest fix 3: the blade is now as solid as the body. Wider than the body (the plow truck's and
+  the grader's, or any blade with the width upgrade), it meets mailboxes, posts, trees, other
+  vehicles and the player that the body would pass (`PLAYTEST.md` item 25 asks).
+- Playtest fix 3: the upgraded blade's lamps light only with the headlights, which are on only while
+  someone drives, at night or in heavy snow.
+- Older than playtest fix 3 (found while testing it): getting out of a vehicle 3.2 m tall or more (the
+  plow truck, the grader, the rotary blower, the dump truck) shifts it about 0.5 m sideways and
+  shoves the player about 1 m. The player's teleport reaches the physics a frame late, with its
+  collision already back on, inside the cab. Not in the brief; left as it is.
+- Playtest fix 3: pressed against a wall, the HUD still shows a few km/h (the speed the vehicle is
+  trying for), as it did with the body against a wall before. Left as it is.
+- Playtest fix 3: the test drives at the house wall of 11 Maple, not the player's. A tree on the
+  player's front lawn stands in front of every 4.5 m stretch of their front wall.
+- Playtest fix 3 shots: three taken, two kept. The third checked that the blue reads at noon, as the
+  brief asks (it does).
 - Playtest fix 2 shots: six taken, two kept. The brief's "from the driver's seat" was tried with the
   truck's cab view, but its camera sits inside the cab's own box: before and after, it shows only the
   dark inside of the cab across the windshield, not the pile. The kept pair uses the game's driving

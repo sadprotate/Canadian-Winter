@@ -9,6 +9,8 @@
   - Blade down (the main way), it plows its way out.
   - Blade up, it pushes off slowly, bogs in the driveway's snow, and gets out with run-ups from the
     garage.
+  - **When you sleep, the truck goes home** to its spot in the driveway, its blade raised, wherever you
+    left it. A vehicle parked on its spot is moved just clear.
 - **Driving** (all keys rebindable): drive forward and brake/reverse, steer, handbrake, the camera,
   the horn, the radio forecast, and get out.
 - **In deep snow, blade up,** the truck handles like a pickup:
@@ -20,6 +22,10 @@
 - **Plows** (your truck, the ATV, the tractor with blade, the plow truck, the grader):
   - Down lowers the blade and Up raises it. The blade toggle (left mouse) does either.
   - The angle keys turn it.
+  - **The blade is solid.** It stops against walls, garage doors, houses, posts and fences, as the body
+    does: up or down, straight or angled. It never catches on the ground, curbs or snow.
+  - **The plow width upgrade shows:** the blade turns blue, as wide as the strip it clears and a little
+    taller, with two plow lamps on top that light with the headlights.
   - Blade down, driving forward pushes the snow ahead into a pile. The pile tumbles: snow rolls down
     its front and off both ends of the blade into ridges along the lane, and nothing sticks up out of
     it. It reaches its full size within 10–20 m (about 1.5 m tall in 30 cm of snow) and then stays that
@@ -154,6 +160,44 @@
   - `veh_tool` still toggles: it raises or lowers a blade, runs a blower, dumps a bed.
 - **Volume** is conserved: every snow move is `Snow.blade_push` (or the blowers' intake and thrown
   snow). Only the dump truck's dump at the municipal lot removes snow (ledgered).
+- **The solid blade** (playtest fix 3), on every vehicle with a blade model (the five plows):
+  - `blade_cs`, a box on the vehicle's body: `VehicleModels`' `blade_box`, the space the plate, its
+    cutting edge and any lamps fill in the blade's frame (not the arms behind the plate).
+  - `_fit_blade_shape()` fits it to the blade as it stands each physics frame, before the move: its
+    width, its angle (`blade_node`'s rotation) and its lift (up to `BLADE_LIFT`).
+  - Its bottom is the blade's own, raised with it, but never under `BLADE_CLEAR` above the ground, the
+    only collider that low: curbs, sidewalks and snow have none. (The vehicle drops 3.3 cm each frame
+    before it is held at y = 0.)
+  - Getting out never drops the player in it: `exit_vehicle()` skips an exit spot within the player's
+    radius + 0.1 m of it (`_in_blade`), as it stands and once turned to its angle. That only happens
+    with the grader's blade, which stands beside its cab, upgraded and angled.
+  - Being the body's, it stops against what the body does (the world, the player, vehicles). When the
+    blade or the vehicle turns into a wall, the physics' recovery pushes the vehicle back out.
+  - The interaction ray hits it too: looking at the blade shows the vehicle's prompt.
+- **The plow width upgrade's look** (playtest fix 3): `VehicleModels.build(vd, blade_mult)`, with
+  `blade_mult` = `ItemUpgrades.mult(id, vehicle_blade_width)`:
+  - Above 1, the blade and its `blade_box` are `blade_mult` × as wide (the strip it clears) and
+    `UPGRADED_TALL` × as tall, in `UPGRADED_BLUE`, with two lamp housings on top. Their lenses
+    (`blade_lamps`) are a mesh of their own.
+  - At 1 the model is the same as before. The menu, the photo and the city's vehicles always build
+    at 1.
+  - The vehicle builds with it in `_ready` and rebuilds the blade on `Game.upgrades_changed` (the
+    model, the lenses and the solid shape).
+  - The lenses glow (`Mats.emissive`) while `headlights[0]` is on: game_root switches the headlights
+    every 0.5 s while someone drives at night or in heavy snow. No light source.
+- **Going home overnight** (playtest fix 3): `game_root.send_truck_home()`, in `_do_sleep()` before the
+  night passes (`Clock.skip`) and the save:
+  - The truck is the first `is_pickup()` vehicle (lowest uid). `park_at()` puts it at
+    `Game.truck_start()`, stopped, its blade raised (`tool_on` off, `blade_node` at `BLADE_LIFT`).
+  - Its blade angle, load, roof snow and upgrades stay. The snow isn't touched, so on a buried spot
+    it sits in the snow. It goes with or without the keys.
+  - A vehicle or walk-behind machine on the spot (a physics query of the truck's boxes there) moves
+    first. It goes to the nearest place in the player's lot or driveway (`MOVE_STEP` grid, facing as
+    it did) where its boxes are `MOVE_GAP` clear of everything solid, of the truck's spot and of
+    where moved bodies stood and stand. If there's none, it stays.
+  - The physics only applies a moved vehicle's position on its next step, so the truck goes home
+    two physics frames later. Otherwise where the other one stood would push it off its spot.
+  - Other vehicles stay where they are: bought vehicles have no home spot.
 - **The front plow upgrade** (`ItemUpgrades.PLOW_ID`, the `front_plow` track) is no longer sold:
   - `track_shown` hides it and `why_not` says "No longer sold."
   - The track stays in the catalog, so old saves keep their granted plow.
@@ -165,12 +209,16 @@
 
 ## Where it lives
 
-- `scripts/vehicles/vehicle.gd`: driving, snow handling, plow, blower, dump, status and HUD line.
-- `scripts/vehicles/vehicle_models.gd`: models, wheels, `blade_pivot`, `blade_z`.
+- `scripts/vehicles/vehicle.gd`: driving, snow handling, plow, blower, dump, status and HUD line; the
+  solid blade (`blade_cs`, `_fit_blade_shape`), the upgraded blade (`_on_upgrades_changed`, the lamps),
+  `park_at`.
+- `scripts/vehicles/vehicle_models.gd`: models, wheels, `blade_pivot`, `blade_z`, `blade_box`, the
+  upgraded blade (`UPGRADED_BLUE`, `UPGRADED_TALL`, `blade_lamps`).
 - `data/vehicles/*.tres`, mirrored in `tools/data_gen/generate_data.gd` (`_vehicles()`).
 - `scripts/autoload/game_state.gd`: `new_game()` (spawns `pickup_plow` at `truck_start()`),
   `truck_start()`, `shovel_spot()`.
-- `scripts/game/game_root.gd`: `spawn_vehicle_node`, `install_plow`, `show_vehicle_help`.
+- `scripts/game/game_root.gd`: `spawn_vehicle_node`, `install_plow`, `show_vehicle_help`,
+  `send_truck_home` (in `_do_sleep`).
 - `scripts/data/item_upgrades.gd`: `front_plow`, `PLOW_ID`, `GROUP`, `track_shown`, `why_not`.
 - `scripts/world/store.gd`: fitting an old order's plow.
 - `scripts/world/framed_photo.gd`, `scripts/ui/main_menu.gd`: the truck with its raised blade in the
@@ -184,7 +232,8 @@
 - `Settings`: the vehicle actions, `accept_press`, `action_label`.
 - `Contracts`: see [contracts.md](contracts.md).
 - Saves: vehicle entries `{uid, id, pos, yaw, snow, bed, blade}`. The blade's up/down isn't saved: it
-  is up after a load.
+  is up after a load. The upgraded blade's look comes from `Game.upgrades` (no new key).
+- `Game.upgrades_changed` (the upgraded blade); sleeping (`game_root._do_sleep`: the truck goes home).
 
 ## How to test
 
@@ -234,11 +283,30 @@
     faster than before the fix, the volume exact;
   - the opening, 15 m blade down, 3 seeds in both modes;
   - every plow (straight; the pickup's and the plow truck's also angled), hand pushes, back-drag.
+- `--only=polish7 --test=test_pf3_` (playtest fix 3):
+  - every plow driven at the player's garage door and at a house wall, blade up and down, straight and
+    angled both ways (60 runs): it stops, and no point of the blade's shape is ever inside the
+    footprint; then pressed against the door, steered both ways and the blade swung across;
+  - the truck starts at `truck_start()` overlapping nothing, with the upgrade too; every blade's shape
+    `BLADE_CLEAR` above the ground, lowered, and holding the visible plate every frame as it turns and
+    lifts;
+  - getting out of every upgraded plow at every blade angle, the blade settled or still turning: never
+    into the blade;
+  - the width upgrade, granted on the vehicles in the world: the model and the shape as wide as the
+    strip (5 cm), 20 % taller, blue, two lamps lit at night and not by day; without it the same mesh
+    as before; no balance change; save → load keeps it;
+  - the truck left on the street, at the store lot and pushed off its spot, keys or not: home after a
+    sleep, its blade raised, its angle and roof snow kept; the ATV left on the street hasn't moved;
+    save → load keeps it home;
+  - the ATV and the tractor on the spot move just clear (2–3 m), in the yard, overlapping nothing; the
+    snow and the other vehicles as they were.
 - Pushing unchanged: `--only=gameplay --test=vehicle_plow`, `--test=plow_pushes`,
   `--only=snow --test=test_blade_push`, `--only=polish6 --test=test_s3_blade`, `--test=test_s9_`.
 - Shots: `tests/shot.gd --back_drag=frames [--drag_lift=1]`; `--plow_out=down|up` (the way out on the
   first morning); `--long_push=m [--push_depth=d]` (the pile after a long push, from the driving camera;
-  `--cab=1` the cab view, which shows only the inside of the cab).
+  `--cab=1` the cab view, which shows only the inside of the cab); `--solid_blade=wall|front
+  [--blade_angle=a] [--blade_down=1] [--blade_upgrade=1]` (the blade stopped at the garage door; the
+  blade from the front, with `--hour=22` its lamps lit).
 
 ## Decisions
 
@@ -274,6 +342,13 @@
   - The pile's roll crosses the curb where the push does.
   - The plows' berm drag reads further ahead (`berm_reach()`), so a long push is no easier.
   - The shove keeps its old placement (its driving rules stay).
+- Round 7 playtest fix 3: in the playtest the blade went through the garage door, the plow width upgrade
+  didn't show, and Gerry pushed the truck out of his way.
+  - The blade is solid: a box on the body, fitted to the blade each frame, kept above the ground.
+  - The upgraded blade is blue, as wide as the strip it clears, 20 % taller, with two lamps lit by
+    the headlights. Only the look changed: no balance value.
+  - The owner's soft reset: sleeping sends the truck home. Gerry and the city's vehicles are
+    unchanged, and bought vehicles have no home spot (the owner's decisions).
 
 ## Known issues
 
@@ -306,5 +381,17 @@
   where without digging it pushes off slowly. That is round 5's dug-out case, unchanged, and the
   message says to back up and take a run. The Help app and the keys message still tell the player
   to dig around the wheels.
+- Since playtest fix 3 the blade is as solid as the body. Wider than the body (the plow truck's and
+  the grader's, or any blade with the width upgrade), it now meets mailboxes, posts, trees, other
+  vehicles and the player that the body would pass. The city's grader and sidewalk plow still push a
+  vehicle in their way, blade and all.
+- The upgraded blade's lamps light only with the headlights, which are on only while someone drives
+  (at night or in heavy snow). A parked truck's lamps are dark.
+- If no free place is found in the yard for a vehicle on the truck's spot (never seen), it stays, and
+  the physics separates it from the truck when the truck arrives.
+- Older than playtest fix 3: getting out of a vehicle 3.2 m tall or more (the plow truck, the grader,
+  the rotary blower, the dump truck) shifts it about 0.5 m sideways and shoves the player about 1 m.
+  The physics still has the player inside the cab for a frame, with its collision back on. The
+  pickup, the ATV and the tractors are low enough not to.
 - The stuck rule keeps round 5's creep: from `pickup_stuck_depth` to half the clearance deeper the
   truck creeps forward, and its reverse always creeps. The status line still says "Stuck…".

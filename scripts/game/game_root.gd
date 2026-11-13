@@ -1104,6 +1104,7 @@ func _do_sleep(_days := 0) -> void:
 	await get_tree().create_timer(0.7).timeout
 	finish_grader_now()
 	_flush_projectiles()
+	await send_truck_home()      # polish 7 playtest fix 3: before the night's snow and the save
 	var target := minf(next_wake_time(Clock.minutes), Clock.DAYS_IN_WINTER * 1440.0)
 	player.teleport(Game.bedroom_spawn())
 	Survival.in_player_house = true
@@ -1124,6 +1125,133 @@ func _do_sleep(_days := 0) -> void:
 		Notify.push("Saving failed: %s" % Saves.last_error, Notify.BAD)
 	else:
 		Notify.push("Game saved.", Notify.GOOD)
+
+
+## Polish 7 playtest fix 3: sleeping sends the player's truck (its first pickup) home to its spot in
+## the driveway, Game.truck_start(): facing as on the first morning, stopped, its blade raised. Its
+## blade angle, upgrades and roof snow stay, and the snow isn't touched. It goes before the night
+## passes (the night's snow falls around it at home) and before the save, keys or no keys. A vehicle or
+## walk-behind machine on the spot moves just clear of it first: to the nearest place in the driveway or
+## yard (MOVE_STEP apart, facing as it did) where it overlaps nothing, MOVE_GAP clear, nor where the
+## truck stands. Nothing else moves.
+func send_truck_home() -> void:
+	var truck: Vehicle = null
+	for v in vehicle_nodes():
+		if (v as Vehicle).is_pickup() and (truck == null or (v as Vehicle).uid < truck.uid):
+			truck = v
+	if truck == null:
+		return
+	var ts := Game.truck_start()
+	var home := Transform3D(Basis(Vector3.UP, float(ts["yaw"])), ts["pos"])
+	# The physics only catches up with a moved vehicle on its next step. So a body moved here is left
+	# out of the later queries (skip) and kept clear of by where it stood and where it stands now
+	# (taken), with the truck's spot; and the truck goes home once the physics has caught up, or where
+	# the other stood would push it off its spot.
+	var taken := [_solid_boxes(truck, home)]
+	var skip: Array[RID] = []
+	var moved := false
+	for o in _bodies_on(taken[0], [truck.get_rid()] as Array[RID]):
+		var place := _clear_place(o, taken, skip)
+		skip.append((o as CollisionObject3D).get_rid())
+		taken.append(_solid_boxes(o, (o as Node3D).global_transform))
+		if place.is_empty():
+			continue                 # nowhere free in the yard: it stays
+		var xf: Transform3D = place[0]
+		if o is Vehicle:
+			(o as Vehicle).park_at(xf.origin, (o as Vehicle).rotation.y)
+		else:
+			(o as Node3D).global_position = xf.origin
+		taken.append(_solid_boxes(o, xf))
+		moved = true
+	if moved:
+		await get_tree().physics_frame
+		await get_tree().physics_frame
+	truck.park_at(ts["pos"], float(ts["yaw"]))
+
+
+const MOVE_STEP := 0.5
+const MOVE_GAP := 0.1
+
+
+## The boxes a body's solid shapes (its BoxShape3D children) would fill were it at `xf`:
+## [[Transform3D, size], …].
+static func _solid_boxes(body: Node, xf: Transform3D) -> Array:
+	var out := []
+	for c in body.get_children():
+		if c is CollisionShape3D and not (c as CollisionShape3D).disabled and (c as CollisionShape3D).shape is BoxShape3D:
+			out.append([xf * (c as CollisionShape3D).transform, ((c as CollisionShape3D).shape as BoxShape3D).size])
+	return out
+
+
+## A box's corners on the ground (XZ).
+static func _box_corners(xf: Transform3D, size: Vector3) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for s in [Vector2(-1, -1), Vector2(1, -1), Vector2(1, 1), Vector2(-1, 1)]:
+		var p := xf * Vector3(s.x * size.x * 0.5, 0.0, s.y * size.z * 0.5)
+		out.append(Vector2(p.x, p.z))
+	return out
+
+
+## A physics query for a box, its bottom raised off the ground it may stand on.
+static func _box_query(b: Array, grow: float, mask: int, skip: Array[RID]) -> PhysicsShapeQueryParameters3D:
+	var size: Vector3 = b[1]
+	var sh := BoxShape3D.new()
+	sh.size = Vector3(size.x + grow * 2.0, maxf(size.y - 0.06, 0.02), size.z + grow * 2.0)
+	var q := PhysicsShapeQueryParameters3D.new()
+	q.shape = sh
+	q.transform = (b[0] as Transform3D).translated(Vector3(0, 0.03, 0))
+	q.collision_mask = mask
+	q.exclude = skip
+	return q
+
+
+## The vehicles and walk-behind machines standing in those boxes (not `skip`).
+func _bodies_on(boxes: Array, skip: Array[RID]) -> Array:
+	var out := []
+	var space := get_world_3d().direct_space_state
+	for b in boxes:
+		for hit in space.intersect_shape(_box_query(b, 0.0, 1 | (1 << 3), skip)):
+			var n: Object = hit["collider"]
+			if (n is Vehicle or n is WalkBehind) and not out.has(n):
+				out.append(n)
+	return out
+
+
+## The nearest place to `o` in the driveway or yard, facing as it does, where it is MOVE_GAP clear of
+## everything solid (not `skip`) and of the `taken` boxes: [its transform], or [] if there's none.
+func _clear_place(o: Node3D, taken: Array, skip: Array[RID]) -> Array:
+	var lot: Rect2 = Layout.player_lot["rect"]
+	var drive: Rect2 = Layout.house_info(Layout.player_lot)["driveway"]
+	var area := lot.merge(drive)
+	var p0 := Vector2(o.global_position.x, o.global_position.z)
+	var spots := []
+	for i in range(int(area.size.x / MOVE_STEP) + 1):
+		for j in range(int(area.size.y / MOVE_STEP) + 1):
+			spots.append(area.position + Vector2(i, j) * MOVE_STEP)
+	spots.sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.distance_squared_to(p0) < b.distance_squared_to(p0))
+	var me: Array[RID] = skip.duplicate()
+	me.append((o as CollisionObject3D).get_rid())
+	var space := get_world_3d().direct_space_state
+	for sp in spots:
+		var xf := Transform3D(o.global_transform.basis, Vector3(sp.x, o.global_position.y, sp.y))
+		var boxes := _solid_boxes(o, xf)
+		var ok := true
+		for b in boxes:
+			var corners := _box_corners(b[0], b[1] + Vector3(MOVE_GAP, 0, MOVE_GAP) * 2.0)
+			for p in corners:
+				if not (lot.has_point(p) or drive.has_point(p)):
+					ok = false
+			for t in taken:
+				for tb in t:
+					if not Geometry2D.intersect_polygons(corners, _box_corners(tb[0], tb[1])).is_empty():
+						ok = false
+			if ok and not space.intersect_shape(_box_query(b, MOVE_GAP, 1 | (1 << 2) | (1 << 3), me), 1).is_empty():
+				ok = false
+			if not ok:
+				break
+		if ok:
+			return [xf]
+	return []
 
 
 ## The sleep transition screen: black, a quiet "Zzz", no date or weather.

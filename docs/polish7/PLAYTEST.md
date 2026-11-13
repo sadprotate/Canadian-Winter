@@ -117,3 +117,26 @@ Try these in **Fun Mode**, then repeat the truck checks (1–5) in **Survival Mo
     without spiking, and stays as a pile when you raise the blade. On a long drag the pile now runs out
     toward the front wheels right away: check that the truck (and the ATV, if you have it) doesn't get
     stuck in its own pile.
+
+## Playtest fix 3: a solid blade, a visible width upgrade, the truck home overnight (re-check)
+
+25. Drive the truck into the garage door and into a house wall: blade up, blade down, and angled both
+    ways (Z / C). The blade stops at the door or wall. No part of it goes inside.
+    - Pressed against the door, steer left and right and turn the blade: it still doesn't go in.
+    - Then the garage-door drag (item 7) again: drive up blade up, lower it at the door, back away.
+    - Plow out of the driveway (item 14) and push a long row (item 19) again: the blade shouldn't catch
+      on the ground, the curb, the sidewalk or the snow.
+    - The blade now also stops at mailboxes, posts, trees, other vehicles and you. Say whether that
+      gets in the way anywhere, mostly with the wide blades (the plow truck, the grader, or any blade
+      with the width upgrade).
+26. Buy the plow width upgrade (F1 for money, the Upgrades app) and collect it:
+    - the blade turns blue, gets wider and a little taller, and has two lamps on top, without
+      reloading;
+    - at night (or in heavy snow), get in: the lamps light with the headlights;
+    - save, quit and load: it's still the blue blade;
+    - say whether the blue reads well against the snow, at noon and at night.
+27. Leave the truck on the street (or at the store's lot) and sleep. In the morning it's back in the
+    driveway, nose to the street, blade raised, at its blade angle.
+    - Park another vehicle (the ATV, for example) on the truck's spot and sleep: in the morning it
+      stands just beside the spot, and the truck is on it.
+    - Leave another vehicle on the street and sleep: it stays where you left it.
