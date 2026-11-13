@@ -96,6 +96,7 @@
       hasn't reached. That is 0.95 m for the ATV, 1.22 m for the pickup and the tractor, 1.52 m for
       the plow truck, and 1.61 m for the grader.
     - Back-drag reads the same. Hand pushes read 0.65 m, as before.
+    - Only the reading reaches further: the push works on, marks and relaxes the same cells as before.
   - The `vehicle_blade_width` and `vehicle_clear_speed` upgrades (`ItemUpgrades.mult`) widen the blade
     and lower its drag.
 - **How a pushed pile forms** (playtest fix 2; `Snow.blade_push` and `Snow._roll`, the same op for
@@ -285,8 +286,10 @@
 - Playtest fix 2's drag reading is a little harder than before for every plow: 3–9 % slower on level
   30 cm snow, the opening's first 15 m about 11 s (10 s before). No single reading matches each
   plow's old drag, which depended on how high its spike stood, so it was set so that none is easier.
+  With the plow width upgrade the pickup is 16 % slower (15 km/h in 30 cm, 18 before): its wider
+  blade's pile is bigger, and a shorter reach barely changes it.
 - Hand pushes keep their 0.65 m berm reading. Most walk within 3 % of before; the wide pusher in 15 cm
-  is 6 % and the large scraper 12 % faster (their pile lies a little further out).
+  is 6 % and the large scraper 14 % faster (their pile lies a little further out).
   But in deep snow the wide pusher no longer walls you in: before playtest fix 2 its pile stood above
   the hips in front of it after about 2 m (the wading rule stopped you); now it tumbles away and you
   keep pushing, slowly.

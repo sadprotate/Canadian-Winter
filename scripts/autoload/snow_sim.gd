@@ -1536,19 +1536,32 @@ const BERM_FACE := 0.65
 func blade_push(center: Vector2, face_n: Vector2, half_w: float, band: float, floor_d: float, player_rule := true, push_dist := 0.4, tumble := true, berm_reach := 0.65) -> Dictionary:
 	face_n = face_n.normalized()
 	var tang := Vector2(-face_n.y, face_n.x)
-	var reach := maxf(half_w + 0.3 + band, berm_reach + CELL)
-	var mn := center - Vector2(reach, reach)
-	var mx := center + Vector2(reach, reach)
+	var reach := half_w + 0.3
+	var mn := center - Vector2(reach + band, reach + band)
+	var mx := center + Vector2(reach + band, reach + band)
 	var x0 := clampi(int(floor(mn.x * INV_CELL)) - 2, 0, W - 1)
 	var z0 := clampi(int(floor(mn.y * INV_CELL)) - 2, 0, H - 1)
 	var x1 := clampi(int(floor(mx.x * INV_CELL)) + 2, 0, W - 1)
 	var z1 := clampi(int(floor(mx.y * INV_CELL)) + 2, 0, H - 1)
-	_sync_cells(maxi(x0 - 4, 0), maxi(z0 - 4, 0), mini(x1 + 4, W - 1), mini(z1 + 4, H - 1))
+	# Polish 7 playtest fix 2: the cells read for `berm`. The push works on x0..z1 as before (its dirty
+	# and relaxed rect too); only a reach longer than BERM_FACE reads further, where it passes that rect.
+	# No cell outside x0..z1 is pushed: the band lies within half_w + band of the centre.
+	var sx0 := x0
+	var sz0 := z0
+	var sx1 := x1
+	var sz1 := z1
+	if berm_reach > BERM_FACE:
+		var br := sqrt(berm_reach * berm_reach + half_w * half_w) + CELL
+		sx0 = mini(x0, clampi(int(floor((center.x - br) * INV_CELL)), 0, W - 1))
+		sz0 = mini(z0, clampi(int(floor((center.y - br) * INV_CELL)), 0, H - 1))
+		sx1 = maxi(x1, clampi(int(floor((center.x + br) * INV_CELL)), 0, W - 1))
+		sz1 = maxi(z1, clampi(int(floor((center.y + br) * INV_CELL)), 0, H - 1))
+	_sync_cells(maxi(sx0 - 4, 0), maxi(sz0 - 4, 0), mini(sx1 + 4, W - 1), mini(sz1 + 4, H - 1))
 	# Polish 7 playtest fix 2: the roll needn't sync these again.
-	_synced_x0 = maxi(x0 - 4, 0)
-	_synced_z0 = maxi(z0 - 4, 0)
-	_synced_x1 = mini(x1 + 4, W - 1)
-	_synced_z1 = mini(z1 + 4, H - 1)
+	_synced_x0 = maxi(sx0 - 4, 0)
+	_synced_z0 = maxi(sz0 - 4, 0)
+	_synced_x1 = mini(sx1 + 4, W - 1)
+	_synced_z1 = mini(sz1 + 4, H - 1)
 	var moved := 0.0
 	var kept := 0.0
 	var berm := 0.0
@@ -1558,8 +1571,8 @@ func blade_push(center: Vector2, face_n: Vector2, half_w: float, band: float, fl
 	var ez0 := z0
 	var ex1 := x1
 	var ez1 := z1
-	for z in range(z0, z1 + 1):
-		for x in range(x0, x1 + 1):
+	for z in range(sz0, sz1 + 1):
+		for x in range(sx0, sx1 + 1):
 			var i := z * W + x
 			var c := Vector2((x + 0.5) * CELL, (z + 0.5) * CELL) - center
 			var along := c.dot(tang)

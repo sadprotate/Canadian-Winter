@@ -117,9 +117,16 @@ The push and the back-drag pass `berm_reach(hw)` = `BERM_REACH_BASE` (0.5) + `BE
 
 Hand pushes keep 0.65 m.
 
+The push itself works on the same cells as before the fix, and marks and queues the same area for the
+relaxation. Only the reading reaches further, over its own rectangle, where a plow's `berm_reach`
+passes the push's. This is the review's refinement, made after the fix was first pushed (see Review).
+
 ## After
 
-The same probe on the final code (fun, seed 2024, relaxation by tile count).
+The same probe on the fix as first pushed (`e31ffff`; fun, seed 2024, relaxation by tile count). The
+review's refinement after it leaves every plow's op bit-identical. The hand pushes were measured
+again on the final code with a second probe (see Hand pushes); they differ from this table only by
+that probe's start and timing.
 
 - **Over the step, in front:** the most a cell from 0.25 m behind the face on stood over the step,
   with the relaxation running. With it off, the op leaves none (the first test).
@@ -165,9 +172,9 @@ The same probe on the final code (fun, seed 2024, relaxation by tile count).
 - **Settled** (the blade raised, the truck backed off): 1.0, 1.2 and 1.4 m, against 1.15, 1.32 and
   1.48 m before. That is one rounded mound, and every cell is at the step.
 - **Hand pushes.** None of them leaves anything over the step. Before, the large scraper had 3.6 cm
-  and the sleigh 4.9 cm. The tops are much the same as before (0.44–0.96 m, against 0.47–1.08 m).
-  - Their walking speed is within 0–12 % of before; they read 0.65 m as before.
-  - The exception is the wide pusher in 30 cm: 15.2 m against 2.0 m. Before, the pile against it rose
+  and the sleigh 4.9 cm. The tops are much the same as before (0.41–0.96 m, against 0.47–1.08 m).
+  - Their walking speed is within 1–14 % of before; they read 0.65 m as before.
+  - The exception is the wide pusher in 30 cm: 15.3 m against 2.0 m. Before, the pile against it rose
     above the hips and the wading rule stopped the player; now it tumbles away (see the Issues in
     STATUS.md).
 - **Volume:** conserved in every case to 2e-5 m³ (the opening) or better.
@@ -212,21 +219,23 @@ How the reading was chosen:
 
 ## Hand pushes
 
-RMB held, walking east along Maple Street for 8 s (the probe). Hand pushes read their berm to 0.65 m,
-as before; only the roll is new for them.
+RMB held, walking east along Maple Street for 8 s from x = 20 m, looking 30° down (the probe, as
+`test_pf2_every_blade_tumbles` but longer; speed after the first third). Both columns were measured
+again with the same probe after the review's refinement. Hand pushes read their berm to 0.65 m, as
+before; only the roll is new for them.
 
 | tool, snow | walked, before → after | speed, before → after | top while pushing, before → after | over the step, before → after |
 |---|---|---|---|---|
-| bare hands, 15 cm | 2.9 → 2.8 m | 0.31 → 0.30 m/s | 0.47 → 0.44 m | 0 → 0 |
-| standard shovel, 15 cm | 16.8 → 17.0 m | 2.10 → 2.12 m/s | 0.47 → 0.46 m | 0 → 0 |
-| wide pusher, 15 cm | 20.2 → 21.3 m | 2.50 → 2.64 m/s | 0.78 → 0.69 m | 5 mm → 0 |
-| wide pusher, 30 cm | 2.0 → 15.2 m | 0 → 1.88 m/s | 0.98 → 0.95 m | 3 mm → 0.3 mm |
-| large scraper, 30 cm | 20.0 → 22.4 m | 2.50 → 2.81 m/s | 1.07 → 0.96 m | 3.6 cm → 0.2 mm |
-| snow sleigh, 30 cm | 22.8 → 23.3 m | 2.90 → 2.96 m/s | 1.08 → 0.96 m | 4.9 cm → 0.5 mm |
+| bare hands, 15 cm | 2.9 → 2.9 m | 0.31 → 0.32 m/s | 0.47 → 0.41 m | 0 → 0 |
+| standard shovel, 15 cm | 16.7 → 16.9 m | 2.09 → 2.11 m/s | 0.47 → 0.47 m | 0 → 0 |
+| wide pusher, 15 cm | 20.2 → 21.3 m | 2.49 → 2.63 m/s | 0.78 → 0.70 m | 5 mm → 0 |
+| wide pusher, 30 cm | 2.0 → 15.3 m | 0 → 1.88 m/s | 0.98 → 0.95 m | 3 mm → 0.3 mm |
+| large scraper, 30 cm | 20.0 → 22.6 m | 2.50 → 2.85 m/s | 1.07 → 0.96 m | 3.6 cm → 0.3 mm |
+| snow sleigh, 30 cm | 22.8 → 23.3 m | 2.89 → 2.96 m/s | 1.08 → 0.95 m | 4.9 cm → 0.1 mm |
 
 - **Most tools** walk at about the same speed: bare hands, the standard shovel and the sleigh within
   3 %.
-- **A little faster:** the wide pusher in 15 cm (+6 %) and the large scraper (+12 %). Their pile now
+- **A little faster:** the wide pusher in 15 cm (+6 %) and the large scraper (+14 %). Their pile now
   lies a little further out than the 0.65 m they read.
 - **The big change** is the wide pusher in 30 cm.
   - Before, its pile stood above the hips right in front of it after 2 m, and the wading rule stopped
@@ -410,4 +419,60 @@ these were fixed:
   tumbles on toward them.
 - **The perf report** shows the frame time, not only the snow counters, which are capped by their
   own budgets.
+
+### After the push: the design judge's refinement and three more speed checks
+
+The workflow also had three designs for the plows' drag reading drafted and judged. The judge picked
+the one built here: all the snow within 0.65 m, plus only the pushed snow out to `berm_reach`. It
+suggested one refinement and three more speed checks, made after `e31ffff` was pushed.
+
+**The refinement.** `e31ffff` had widened the whole rectangle `blade_push` works on to fit the longer
+reading. For the plows that changed nothing: their rectangle already held it. For small blades (hand
+tools) it also made the area marked dirty and queued for the relaxation about a cell larger on each
+side, so their result after relaxing differed from before the fix by more than the roll. The push now
+keeps the pre-fix rectangle (the push, the dirty and relaxed area, the sync). The reading has its own
+rectangle, wider only where a plow's `berm_reach` passes the push's.
+
+Checked with a probe of the op alone: 300 steps of 5 cm along 30 cm of level snow, at 0°, 30° and
+135°, with and without the relaxation running between steps. Each run's snow arrays, the relaxation
+queue and the returned `moved`/`berm`/`kept` were compared across three versions of the code:
+- **With the roll off** (`tumble = false`), against the code before the fix: identical in all 48 runs
+  (bare hands, the standard shovel, the wide pusher, the shove's arm, the ATV, the pickup, the pickup
+  with the plow width upgrade, the grader). The only difference is the plows' `berm`, the intended
+  reading.
+- **Against `e31ffff`:** every plow and the shove are identical. The hand tools differ: `e31ffff`
+  queued a larger area, and with the relaxation running that changed how much they moved over the
+  300 steps by up to 7 %.
+- In play (the hand-push probe above) the difference doesn't show at that probe's precision: `e31ffff`
+  and the final code walk the same distances.
+
+A second review (three readers, read-only: the bounds and edges of the map; the chunk sync and the
+roll; every caller against the code before the fix) found nothing.
+
+**The speed checks** (mean speed over the second half, full throttle, blade down and straight; the
+same `_pf2_push` as the tests; the code before the fix against the final code):
+
+| push | before the fix | final | top while pushing, before → final |
+|---|---|---|---|
+| plow truck, 20 cm, 100 m | 39.6 km/h | 39.1 (−1 %) | 2.81 → 1.61 m |
+| pickup, 30 cm, 50 m, driving east | 20.9 km/h | 19.9 (−5 %) | 2.19 → 1.54 m |
+| pickup, 30 cm, 50 m, driving west | 20.9 km/h | 19.8 (−5 %) | 2.11 → 1.55 m |
+| pickup with the plow width upgrade, 30 cm, 50 m | 18.0 km/h | **15.1 (−16 %)** | 2.50 → 1.72 m |
+| plow truck with the plow width upgrade, 30 cm, 50 m | 28.1 km/h | 26.6 (−5 %) | 3.81 → 2.01 m |
+
+- No plow got easier; a pile pushed west matches one pushed east. Every run was spike-free (at most
+  1.8 cm over the step while pushing, against 0.44–1.01 m before) with the volume exact.
+- **The pickup with the plow width upgrade is 16 % slower** than before the fix, outside the 3–9 % of
+  the plows' base blades. Its wider blade builds a bigger pile (1.72 m). A shorter reach barely
+  changes it: taking the reach from the base width (1.22 m instead of 1.33 m) gives 15.4 km/h for the
+  pickup (still −14 %), and 28.9 km/h for the plow truck, 3 % faster than before, which the brief
+  rules out. So the drag is left as it is, and this is
+  noted for the owner (`STATUS.md`, Issues) and in `PLAYTEST.md` item 19.
+- These were measured with a probe, not added as tests.
+
+Tests run on the final code: polish7 `test_pf2_` (4), `test_pf1_` (7), `test_s11_` (8), `test_s10_`
+(6); polish6 `test_s9_` (5), `test_s3_blade`; polish5 `test_s11_grader_pass_unchanged`, `s3_` (6),
+`test_s12_` (6), `test_s13b_melting_ledger`; the snow suite (13); gameplay `push` (3), `plow` (2),
+`wading` (2): all pass. Parse check: 92 scripts, 0 errors. Perf wasn't rerun: the plows' op is
+bit-identical, and a hand push now relaxes the same area as before the fix.
 

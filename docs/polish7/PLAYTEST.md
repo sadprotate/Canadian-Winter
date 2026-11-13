@@ -97,6 +97,9 @@ Try these in **Fun Mode**, then repeat the truck checks (1–5) in **Survival Mo
       after 50 m, with longer ridges.
     - The truck should still feel the load: a little slower than before the fix (about 20 km/h in
       30 cm of snow; every plow is 3–9 % slower on a long push). Say whether it feels too heavy.
+    - If you have the plow width upgrade (F1 for money, the upgrades app), push the same row with it.
+      The pickup is about 16 % slower with it than before the fix (about 15 km/h in 30 cm). Say
+      whether the upgrade still feels worth it.
 20. Stop. It should leave one big rounded mound where you stopped, plus the ridges along the way.
     Raise the blade (Up) and back off: the mound settles lower and stays rounded.
 21. Angle the blade (Z / C) and push a long row: the snow should roll off the trailing end into a

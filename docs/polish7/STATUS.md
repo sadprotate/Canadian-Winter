@@ -36,6 +36,11 @@ Branch `cw-polish7-pg` from `main` (`dcd0b78`). Brief: `POLISH_ROUND_7_PROMPT.md
   polish6 `test_s9_`, `test_s3_blade`; the snow suite; systems `test_snow_ceiling_at_lamp_height`;
   polish3 `test_no_snow_inside_the_houses`; gameplay `plow`, `push`, `truck_keys`, `wading`; perf's
   plow scenarios before and after; a review workflow (findings fixed) (`report/playtest_fix_2.md`).
+  After the push, the review's refinement: the push keeps its pre-fix area (the push, the dirty and
+  relaxed area); only the drag reading has a wider one. The op alone is bit-identical to before the
+  fix with the roll off, and the plows' op to `e31ffff`. The speed checks: the plow truck at 20 cm
+  over 100 m, the pickup driving west, the plow width upgrade; none got easier (the upgraded pickup
+  16 % harder, in Issues). The same tests rerun, all pass; a second review found nothing.
 
 ## Questions
 
@@ -121,8 +126,13 @@ needed. The known flaky `test_menu_fixture_load_is_the_same_as_direct` passed in
   a long straight push in 30 cm, the opening's first 15 m in 11.3 s instead of 10.2 s (fix 1's
   scripted blade-down plow-out: still 1 pass, 9.8 s instead of 8.9 s). No single reading matches every
   plow's old drag, which depended on how high its own spike stood.
+- Playtest fix 2: with the plow width upgrade the pickup is 16 % slower than before the fix (15.1
+  against 18.0 km/h in 30 cm), outside the base blades' 3–9 %; the upgraded plow truck is 5 % slower.
+  The wider blade's pile is bigger (1.72 m). Taking the reach from the base width barely helps the
+  pickup (15.4 km/h) and makes the upgraded plow truck 3 % easier than before, which the brief rules
+  out, so the drag is left as it is. `PLAYTEST.md` item 19 asks the testers.
 - Playtest fix 2: hand pushes keep their 0.65 m drag reading. Most walk within 3 % of before, the wide
-  pusher in 15 cm 6 % and the large scraper 12 % faster (their pile lies a little further out). And in
+  pusher in 15 cm 6 % and the large scraper 14 % faster (their pile lies a little further out). And in
   deep snow the wide pusher no longer walls the player in. Before the fix its pile stood above the hips
   in front of it after about 2 m of 30 cm (the wading rule stopped you); now it tumbles away and you keep
   pushing, slowly. `PLAYTEST.md` item 23 asks the testers.
