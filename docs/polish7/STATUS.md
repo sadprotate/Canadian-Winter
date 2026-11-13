@@ -57,6 +57,9 @@ Playtest fix 2 (asked during the fix, with the measurements):
   expected about blade height and a pile longer and wider after 100 m. Owner: **keep it as built**.
   The tests check that it never spikes, stays under its measured height, and is no taller (the same
   size) after 100 m than after 50 m.
+- After the review's speed checks: the pickup with the plow width upgrade is 16 % slower than before
+  the fix (the base plows 3–9 %), and taking the reach from the base width doesn't fix it (see
+  Issues). Owner: **leave it for the playtest** (`PLAYTEST.md` item 19).
 
 ## Check at the end
 
