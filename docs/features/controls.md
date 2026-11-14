@@ -3,9 +3,9 @@
 ## What it does for the player
 
 - Every key and mouse button the game reads is an action the player can rebind in Settings →
-  Controls. The actions are grouped "On foot", "General" and "Vehicles & machines". A key already used
+  Controls. The actions are grouped "On foot", "General", "Vehicles & machines" and "Hint panel". A key already used
   where the new action works is refused, with the name of the action that holds it.
-- Every key the game shows (help panels, prompts, the Help app's Controls table, messages) is the one
+- Every key the game shows (hints, prompts, the Help app's Controls table, messages) is the one
   bound now.
 - World-changing presses are capped per second, so autoclickers and key spam don't do more than
   steady tapping.
@@ -14,7 +14,9 @@
 
 - **`Settings.ACTIONS`** (`scripts/autoload/settings.gd`): `action → [label, context, default
   events]`.
-  - Contexts are `"foot"`, `"vehicle"` and `"global"`.
+  - Contexts are `"foot"`, `"vehicle"`, `"global"` and `"hint"` (round 8 §17: the hint panel's
+    keys, live on foot, in vehicles and at machines, so they conflict like a global action;
+    `shares()` is the one rule `rebind()`, `holder()` and the migration use).
   - Defaults are encoded as `"key:<physical keycode>"` or `"mouse:<button>"`.
   - The order of `ACTIONS` is the order in the settings menu and the Help app.
 - **Places** (`PLACES`: foot, vehicle, machine, computer, menu): `live_actions(place)` lists what works
@@ -33,7 +35,8 @@
     second, counted in physics frames, and at most one per physics frame.
   - Extra presses are ignored, never queued. Callers ask once, on the press edge.
   - The capped actions are listed in `RATE_LIMITED`: primary, secondary, interact, drop, store,
-    use_pouch, tool_angle, veh_tool, fast_forward, veh_blade_up, veh_blade_down.
+    use_pouch, tool_angle, veh_tool, fast_forward, veh_blade_up, veh_blade_down, hint_back,
+    hint_next, hint_ok.
   - Movement, the camera, the map, Tab, slots, horn, radio, F1 and UI clicks aren't capped.
 - **Saved bindings and migration** (`controls_from`, `load_controls`), with `CONTROLS_VERSION` 2:
   - A stored binding is kept. From version 2, `[]` means unbound.
@@ -62,7 +65,8 @@
 - `scripts/ui/settings_menu.gd`: the Controls tab (groups, rebinding, the conflict message, Restore
   defaults).
 - `scripts/ui/computer_ui.gd`: the Help app's Controls table (every action, in order).
-- `scripts/ui/panels.gd`: the first-drive vehicle panel.
+- `scripts/ui/hint_panel.gd`: the hint keys (`hint_back` Left, `hint_next` Right, `hint_ok` X),
+  read in `_input` only while a hint shows. See [hints.md](hints.md).
 - Readers: `player.gd`, `tool_controller.gd`, `vehicle.gd`, `walk_behind.gd`, `game_root.gd`,
   `speed_control.gd`.
 
@@ -83,7 +87,8 @@
   - Up/Down on every blade vehicle;
   - rebinding;
   - a press with a HUD control focused;
-  - the help panel.
+  - the first-drive hint's pages.
+- `--only=polish8 --test=test_s17_buttons`: the hint keys, rebound, and clicks.
 
 ## Decisions
 
@@ -91,6 +96,8 @@
 - Round 5 §9: fast-forward is capped and works at the computer.
 - Round 7 §11: `veh_blade_up` / `veh_blade_down` on Up / Down, capped, read before the GUI. Existing
   players get them through the migration, with no version bump.
+- Round 8 §17: `hint_back` / `hint_next` / `hint_ok` on Left / Right / X in the new "hint" context
+  ("Hint panel" group in Settings), capped. No version bump.
 
 ## Known issues
 

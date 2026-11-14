@@ -756,22 +756,41 @@ func test_s11_driving_off_the_pile() -> void:
 
 
 ## The first-drive help lists the blade keys from the input map beside the blade toggle.
+## Polish 8 §17: the first-drive panel is the vehicle's hint now (pages: driving, the blade keys,
+## back-drag); the lines are read from its pages, one page at a time on the hint panel.
 func test_s11_help_lists_the_keys() -> void:
 	await _world()
+	for f in range(150):      # hints wait for the game's fade-in
+		if world.fade.color.a <= 0.05:
+			break
+		await _tree().process_frame
+	Game.flags.erase("help_vehicle_%d" % VehicleData.Kind.PICKUP_PLOW)
 	var v := await _truck("pickup_plow", 40.0)
-	var panel: Control = Panels.vehicle_help(world.hud, v)
+	await _frames(2)
+	var hp = world.hint_panel
+	var pages := []
+	for k in range(8):
+		if not hp.is_open():
+			break
+		pages.append(hp.text_l.text)
+		hp.next()
+		await _frames(2)
 	var lines := []
-	for c in panel.find_children("*", "Label", true, false):
-		lines.append((c as Label).text)
+	var page_of := []
+	for i in range(pages.size()):
+		for l in str(pages[i]).split("\n"):
+			lines.append(l)
+			page_of.append(i)
 	var i_tool := lines.find(Settings.action_label("veh_tool") + "  lower / raise the blade")
 	var i_keys := lines.find("%s / %s  raise / lower the blade" % [Settings.action_label("veh_blade_up"), Settings.action_label("veh_blade_down")])
 	var i_drag := lines.find("%s, blade down  drag the snow back" % Settings.action_label("veh_reverse"))
-	runner.check(i_tool >= 0 and i_keys == i_tool + 1 and i_drag == i_keys + 1, "§11 the first-drive panel lists the blade keys under the blade toggle, then back-drag: %s" % str(lines.slice(maxi(i_tool, 0), i_drag + 1)))
+	runner.check(i_tool >= 0 and i_keys == i_tool + 1 and i_drag > i_keys and page_of[i_drag] == page_of[i_keys] + 1, "§11 the first-drive panel lists the blade keys under the blade toggle, then back-drag: %s" % str(lines.slice(maxi(i_tool, 0), i_drag + 1)))
+	world.show_hint(HelpText.vehicle_hint_id(VehicleData.Kind.PICKUP_PLOW), true, v.data)
 	await _frames(2)
-	var box: Control = panel.find_children("*", "PanelContainer", true, false)[0]
+	var box: Control = hp.box
 	var screen: Rect2 = world.hud.get_global_rect()
-	runner.check(screen.encloses(box.get_global_rect()), "§11 …the panel fits on the screen (%s in %s)" % [str(box.get_global_rect()), str(screen)])
-	panel.queue_free()
+	runner.check(hp.is_open() and screen.encloses(box.get_global_rect()), "§11 …the panel fits on the screen (%s in %s)" % [str(box.get_global_rect()), str(screen)])
+	hp.ok()
 	await _drop(v)
 	await _unload()
 

@@ -1901,13 +1901,20 @@ func _s4_read_lines(n: int) -> Array:
 ## When Gerry gives you his trail he adds the two ways to move snow, with the keys from the input
 ## map; on the HUD (timed, Interact moves on, the player walking throughout); talking to him again
 ## during the job repeats it; rebound keys show; the tips end with the job.
+## Polish 8 §17: he says the first line; the rest (scoop and throw, push, the trail) is his hint on
+## the hint panel beside the speech box, the same wording; talking to him again reopens it.
 func test_s4_gerry_snow_tips() -> void:
 	var saved: Variant = _s2_backup()
 	Settings.restore_default_controls()
 	for mode in ["fun", "survival"]:
 		await _s4_world(mode, 11.0)
+		for f in range(150):      # polish 8 §17: hints wait for the game's fade-in
+			if world.fade.color.a <= 0.05:
+				break
+			await _tree().process_frame
 		Clock.running = true
 		var pl: Player = world.player
+		var hp = world.hint_panel
 		await _s4_take_job()
 		runner.check(Game.stage() == Game.Stage.NEIGHBOR_TALKED and world.modal == null, "§4 %s: Gerry's job agreed" % mode)
 		var first: String = world.hud.speech_text.text
@@ -1915,26 +1922,33 @@ func test_s4_gerry_snow_tips() -> void:
 		var t: float = world._talk_t
 		var want: float = world.line_seconds(first)
 		runner.check(t <= want and t > want - 0.2 and want >= 4.0 and want <= 14.0, "§4 %s: each line timed by its length (%.1f s)" % [mode, want])
-		# The player walks while he talks; the line moves on by itself.
+		await _frames(2)
+		var second: String = hp.text_l.text if hp.is_open("gerry_snow") else ""
+		runner.check(second.contains("[%s]" % Settings.action_label("primary")) and second.contains("fill") and second.contains("throw"), "§4 %s: scoop and throw, with the bound key, on his hint (%s)" % [mode, second])
+		# The player walks while he talks; the line moves on by itself; the hint stays until OK.
 		var p0 := pl.global_position
 		await _hold("move_back", int(t * 60.0) + 20)
 		runner.check(pl.global_position.distance_to(p0) > 1.0 and pl.state != "frozen" and world.modal == null, "§4 %s: the player can move throughout (%.1f m)" % [mode, pl.global_position.distance_to(p0)])
-		var second: String = world.hud.speech_text.text
-		runner.check(second != first and world.is_gerry_talking(), "§4 %s: the next line comes by itself (%s)" % [mode, second])
-		runner.check(second.contains("[%s]" % Settings.action_label("primary")) and second.contains("fill") and second.contains("throw"), "§4 %s: scoop and throw, with the bound key (%s)" % [mode, second])
-		# Interact moves him on (looking at him).
-		await _s4_take_job_stand()
-		var rest := await _s4_read_lines(3)
-		var third: String = rest[1] if rest.size() > 1 else ""
-		var fourth: String = rest[2] if rest.size() > 2 else ""
+		runner.check(not world.is_gerry_talking() and hp.is_open("gerry_snow"), "§4 %s: his line moved on by itself; the hint stays up" % mode)
+		hp.next()
+		await _frames(1)
+		var third: String = hp.text_l.text
+		hp.next()
+		await _frames(1)
+		var fourth: String = hp.text_l.text
 		runner.check(third.contains("[%s]" % Settings.action_label("secondary")) and third.contains("push"), "§4 %s: pushing, with the bound key (%s)" % [mode, third])
 		runner.check(fourth.contains("blue line") and fourth.contains("sidewalk") and fourth.contains("door"), "§4 %s: and where: %s" % [mode, fourth])
-		await _frames(int(world.line_seconds(fourth) * 60.0) + 30)
-		runner.check(not world.is_gerry_talking() and not world.hud.speech_box.visible, "§4 %s: then he's done" % mode)
-		# Talking to him again during the job repeats the tip (no modal).
-		await _s4_press("interact")
+		hp.next()
 		await _frames(2)
-		runner.check(world.modal == null and world.hud.speech_text.text == first, "§4 %s: talking to him again repeats the tip (%s)" % [mode, world.hud.speech_text.text])
+		runner.check(not world.is_gerry_talking() and not world.hud.speech_box.visible and not hp.is_open(), "§4 %s: then he's done" % mode)
+		# Talking to him again during the job repeats the tip (no modal); Interact moves him on.
+		await _s4_take_job_stand()
+		await _s4_press("interact")
+		await _frames(3)
+		runner.check(world.modal == null and world.hud.speech_text.text == first and hp.is_open("gerry_snow") and hp.page == 0, "§4 %s: talking to him again repeats the tip (%s)" % [mode, world.hud.speech_text.text])
+		var rest := await _s4_read_lines(2)
+		runner.check(rest.size() == 1 and not world.is_gerry_talking() and hp.is_open("gerry_snow"), "§4 %s: Interact moves him on (%s)" % [mode, str(rest)])
+		hp.ok()
 		# Rebound keys: the lines show the new ones.
 		var k := InputEventKey.new()
 		k.physical_keycode = KEY_J
@@ -1942,15 +1956,21 @@ func test_s4_gerry_snow_tips() -> void:
 		m.button_index = MOUSE_BUTTON_MIDDLE
 		runner.check(Settings.rebind("primary", k) == "" and Settings.rebind("secondary", m) == "", "§4 %s: scoop rebound to J, push to the middle button" % mode)
 		world.neighbor_dialogue(world.neighbor)
-		await _frames(1)
-		var lines := await _s4_read_lines(4)
+		await _frames(2)
+		var lines := []
+		for n in range(4):
+			if not hp.is_open("gerry_snow"):
+				break
+			lines.append(hp.text_l.text)
+			hp.next()
+			await _frames(1)
 		var all := "\n".join(lines)
-		runner.check(lines.size() == 4 and all.contains("Hold [J]") and all.contains("hold [Middle Mouse]") and not all.contains("Left Mouse") and not all.contains("Right Mouse"), "§4 %s: with rebound keys he says [J] and [Middle Mouse] (%s)" % [mode, all.replace("\n", " | ")])
+		runner.check(lines.size() == 3 and all.contains("Hold [J]") and all.contains("hold [Middle Mouse]") and not all.contains("Left Mouse") and not all.contains("Right Mouse"), "§4 %s: with rebound keys he says [J] and [Middle Mouse] (%s)" % [mode, all.replace("\n", " | ")])
 		Settings.restore_default_controls()
 		# The tips end with the job: Gerry's sequence goes on as before.
 		world.neighbor_dialogue(world.neighbor)
-		await _frames(1)
-		runner.check(world.is_gerry_talking(), "§4 %s: (talking again)" % mode)
+		await _frames(2)
+		runner.check(world.is_gerry_talking() and hp.is_open("gerry_snow"), "§4 %s: (talking again)" % mode)
 		for c in Contracts.active:
 			if c.get("tutorial", false) and c["status"] == "active":
 				for z in c["zones"]:
@@ -1958,7 +1978,7 @@ func test_s4_gerry_snow_tips() -> void:
 						Snow.set_rect(Contracts.a_to_rect(ra), 0.004)
 					Contracts.measure_zone(c, z)
 		await _frames(2)
-		runner.check(Game.stage() == Game.Stage.TRAIL_DONE and not world.is_gerry_talking() and not world.hud.speech_box.visible, "§4 %s: the trail done, the tips stop" % mode)
+		runner.check(Game.stage() == Game.Stage.TRAIL_DONE and not world.is_gerry_talking() and not world.hud.speech_box.visible and not hp.is_open(), "§4 %s: the trail done, the tips stop" % mode)
 		Clock.running = false
 	_s2_restore(saved)
 	await _unload()
@@ -3234,6 +3254,9 @@ func test_s7_v3_save_round_trips() -> void:
 	var want_p6 := JSON.stringify(Snow.serialize_pending())
 	var pend_p6 := Snow.relax_pending()
 	var soft_p6 := Snow.soft.duplicate()      # polish 6 §9: the player-moved marks (the throws' snow)
+	# Polish 8 §17: the hints seen (optional key, default derived from the stage and the flags).
+	Game.hints_seen = {"gerry_snow": true, HelpText.vehicle_hint_id(VehicleData.Kind.PICKUP_PLOW): true, "tool_scraper": true}
+	var want_p8 := JSON.stringify(Game.serialize()["hints_seen"])
 	runner.check(Saves.save_game(), "§7 a version-3 save")
 	Game.upgrades = {}
 	Game.company_name = ""
@@ -3243,8 +3266,10 @@ func test_s7_v3_save_round_trips() -> void:
 	Economy.heat_used = 0.0
 	Economy.heat_acc = {}
 	Snow.melted = 0.0
+	Game.hints_seen = {}
 	await _unload()
 	runner.check(Saves.load_game("fun"), "§7 …loads")
+	runner.check(JSON.stringify(Game.serialize()["hints_seen"]) == want_p8 and Game.hints_seen.size() == 3, "§17 (polish 8) …and the hints seen exactly as saved (%s)" % str(Game.hints_seen.keys()))
 	var got_p6 := JSON.stringify(Snow.serialize_pending())
 	runner.check(got_p6 == want_p6 and Snow.relax_pending() == pend_p6 and pend_p6 > 0 and not Snow.settle_on_load, "§3 (polish 6) …and the snow's pending relaxation (%d tiles, hot and cold in order) and blade_push's stream exactly as saved" % pend_p6)
 	runner.check(Snow.soft == soft_p6 and soft_p6.count(1) > 0, "§9 (polish 6) …and the player-moved snow's marks exactly as saved (%d cells)" % soft_p6.count(1))

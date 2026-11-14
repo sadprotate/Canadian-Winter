@@ -172,7 +172,11 @@ func interact(_p: Player) -> void:
 		return
 	if tool_id == "small_shovel" and not Game.flags.get("found_shovel", false):
 		Game.flags["found_shovel"] = true
-		Notify.push("You found a small snow shovel! Hold %s and sweep it through the snow to fill it, release to throw, hold %s to push." % [Settings.action_label("primary"), Settings.action_label("secondary")], Notify.GOOD)
+	# Polish 8 §17: the first pickup of each kind of tool opens its hint (the small shovel's was a
+	# notification: "You found a small snow shovel! Hold … release to throw, hold … to push.").
+	var td := Catalog.tool(StringName(tool_id))
+	if td and Game.world and Game.world.has_method("show_hint"):
+		Game.world.show_hint(HelpText.tool_hint_id(int(td.kind)), false, td)
 	if entry.has("order_id"):
 		Economy.mark_order(int(entry["order_id"]), "collected")
 		Game.add_equipment_stat(Catalog.tool(StringName(tool_id)).display_name)

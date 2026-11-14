@@ -117,6 +117,7 @@ func _gameplay_tab() -> void:
 	_check(v, "Show contract progress near zones", "gameplay", "show_contract_hud")
 	_check(v, "Show throw landing indicator", "gameplay", "show_landing_indicator")
 	_check(v, "Head bob (first person)", "gameplay", "head_bob")
+	_check(v, "Show hints", "gameplay", "show_hints")   # polish 8 §17: the hint panel
 
 
 func _camera_tab() -> void:
@@ -161,8 +162,8 @@ func _controls_tab() -> void:
 func _refresh_controls(v: VBoxContainer) -> void:
 	for i in range(v.get_child_count() - 1, 0, -1):
 		v.get_child(i).queue_free()
-	var groups := {"foot": "On foot", "global": "General", "vehicle": "Vehicles & machines"}
-	for g in ["foot", "global", "vehicle"]:
+	var groups := {"foot": "On foot", "global": "General", "vehicle": "Vehicles & machines", "hint": "Hint panel"}
+	for g in ["foot", "global", "vehicle", "hint"]:
 		v.add_child(UIKit.label(groups[g], 24, UIKit.ACCENT))
 		for a in Settings.ACTIONS.keys():
 			if Settings.ACTIONS[a][1] != g:

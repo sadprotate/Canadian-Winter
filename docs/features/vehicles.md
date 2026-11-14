@@ -204,8 +204,9 @@
   - The store still fits the plow to a plain pickup driven into its lot when a save holds an open plow
     order.
   - The Upgrades app shows the truck's own tracks (plow width, plow power) on one card.
-- **First drive:** the controls panel (`Panels.vehicle_help`) shows once per vehicle kind
-  (`help_vehicle_<kind>`).
+- **First drive:** the vehicle's hint (driving; the blade keys and back-drag; the blower; the bed)
+  opens on the hint panel once per vehicle kind (`help_vehicle_<kind>`, hint
+  `vehicle_<kind>`). See [hints.md](hints.md).
 
 ## Where it lives
 

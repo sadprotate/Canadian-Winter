@@ -1066,6 +1066,11 @@ func _help() -> void:
 	_p("Gerry's advice", UIKit.MUTED, FS_SMALL)
 	for l in HelpText.lines(Game.is_survival()):
 		_p(l, Color.WHITE)
+	# Polish 8 §17: every hint's content, with the keys bound now (also with hints turned off).
+	_section("Hints")
+	for h in HelpText.hint_help():
+		_p(str(h[0]), UIKit.MUTED, FS_SMALL)
+		_p(str(h[1]), Color.WHITE)
 	_section("Controls")
 	var g := _table(2)
 	for a in Settings.ACTIONS.keys():

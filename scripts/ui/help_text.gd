@@ -24,6 +24,8 @@ static func explanation(survival: bool) -> Array:
 
 ## Polish 5 §4: when Gerry gives you his trail he adds the two ways to move snow, with the keys
 ## read from the input map; talking to him again during the job repeats it. Spoken on the HUD.
+## Polish 8 §17: with hints on he says only the first line and the rest opens as the hint
+## "gerry_snow" (the same wording); with hints off he says them all, as before.
 static func snow_tips() -> Array:
 	var out := []
 	for t in ["Now, two ways to move snow.",
@@ -31,6 +33,117 @@ static func snow_tips() -> Array:
 			"Or hold [%s] and walk to push it ahead of you. Quick on a long flat walk, but it piles up in front of you." % Settings.action_label("secondary"),
 			"Clear my walk inside the blue line, from the sidewalk up to my door."]:
 		out.append({"speaker": "Gerry", "text": t, "tip": true})
+	return out
+
+
+# -----------------------------------------------------------------------------
+# Polish 8 §17: the hints (the hint panel). A hint is {title, pages}; every key in it is an
+# {action} placeholder, filled with Settings.with_keys() when it shows, so a rebind shows at once.
+# The wording is what these tips said before (Gerry's, the first-drive panel's, the pickup
+# notifications'), split into pages where long. Every hint's content is also in the Help app.
+# -----------------------------------------------------------------------------
+
+## Gerry's how-to at the job beat: scoop and throw, push, the outlined trail.
+const GERRY_SNOW := {"title": "Two ways to move snow", "pages": [
+	"Hold [{primary}] and sweep through the snow to fill your shovel, then let go to throw it. That gets it up over the banks.",
+	"Or hold [{secondary}] and walk to push it ahead of you. Quick on a long flat walk, but it piles up in front of you.",
+	"Clear my walk inside the blue line, from the sidewalk up to my door."]}
+
+
+## The hint ids of the first pickups, one per kind of tool ("tool_shovel", "tool_walk_blower", …).
+static func tool_hint_id(kind: int) -> String:
+	return "tool_" + str(ToolData.Kind.keys()[kind]).to_lower()
+
+
+## The hint id of a vehicle kind's first drive ("vehicle_pickup_plow", …).
+static func vehicle_hint_id(kind: int) -> String:
+	return "vehicle_" + str(VehicleData.Kind.keys()[kind]).to_lower()
+
+
+## The first-drive hint of a vehicle: driving, the blade keys and back-drag (a plow), the blower
+## (a blower), the bed (the dump truck). The first-drive panel's lines (polish 7 §11), as pages.
+static func vehicle_hint(display_name: String, has_plow: bool, has_blower: bool, dumps: bool) -> Dictionary:
+	var pages := ["\n".join(["{veh_accelerate} / {veh_reverse}  drive forward / brake & reverse",
+		"{veh_left} / {veh_right}  steer",
+		"{veh_brake}  handbrake",
+		"Mouse  look around   ·   {camera_toggle}  camera",
+		"{veh_horn}  horn   ·   {veh_radio}  radio forecast",
+		"{interact}  get out"])]
+	if has_plow:
+		pages.append("\n".join(["{veh_tool}  lower / raise the blade",
+			"{veh_blade_up} / {veh_blade_down}  raise / lower the blade",
+			"{veh_aim_left} / {veh_aim_right}  angle the blade"]))
+		pages.append("{veh_reverse}, blade down  drag the snow back")
+	if has_blower:
+		pages.append("\n".join(["{veh_tool}  blower on / off",
+			"{veh_aim_left} / {veh_aim_right}  turn the chute"]))
+	if dumps:
+		pages.append("{veh_tool}  dump the bed (at the Snow Dump lot)")
+	return {"title": display_name + " controls", "pages": pages}
+
+
+## The first pickup of a kind of tool: the shovel's found-it sentence, the blower's grab line, and
+## the one-line controls reminder (ToolController.controls_hint) for the others, one line per key.
+static func tool_hint(kind: int, display_name: String, angle_adjustable: bool) -> Dictionary:
+	var page := ""
+	match kind:
+		ToolData.Kind.SHOVEL:
+			page = "Hold {primary} and sweep it through the snow to fill it, release to throw, hold {secondary} to push."
+		ToolData.Kind.ELECTRIC_SHOVEL:
+			page = "Hold {primary}: chew through snow and throw it where you aim\nHold {secondary}: push"
+		ToolData.Kind.WALK_BLOWER:
+			page = "Hold {primary} to run, {veh_aim_left} / {veh_aim_right} to turn the chute, {interact} to let go."
+		_:
+			page = "Hold {primary} and sweep: scoop\nRelease: throw\nHold {secondary}: push"
+			if angle_adjustable:
+				page += "\n{tool_angle}: angle the blade"
+	return {"title": display_name, "pages": [page]}
+
+
+## A hint by id (empty if unknown). Vehicle and tool hints need their data: the vehicle or tool
+## (VehicleData / ToolData) that opened them, or the first of that kind in the catalogue.
+static func hint(id: String, data: Resource = null) -> Dictionary:
+	if id == "gerry_snow":
+		return GERRY_SNOW.duplicate(true)
+	if id.begins_with("vehicle_"):
+		var vd := data as VehicleData
+		if vd == null:
+			for v in Catalog.vehicles.values():
+				if vehicle_hint_id(int((v as VehicleData).kind)) == id:
+					vd = v
+					break
+		if vd != null:
+			return vehicle_hint(vd.display_name, vd.has_plow, vd.has_blower, vd.dump_capacity > 0)
+	if id.begins_with("tool_"):
+		var td := data as ToolData
+		if td == null:
+			for t in Catalog.tools.values():
+				if tool_hint_id(int((t as ToolData).kind)) == id:
+					td = t
+					break
+		if td != null:
+			return tool_hint(int(td.kind), td.display_name, td.angle_adjustable)
+	return {}
+
+
+## Every hint's content for the Help app: [title, text] with the keys bound now. The vehicles'
+## hints are one entry holding every line (driving, the blade, back-drag, the blower, the bed).
+static func hint_help() -> Array:
+	var out := []
+	var add := func(h: Dictionary) -> void:
+		var pages := []
+		for p in h["pages"]:
+			pages.append(Settings.with_keys(str(p)))
+		out.append([Settings.with_keys(str(h["title"])), "\n".join(pages)])
+	add.call(GERRY_SNOW)
+	add.call(vehicle_hint("Vehicles", true, true, true))
+	var kinds := {}
+	for t in Catalog.tools.values():
+		var td := t as ToolData
+		if td.kind == ToolData.Kind.HANDS or kinds.has(td.kind):
+			continue
+		kinds[td.kind] = true
+		add.call(tool_hint(int(td.kind), td.display_name, td.angle_adjustable))
 	return out
 
 

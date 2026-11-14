@@ -9,6 +9,8 @@ const _HeatedPad := preload("res://scripts/world/heated_pad.gd")
 const _ItemUpgrades := preload("res://scripts/data/item_upgrades.gd")
 const _SidewalkCrew := preload("res://scripts/vehicles/sidewalk_crew.gd")
 const _SpeedControl := preload("res://scripts/ui/speed_control.gd")
+# Polish 8 §17: the hint panel (a script without a class_name).
+const _HintPanel := preload("res://scripts/ui/hint_panel.gd")
 
 var builder: WorldBuilder
 var refs: Dictionary = {}
@@ -28,6 +30,7 @@ var ui: CanvasLayer
 var hud: HUD
 var time_layer: CanvasLayer     # polish 5 §9: the fast-forward control, above the modals
 var speed_ctrl: _SpeedControl
+var hint_panel: _HintPanel       # polish 8 §17: on time_layer too, above the modals
 var modal: Control = null
 var modal_kind := ""
 var fade: ColorRect
@@ -408,6 +411,8 @@ func _spawn_neighbor() -> void:
 func _on_stage_changed(s: int) -> void:
 	if s == Game.Stage.TRAIL_DONE:
 		_end_talk_if("tip")    # polish 5 §4: the job is done, the snow tips with it
+		if hint_panel:
+			hint_panel.drop("gerry_snow")   # polish 8 §17: and his hint
 	if s == Game.Stage.TRAIL_DONE and neighbor and is_instance_valid(neighbor):
 		neighbor.come_down()
 
@@ -450,6 +455,11 @@ func _build_ui() -> void:
 	speed_ctrl.world = self
 	speed_ctrl.hud = hud
 	time_layer.add_child(speed_ctrl)
+	# Polish 8 §17: the hint panel, on the same layer (clickable over the map, the TV, the letter
+	# and the photo; it hides itself under the fade, the computer, dialogs and menus).
+	hint_panel = _HintPanel.new()
+	hint_panel.world = self
+	time_layer.add_child(hint_panel)
 
 
 func _ui_root() -> Control:
@@ -755,8 +765,16 @@ func _on_setting(section: String, _key: String) -> void:
 		_apply_graphics()
 
 
+## Polish 8 §17: the first drive of a kind of vehicle opens its hint (driving, the blade keys and
+## back-drag; the blower; the bed) — once per kind, as the first-drive panel did.
 func show_vehicle_help(v: Node) -> void:
-	Panels.vehicle_help(hud, v)
+	show_hint(HelpText.vehicle_hint_id(int(v.data.kind)), false, v.data)
+
+
+## Polish 8 §17: queue a hint on the hint panel (see hint_panel.gd). False when hints are off or it
+## was seen already (unless `again`).
+func show_hint(id: String, again := false, data: Resource = null) -> bool:
+	return hint_panel != null and hint_panel.show_hint(id, again, data)
 
 
 # -----------------------------------------------------------------------------
@@ -874,12 +892,12 @@ func neighbor_dialogue(n: Neighbor) -> void:
 				Game.set_stage(Game.Stage.NEIGHBOR_TALKED)
 				Notify.push("Contract accepted: Gerry's path, %s — %s. Clear the outlined path from his steps down to his mailbox." % [Layout.neighbor_lot["address"], UIKit.money(pay)], Notify.GOOD)
 				# Polish 5 §4: then, on the HUD (you keep walking), the two ways to move snow.
-				say_gerry(HelpText.snow_tips()))
+				_snow_tips(false))
 		open_modal(root, "dialogue")
 	elif st == Game.Stage.NEIGHBOR_TALKED:
 		# Polish 5 §4: talking to him again during the job repeats the tip (on the HUD, with the
-		# keys bound now).
-		say_gerry(HelpText.snow_tips())
+		# keys bound now). Polish 8 §17: his hint opens again, at its first page.
+		_snow_tips(true)
 	elif st == Game.Stage.TRAIL_DONE:
 		# Polish 3 §4: Gerry's lines from here on are spoken on the HUD; you keep walking.
 		if not n.invited:
@@ -892,6 +910,17 @@ func neighbor_dialogue(n: Neighbor) -> void:
 			say_gerry([HelpText.keys_line()])     # polish 5 §4: until the keys are found
 		else:
 			say_gerry([{"speaker": "Gerry", "text": "Off you go now — and good luck with the business!"}])
+
+
+## Polish 8 §17: Gerry's how-to. He says "Now, two ways to move snow." and the rest opens as his
+## hint beside the speech box (again: back to its first page). With hints off he says it all, as
+## in polish 5 §4.
+func _snow_tips(again: bool) -> void:
+	var tips := HelpText.snow_tips()
+	if show_hint("gerry_snow", again):
+		say_gerry([tips[0]])
+	else:
+		say_gerry(tips)
 
 
 # --- Gerry's lines on the HUD (non-blocking: the player keeps control) ----------------------

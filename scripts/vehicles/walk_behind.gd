@@ -90,8 +90,9 @@ func interact(p: Player) -> void:
 		entry.erase("order_id")
 	if not Game.flags.get("help_blower", false):
 		Game.flags["help_blower"] = true
-		Notify.push("Snowblower: hold %s to run, %s / %s to turn the chute, %s to let go." % [Settings.action_label("primary"),
-			Settings.action_label("veh_aim_left"), Settings.action_label("veh_aim_right"), Settings.action_label("interact")], Notify.INFO)
+		# Polish 8 §17: the first grab's how-to is a hint now (it was a notification).
+		if Game.world and Game.world.has_method("show_hint"):
+			Game.world.show_hint(HelpText.tool_hint_id(ToolData.Kind.WALK_BLOWER), false, data)
 
 
 func release() -> void:

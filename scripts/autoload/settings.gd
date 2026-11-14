@@ -6,7 +6,9 @@ signal changed(section: String, key: String)
 
 const PATH := "user://settings.cfg"
 
-## action -> [label, context, default events]. Context: "foot", "vehicle", "global".
+## action -> [label, context, default events]. Context: "foot", "vehicle", "global", "hint" (polish
+## 8 §17: the hint panel's keys, live wherever the panel can show — on foot, in vehicles and at
+## machines — so they conflict like a global action).
 ## Events are encoded as "key:<keycode>", "mouse:<button>".
 ## Polish 5 §2: drop Q -> G, the new store action on F (the garage rack, §15), use_pouch G -> H.
 const ACTIONS := {
@@ -49,11 +51,15 @@ const ACTIONS := {
 	"veh_aim_right": ["Blade angle / chute right", "vehicle", ["key:%d" % KEY_C]],
 	"veh_horn": ["Horn", "vehicle", ["key:%d" % KEY_H]],
 	"veh_radio": ["Vehicle radio forecast", "vehicle", ["key:%d" % KEY_T]],
+	# Polish 8 §17: the hint panel (Back / Next — OK on the last page — and OK from any page).
+	"hint_back": ["Hint: back", "hint", ["key:%d" % KEY_LEFT]],
+	"hint_next": ["Hint: next", "hint", ["key:%d" % KEY_RIGHT]],
+	"hint_ok": ["Hint: OK", "hint", ["key:%d" % KEY_X]],
 }
 
 const DEFAULTS := {
 	"audio": {"master": 0.8, "music": 0.6, "ambient": 0.8, "sfx": 0.85},
-	"gameplay": {"show_prompts": true, "show_notifications": true, "show_contract_hud": true, "show_landing_indicator": true, "head_bob": true},
+	"gameplay": {"show_prompts": true, "show_notifications": true, "show_contract_hud": true, "show_landing_indicator": true, "head_bob": true, "show_hints": true},
 	"camera": {"default_third": false, "sensitivity": 0.25, "fov": 75.0, "invert_x": false, "invert_y": false, "tp_distance": 3.6, "tp_shoulder": 0.5},
 	"graphics": {"fullscreen": false, "resolution": "1600x900", "vsync": true, "preset": 1, "shadows": 2, "snow_detail": 1, "particles": 1, "draw_distance": 1, "msaa": 1, "fps_overlay": false},
 	"debug": {"enabled": true},
@@ -82,8 +88,9 @@ const PLACES := ["foot", "vehicle", "machine", "computer", "menu"]
 ## Polish 5 §2: world-changing presses, capped per action at Catalog.balance.input_max_presses_per_s
 ## (accept_press). UI clicks, F1, movement, the camera, map, Tab, slots, horn and radio aren't.
 ## Polish 5 §9: the fast-forward key (it changes the clock's speed) is capped too.
+## Polish 8 §17: the hint panel's keys too.
 const RATE_LIMITED := ["primary", "secondary", "interact", "drop", "store", "use_pouch", "tool_angle", "veh_tool", "fast_forward",
-	"veh_blade_up", "veh_blade_down"]
+	"veh_blade_up", "veh_blade_down", "hint_back", "hint_next", "hint_ok"]
 
 var cfg := ConfigFile.new()
 var bindings: Dictionary = {}   # action -> Array of encoded events
@@ -143,10 +150,11 @@ static func controls_from(c: ConfigFile) -> Dictionary:
 
 
 ## True when two actions can be live at the same time (the rule rebind() refuses conflicts by).
+## Polish 8 §17: the hint keys are live everywhere the panel shows, like a global action.
 static func shares(a: String, b: String) -> bool:
 	var ca: String = ACTIONS[a][1]
 	var cb: String = ACTIONS[b][1]
-	return ca == cb or ca == "global" or cb == "global"
+	return ca == cb or ca == "global" or cb == "global" or ca == "hint" or cb == "hint"
 
 
 ## The action other than `action` that shares a context with it and is bound to `code`, or "".
@@ -164,13 +172,13 @@ static func live_actions(place: String) -> Array:
 		var ctx: String = ACTIONS[a][1]
 		match place:
 			"foot":
-				if ctx == "foot" or ctx == "global":
+				if ctx == "foot" or ctx == "global" or ctx == "hint":
 					out.append(a)
 			"vehicle":
-				if ctx == "vehicle" or ctx == "global":
+				if ctx == "vehicle" or ctx == "global" or ctx == "hint":
 					out.append(a)
 			"machine":
-				if a in MACHINE_ACTIONS or ctx == "global":
+				if a in MACHINE_ACTIONS or ctx == "global" or ctx == "hint":
 					out.append(a)
 			"computer":
 				# Polish 5 §9: fast-forward works at the computer too.
@@ -314,13 +322,10 @@ func rebind(action: String, e: InputEvent) -> String:
 	var code := encode(e)
 	if code == "":
 		return "invalid"
-	var ctx: String = ACTIONS[action][1]
 	for other in ACTIONS.keys():
 		if other == action:
 			continue
-		var octx: String = ACTIONS[other][1]
-		var shares := ctx == octx or ctx == "global" or octx == "global"
-		if shares and code in bindings[other]:
+		if shares(action, other) and code in bindings[other]:   # polish 8 §17: the one rule
 			return other
 	bindings[action] = [code]
 	apply_input()

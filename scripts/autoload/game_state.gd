@@ -37,6 +37,9 @@ var rack: Array = []              # tools stored on the garage rack (ids)
 ## Polish 5 §13: the equipment picked up (Equipment): id -> its state (the coat worn, the snowshoes
 ## on or off, the heated pad carried or put down with its position). Saved from version 3.
 var equipment: Dictionary = {}
+## Polish 8 §17: the hints already shown in this game (hint id -> true). Saved (version 3,
+## optional); an older save derives it from the tutorial stage and the flags (hints_from).
+var hints_seen: Dictionary = {}
 var player_pos := Vector3.ZERO
 var player_yaw := 0.0
 var camera_third := false
@@ -105,6 +108,7 @@ func new_game(m: String, seed_override := -1) -> void:
 	rack = []
 	equipment = {}
 	_Equipment.pending_note = ""
+	hints_seen = {}
 	next_uid = 1
 	camera_third = Settings.get_value("camera", "default_third", false)
 	weather_seed = int(Time.get_unix_time_from_system()) % 100000 + 17 if seed_override < 0 else seed_override
@@ -407,7 +411,49 @@ func serialize() -> Dictionary:
 		"heat_pouches": heat_pouches, "upgrades": upgrades, "vehicles": _pack_list(vehicles),
 		"items": _pack_list(items), "machines": _pack_list(machines), "rack": rack, "equipment": _Equipment.pack(equipment),
 		"player_pos": a3(player_pos), "player_yaw": player_yaw, "camera_third": camera_third,
-		"next_uid": next_uid, "weather_seed": weather_seed}
+		"next_uid": next_uid, "weather_seed": weather_seed, "hints_seen": _sorted_keys(hints_seen)}
+
+
+static func _sorted_keys(d: Dictionary) -> Array:
+	var out: Array = d.keys()
+	out.sort()
+	return out
+
+
+# -----------------------------------------------------------------------------
+# Polish 8 §17: the hints seen (once per save, by id)
+# -----------------------------------------------------------------------------
+
+func hint_seen(id: String) -> bool:
+	return hints_seen.has(id)
+
+
+func mark_hint_seen(id: String) -> void:
+	hints_seen[id] = true
+
+
+## The hints an older save (no "hints_seen" key) has already passed, from its tutorial stage, its
+## flags and its tools: past Gerry's job his how-to; the shovel found or the opening done, the
+## shovel's pickup; each vehicle kind already driven and the blower already used; every kind of
+## tool already in the player's hands (a slot, carried, on the rack). A tool still lying in the
+## world (the buried shovel, an order in the store's lot) shows its hint when it's picked up.
+func hints_from(fl: Dictionary, tools: Array) -> Dictionary:
+	var out := {}
+	var st := int(fl.get("stage", Stage.START))
+	if st >= Stage.NEIGHBOR_TALKED:
+		out["gerry_snow"] = true
+	if st >= Stage.COMPLETE or bool(fl.get("found_shovel", false)):
+		out[HelpText.tool_hint_id(ToolData.Kind.SHOVEL)] = true
+	if bool(fl.get("help_blower", false)):
+		out[HelpText.tool_hint_id(ToolData.Kind.WALK_BLOWER)] = true
+	for k in VehicleData.Kind.values():
+		if bool(fl.get("help_vehicle_%d" % k, false)):
+			out[HelpText.vehicle_hint_id(k)] = true
+	for id in tools:
+		var td := Catalog.tool(StringName(str(id))) if str(id) != "" else null
+		if td != null and td.kind != ToolData.Kind.HANDS:
+			out[HelpText.tool_hint_id(int(td.kind))] = true
+	return out
 
 
 func deserialize(d: Dictionary) -> void:
@@ -450,3 +496,15 @@ func deserialize(d: Dictionary) -> void:
 	camera_third = bool(d.get("camera_third", false))
 	next_uid = int(d.get("next_uid", 100))
 	weather_seed = int(d.get("weather_seed", 1))
+	# Polish 8 §17 (version 3, optional): the hints seen; an older save starts with every hint of
+	# what it has passed seen, so a game loaded past the opening doesn't replay the opening's tips.
+	hints_seen = {}
+	var hs = d.get("hints_seen", null)
+	if hs is Array:
+		for id in hs:
+			hints_seen[str(id)] = true
+	else:
+		var tools: Array = slots.duplicate()
+		tools.append(carried)
+		tools.append_array(rack)
+		hints_seen = hints_from(flags, tools)
