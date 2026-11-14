@@ -566,3 +566,531 @@ func test_s17_fit() -> void:
 	hp.ok()
 	runner.check(bad.is_empty(), "§17 the panel fits at 1280×720, 1920×1080, 2560×1440 and 3440×1440, clear of the HUD %s" % str(bad))
 	await _unload()
+
+
+# =============================================================================
+# §15 The garage
+# =============================================================================
+
+const _GarageS := preload("res://scripts/world/garage.gd")
+
+
+## A world (fun, Dec 2 noon, the tutorial done, keys found), the new game's truck taken away, the yard,
+## the driveway and the street in front bare.
+func _s15_world(mode := "fun") -> void:
+	await _world(mode)
+	var lot := Layout.player_lot
+	var hi := Layout.house_info(lot)
+	for v in world.vehicle_nodes():
+		Game.vehicles.erase((v as Vehicle).entry)
+		(v as Node).queue_free()
+	await _frames(2)
+	Snow.set_rect((lot["rect"] as Rect2).merge(hi["driveway"]).grow(6.0), 0.0)
+	Snow.sync_all()
+
+
+## The garage's door set at once (open or closed).
+func _s15_door(open: bool) -> void:
+	var g = world.garage
+	g.opening = open
+	g.t = 1.0 if open else 0.0
+	g._place_door()
+	Game.garage["door_open"] = open
+	await _frames(2)
+
+
+## A point in the garage's frame (x across from the house wall, z inward from the setback) in the world.
+static func _s15_at(x: float, z: float, y := 0.0) -> Vector3:
+	var lot := Layout.player_lot
+	return HouseBuilder.lot_transform(lot) * Vector3(x, y, float(lot["setback"]) + z)
+
+
+## The yaw that drives a vehicle into the garage (toward its back wall).
+static func _s15_yaw_in() -> float:
+	var inward := Vector2(Layout.player_lot["inward"]).normalized()
+	return atan2(-inward.x, -inward.y)
+
+
+## Hold `keys` until `done` says so or the vehicle has stood still 45 frames (at most `frames`).
+func _s15_hold(v: Node3D, keys: Array, done: Callable, frames := 900) -> bool:
+	for k in keys:
+		Input.action_press(k)
+	var still := 0
+	var last := v.global_position
+	var ok := false
+	for f in range(frames):
+		await _tree().physics_frame
+		if done.call():
+			ok = true
+			break
+		still = still + 1 if f > 30 and v.global_position.distance_to(last) < 0.0005 else 0
+		last = v.global_position
+		if still >= 45:
+			break
+	for k in keys:
+		Input.action_release(k)
+	await _frames(3)
+	return ok or done.call()
+
+
+## A vehicle's solid boxes all outside the garage (in front of its door line).
+func _s15_outside(v: Node3D) -> bool:
+	var gr: Rect2 = _GarageS.footprint()
+	for b in world._solid_boxes(v, v.global_transform):
+		for p in world._box_corners(b[0], b[1]):
+			if gr.has_point(p):
+				return false
+	return true
+
+
+## How deep any corner of a vehicle's solid boxes stands inside the garage's footprint (0: none).
+func _s15_depth_in(v: Node3D) -> float:
+	var r: Rect2 = _GarageS.footprint()
+	var d := 0.0
+	for b in world._solid_boxes(v, v.global_transform):
+		for q in world._box_corners(b[0], b[1]):
+			if r.has_point(q):
+				d = maxf(d, minf(minf(q.x - r.position.x, r.end.x - q.x), minf(q.y - r.position.y, r.end.y - q.y)))
+	return d
+
+
+## The door from the house: locked without the keys (its message), open with them, still after a
+## save and a load; and the player walks from the kitchen through it, down the steps, into the garage.
+func test_s15_house_door() -> void:
+	await _s15_world()
+	Game.flags["truck_keys"] = false
+	var d: Door = world.garage_house_door
+	var pl: Player = world.player
+	var why: String = d.interact_prompt(pl)
+	d.interact(pl)
+	await _frames(2)
+	runner.check(d != null and why.contains("Locked") and why.contains("keys") and not d.open, "§15 without the keys the door to the garage is locked: \"%s\"" % why)
+	Game.flags["truck_keys"] = true
+	var p2: String = d.interact_prompt(pl)
+	d.interact(pl)
+	await _frames(20)
+	runner.check(d.open and p2.begins_with("[E] Open"), "§15 with the keys it opens (\"%s\")" % p2)
+	# Walk through it: from the kitchen, through the door, down the steps, onto the garage floor.
+	var zc := (HouseBuilder.HDOOR_Z0 + HouseBuilder.HDOOR_Z1) * 0.5
+	var start := _s15_at(HouseBuilder.BODY_X1 - 1.2, zc, Layout.PORCH_H + 0.05)
+	pl.teleport(start)
+	var into := _s15_at(HouseBuilder.BODY_X1 + 1.0, zc)
+	pl.set_yaw(atan2(-(into.x - start.x), -(into.z - start.z)))
+	await _frames(3)
+	var in_house := pl.in_player_house
+	Input.action_press("move_forward")
+	await _frames(70)
+	Input.action_release("move_forward")
+	var down := _s15_at(HouseBuilder.GAR_X0 + 0.5, 2.0)
+	pl.set_yaw(atan2(-(down.x - pl.global_position.x), -(down.z - pl.global_position.z)))
+	Input.action_press("move_forward")
+	await _frames(100)
+	Input.action_release("move_forward")
+	await _frames(10)
+	runner.check(in_house and pl.in_garage and pl.global_position.y < 0.15 and not pl.in_player_house, "§15 the player walks from the kitchen through it, down the steps, onto the garage floor (y %.2f, %s)" % [pl.global_position.y, str(pl.global_position)])
+	# Saved and loaded: still unlocked (the keys flag; no save key of its own).
+	world.collect_state()
+	runner.check(Saves.save_game(), "§15 saved")
+	await _unload()
+	runner.check(Saves.load_game("fun"), "§15 …loaded")
+	world = load("res://scenes/game.tscn").instantiate()
+	runner.add_child(world)
+	await _frames(3)
+	var d2: Door = world.garage_house_door
+	runner.check(d2.interact_prompt(world.player).begins_with("[E] Open"), "§15 …and after a load the door is still unlocked")
+	Saves.delete_save("fun")
+	await _unload()
+
+
+## The overhead door: the button opens and closes it; closed, it stops the player and a plowed
+## pickup (its blade down) at the door line; it won't close on the player; its state survives a save
+## and a load, and a new game has it closed.
+func test_s15_overhead_door() -> void:
+	await _s15_world()
+	var g = world.garage
+	var pl: Player = world.player
+	var closed0: bool = g.is_closed() and not bool(Game.garage.get("door_open", true))
+	g.press()
+	await _frames(int(_GarageS.DOOR_TIME * 60.0) + 10)
+	var opened: bool = g.is_open() and bool(Game.garage["door_open"])
+	g.press()
+	await _frames(int(_GarageS.DOOR_TIME * 60.0) + 10)
+	var closed1: bool = g.is_closed()
+	runner.check(closed0 and opened and closed1, "§15 closed at first; the button opens it (%.1f s) and closes it" % _GarageS.DOOR_TIME)
+	# Closed: the player inside walks into it and stays in.
+	pl.teleport(_s15_at(6.0, 1.0))
+	pl.set_yaw(_s15_yaw_in() + PI)
+	await _frames(3)
+	Input.action_press("move_forward")
+	await _frames(120)
+	Input.action_release("move_forward")
+	await _frames(3)
+	runner.check(pl.in_garage, "§15 closed, the player inside walks into it and stays in (%s)" % str(pl.global_position))
+	pl.teleport(_s15_at(-3.0, -8.0))
+	var gz0: float = -0.5
+	var p := _s15_at(6.0, gz0 - 7.0)
+	var v := await _truck("pickup_plow", p.x, p.z, _s15_yaw_in())
+	v.set_blade(true)
+	await _frames(90)
+	var deepest := [0.0]
+	await _s15_hold(v, ["veh_accelerate"], func() -> bool:
+		deepest[0] = maxf(deepest[0], _s15_depth_in(v))
+		return false, 600)
+	runner.check(deepest[0] < 0.006, "§15 closed, a plowed pickup (blade down) driven at it stops at the door line (at most %.4f m inside)" % deepest[0])
+	await _drop(v)
+	# It won't close on the player standing in the doorway.
+	await _s15_door(true)
+	pl.teleport(_s15_at(6.0, gz0 + 0.1))
+	await _frames(3)
+	g.press()
+	await _frames(10)
+	runner.check(g.opening and _said("in the way"), "§15 it won't close on the player in the doorway (\"Something is in the way…\")")
+	pl.teleport(_s15_at(-3.0, -8.0))
+	await _frames(3)
+	# Saved open, loaded open.
+	world.collect_state()
+	runner.check(Saves.save_game(), "§15 saved with the door open")
+	await _unload()
+	runner.check(Saves.load_game("fun"), "§15 …loaded")
+	world = load("res://scenes/game.tscn").instantiate()
+	runner.add_child(world)
+	await _frames(3)
+	runner.check(world.garage.is_open() and bool(Game.garage["door_open"]), "§15 …the door is open after the load")
+	Saves.delete_save("fun")
+	await _s15_world()
+	runner.check(world.garage.is_closed(), "§15 a new game: the door closed")
+	await _unload()
+
+
+## The plowed pickup drives in to the back wall, the door closes behind it, and it backs out: blade
+## up and down, straight and angled both ways, with and without the width upgrade. The ATV and a
+## walk-behind blower fit. A tractor stops at the open door with "Too big for the garage."
+func test_s15_parking() -> void:
+	await _s15_world()
+	await _s15_door(true)
+	var g = world.garage
+	var gz0 := -0.5
+	var r: Rect2 = _GarageS.footprint()
+	var bad := []
+	var runs := 0
+	for up in [false, true]:
+		if up:
+			Game.grant_upgrade(StringName(ItemUpgrades.level_id(&"pickup_plow", &"plow_width", 1)))
+		for down in [false, true]:
+			for a in [0.0, -30.0, 30.0]:
+				var p := _s15_at(6.0, gz0 - 8.0)
+				var v := await _truck("pickup_plow", p.x, p.z, _s15_yaw_in())
+				v.set_blade(down)
+				v.blade_angle = a
+				await _frames(90)
+				var inside := await _s15_hold(v, ["veh_accelerate"], func() -> bool: return world.in_garage(v), 900)
+				await _s15_hold(v, ["veh_accelerate"], func() -> bool: return false, 240)
+				var full: bool = world.in_garage(v)
+				g.press()
+				await _frames(int(_GarageS.DOOR_TIME * 60.0) + 10)
+				var shut: bool = g.is_closed()
+				g.press()
+				await _frames(int(_GarageS.DOOR_TIME * 60.0) + 10)
+				var out := await _s15_hold(v, ["veh_reverse"], func() -> bool: return _s15_outside(v), 1500)
+				runs += 1
+				runner.info("§15 pickup_plow, %s, blade %s %+d°: in %s, at the back wall %s, the door shut behind it %s, out %s" % ["width upgrade" if up else "no upgrade", "down" if down else "up", int(a), inside, full, shut, out])
+				if not (inside and full and shut and out):
+					bad.append("%s %s %+d°" % ["upgraded" if up else "plain", "down" if down else "up", int(a)])
+				await _drop(v)
+				await _s15_door(true)
+	runner.check(bad.is_empty() and runs == 12, "§15 the plowed pickup drives in to the back wall, the door closes behind it, and it backs out: blade up and down, straight and ±30°, with and without the width upgrade (%d runs) %s" % [runs, str(bad)])
+	# The ATV, and a walk-behind blower pushed in by the player.
+	var p2 := _s15_at(7.4, gz0 - 5.0)
+	var atv := await _truck("atv_blade", p2.x, p2.z, _s15_yaw_in())
+	var atv_in := await _s15_hold(atv, ["veh_accelerate"], func() -> bool: return world.in_garage(atv) and r.grow(-1.5).has_point(Vector2(atv.global_position.x, atv.global_position.z)), 900)
+	await _drop(atv)
+	var pl: Player = world.player
+	var me := {"uid": Game.uid(), "tool": "small_blower", "pos": _s15_at(5.0, gz0 - 3.0), "yaw": _s15_yaw_in()}
+	Game.machines.append(me)
+	var m: WalkBehind = world.spawn_machine_node(me)
+	await _frames(2)
+	pl.teleport(_s15_at(5.0, gz0 - 4.2))
+	pl.set_yaw(_s15_yaw_in())
+	await _frames(2)
+	m.interact(pl)
+	await _frames(2)
+	Input.action_press("move_forward")
+	await _frames(150)
+	Input.action_release("move_forward")
+	m.release()
+	await _frames(3)
+	var blower_in: bool = r.has_point(Vector2(m.global_position.x, m.global_position.z))
+	runner.check(atv_in and blower_in, "§15 the ATV drives in (%s) and a walk-behind blower is pushed in (%s)" % [atv_in, blower_in])
+	pl.teleport(_s15_at(-3.0, -8.0))
+	# A tractor stops at the door line, with its message.
+	var p3 := _s15_at(6.0, gz0 - 6.0)
+	var tr := await _truck("tractor_blade", p3.x, p3.z, _s15_yaw_in())
+	var said := [""]
+	var went_in := await _s15_hold(tr, ["veh_accelerate"], func() -> bool:
+		if tr.status_text != "":
+			said[0] = tr.status_text
+		return _s15_depth_in(tr) > 0.01, 600)
+	runner.check(not went_in and str(said[0]).contains("Too big for the garage"), "§15 a tractor stops at the open door: \"%s\"" % said[0])
+	await _drop(tr)
+	await _unload()
+
+
+## Nothing overlaps: the truck and the ATV parked side by side inside stay apart and where they are
+## through a save and a load; the player gets out of each inside, clear of them.
+func test_s15_no_overlap() -> void:
+	await _s15_world()
+	await _s15_door(true)
+	var gz0 := -0.5
+	# The truck in the middle (clear of the steps at the house side), the ATV on the outer side.
+	var pt := _s15_at(5.25, gz0 - 8.0)
+	var t := await _truck("pickup_plow", pt.x, pt.z, _s15_yaw_in())
+	await _s15_hold(t, ["veh_accelerate"], func() -> bool: return false, 700)
+	t.exit_vehicle()
+	await _frames(3)
+	var pl: Player = world.player
+	var out1: bool = pl.in_garage
+	var pa := _s15_at(7.75, gz0 - 5.0)
+	var a := await _truck("atv_blade", pa.x, pa.z, _s15_yaw_in())
+	await _s15_hold(a, ["veh_accelerate"], func() -> bool: return false, 700)
+	a.exit_vehicle()
+	await _frames(3)
+	var out2: bool = pl.in_garage
+	var both_in: bool = world.in_garage(t) and world.in_garage(a)
+	var touching: bool = not world._bodies_on(world._solid_boxes(t, t.global_transform), [t.get_rid()] as Array[RID]).is_empty()
+	var where := {t.uid: t.global_position, a.uid: a.global_position}
+	runner.check(both_in and not touching and out1 and out2, "§15 the pickup and the ATV parked side by side in the garage, not touching; getting out of each puts the player inside, clear of them (%s %s)" % [out1, out2])
+	world.collect_state()
+	runner.check(Saves.save_game(), "§15 saved")
+	await _unload()
+	runner.check(Saves.load_game("fun"), "§15 …loaded")
+	world = load("res://scenes/game.tscn").instantiate()
+	runner.add_child(world)
+	await _frames(5)
+	var moved := []
+	var still_in := 0
+	for v in world.vehicle_nodes():
+		var u: int = (v as Vehicle).uid
+		if not where.has(u):
+			continue
+		if (v as Node3D).global_position.distance_to(where[u]) > 0.02:
+			moved.append(u)
+		if world.in_garage(v):
+			still_in += 1
+	runner.check(moved.is_empty() and still_in == 2, "§15 …both where they were parked, inside (%d), none moved %s" % [still_in, str(moved)])
+	Saves.delete_save("fun")
+	await _unload()
+
+
+## Sleeping: a truck in the garage stays there; one on the street goes to Game.truck_start().
+func test_s15_sleep() -> void:
+	await _s15_world()
+	var ts := Game.truck_start()
+	var e := {"uid": Game.uid(), "id": "pickup_plow", "pos": _s15_at(6.0, 3.6), "yaw": _s15_yaw_in(), "snow": 0.0}
+	Game.vehicles.append(e)
+	var v: Vehicle = world.spawn_vehicle_node(e)
+	await _frames(3)
+	var at := v.global_position
+	var in0: bool = world.in_garage(v)
+	await world.send_truck_home()
+	await _frames(3)
+	runner.check(in0 and v.global_position.distance_to(at) < 0.01, "§15 a truck in the garage stays there when you sleep (moved %.3f m)" % v.global_position.distance_to(at))
+	v.park_at(Vector3(60.0, 0, 84.95), -PI * 0.5)
+	await _frames(3)
+	await world.send_truck_home()
+	await _frames(3)
+	var home: Vector3 = ts["pos"]
+	var off := Vector2(v.global_position.x - home.x, v.global_position.z - home.z).length()
+	runner.check(off < 0.05, "§15 a truck on the street goes home to truck_start (%.3f m from it)" % off)
+	await _unload()
+
+
+## The rack: F hangs the tool in your hands, E takes it back into a free slot or swaps it with the one
+## you hold; the item keeps its upgrades; a full rack refuses; F outside the garage does nothing; a
+## save and a load keep it, its tools shown on the wall.
+func test_s15_rack() -> void:
+	await _s15_world()
+	var g = world.garage
+	var pl: Player = world.player
+	pl.teleport(_s15_at(4.5, 2.0))
+	await _frames(3)
+	Game.grant_upgrade(StringName(ItemUpgrades.level_id(&"small_shovel", &"capacity", 1)))
+	var m0 := ItemUpgrades.mult(&"small_shovel", &"shovel_capacity")
+	Game.slots = ["small_shovel", "wide_pusher", "snow_scraper", "standard_shovel"]
+	Game.selected = 0
+	Game.inventory_changed.emit()
+	await _frames(2)
+	await _key(_bound("store"))
+	var stored: bool = _GarageS.rack()[0] == "small_shovel" and Game.slots[0] == ""
+	var kept: bool = Game.owns_tool("small_shovel") and is_equal_approx(ItemUpgrades.mult(&"small_shovel", &"shovel_capacity"), m0) and m0 > 1.0
+	runner.check(stored and kept, "§15 F in the garage hangs the shovel in your hands on the rack (%s); it's still yours, its capacity upgrade kept (×%.2f)" % [str(_GarageS.rack()), m0])
+	g.take(0, pl)
+	await _frames(2)
+	runner.check(_GarageS.rack()[0] == "" and Game.slots[0] == "small_shovel", "§15 E on it takes it back into the free slot")
+	# Swap: every slot full, holding the scraper.
+	Game.selected = 2
+	_GarageS.rack()[2] = "snow_sleigh"
+	g.take(2, pl)
+	await _frames(2)
+	runner.check(Game.slots[2] == "snow_sleigh" and _GarageS.rack()[2] == "snow_scraper", "§15 E with every slot full swaps the racked sleigh for the scraper in your hands")
+	# A full rack refuses: the tool stays in your hands.
+	var rk: Array = _GarageS.rack()
+	for i in range(_GarageS.slots_n()):
+		rk[i] = "wide_pusher"
+	Game.selected = 0
+	var why: String = g.store(pl)
+	runner.check(why == "full" and Game.slots[0] == "small_shovel" and _said("The rack is full"), "§15 a full rack (%d slots) refuses: \"The rack is full.\"" % _GarageS.slots_n())
+	for i in range(_GarageS.slots_n()):
+		rk[i] = ""
+	rk[1] = "snow_sleigh"
+	rk[4] = "small_shovel"
+	# F outside the garage does nothing.
+	pl.teleport(_s15_at(-4.0, -6.0))
+	await _frames(3)
+	var before := Game.slots.duplicate()
+	await _key(_bound("store"))
+	runner.check(Game.slots == before and _GarageS.rack()[1] == "snow_sleigh" and not pl.in_garage, "§15 F outside the garage does nothing")
+	world.collect_state()
+	runner.check(Saves.save_game(), "§15 saved")
+	var want := JSON.stringify(_GarageS.rack())
+	await _unload()
+	runner.check(Saves.load_game("fun"), "§15 …loaded")
+	world = load("res://scenes/game.tscn").instantiate()
+	runner.add_child(world)
+	await _frames(4)
+	var shown: int = world.garage.rack_root.find_children("RackTool*", "MeshInstance3D", true, false).size()
+	runner.check(JSON.stringify(_GarageS.rack()) == want and shown == 2, "§15 …the rack as saved (%s), its %d tools on the wall" % [want, shown])
+	Saves.delete_save("fun")
+	await _unload()
+
+
+## The heated pad put down on the garage floor stays there; it isn't a heat source there (no melt,
+## no power on the bill).
+func test_s15_pad() -> void:
+	await _s15_world("survival")
+	var pl: Player = world.player
+	Game.equipment[String(Equipment.PAD)] = {}
+	Game.carried = String(Equipment.PAD)
+	pl.teleport(_s15_at(6.0, 1.5))
+	await _frames(3)
+	var f3 := _s15_at(6.0, 4.0) - _s15_at(6.0, 1.5)
+	var why := Equipment.put_down_pad(pl, Vector2(f3.x, f3.z), _s15_yaw_in())
+	var r := Equipment.pad_rect()
+	var srcs: Array = Heating.sources().map(func(s): return s["id"])
+	var used0 := Economy.heat_used
+	for i in range(6):
+		Heating.advance(60.0)
+	runner.check(why == "" and Equipment.pad_placed() and _GarageS.floor_rect().encloses(r) and not ("pad" in srcs) and Economy.heat_used == used0,
+		"§15 the pad goes down on the garage floor (\"%s\") and stays; it is no heat source there %s; nothing billed (%.3f)" % [why, str(srcs), Economy.heat_used - used0])
+	await _unload()
+
+
+## No snow gets into the garage, the volume exact: a storm with the door open, throws at the open
+## doorway, a blade pushing snow at the open door, a back-drag from the closed door.
+func test_s15_no_snow_inside() -> void:
+	await _s15_world()
+	var gr: Rect2 = _GarageS.footprint()
+	var gz0 := -0.5
+	await _s15_door(true)
+	var fall0 := Snow.fall_total
+	Weather.force(Weather.C.HEAVY, 6.0)
+	Clock.running = true
+	for i in range(240):
+		await _tree().physics_frame
+	Clock.running = false
+	runner.check(Snow.fall_total > fall0 and Snow.volume_in_rect(gr) == 0.0, "§15 a storm with the door open (%.2f cm fell): no snow in the garage" % ((Snow.fall_total - fall0) * 100.0))
+	Weather.force(Weather.C.CLEAR, 48.0)
+	# Throws at the open doorway, from the driveway.
+	Snow.set_rect(gr.grow(6.0), 0.3)
+	Snow.sync_all()
+	var v0 := Snow.total_volume()
+	var thrown := 0.0
+	for k in range(5):
+		var st := _s15_at(3.8 + k * 1.1, gz0 - 3.0, 1.4)
+		var aim := _s15_at(3.8 + k * 1.1, gz0 + 3.0, 1.4)
+		var d2 := Vector2(aim.x - st.x, aim.z - st.z).normalized()
+		var land := Throw.compute(world.get_world_3d(), st, d2, 4.5, 25.0, [])
+		if land.get("valid", false):
+			var ts := ThrownSnow.spawn(world, st, d2, land, 0.05, 25.0, 0.35)
+			ts.flush()
+			thrown += 0.05
+	var v1 := Snow.total_volume()
+	runner.check(thrown > 0.0 and Snow.volume_in_rect(gr) == 0.0 and absf(v1 - v0 - thrown) < 1e-6, "§15 snow thrown at the open doorway falls outside: none inside, the volume exact (%.2f m³ thrown, %+.7f m³)" % [thrown, v1 - v0 - thrown])
+	# A blade pushing snow at the open door.
+	var p := _s15_at(6.0, gz0 - 9.0)
+	var v := await _truck("pickup_plow", p.x, p.z, _s15_yaw_in())
+	v.set_blade(true)
+	await _frames(90)
+	var v2 := Snow.total_volume()
+	await _s15_hold(v, ["veh_accelerate"], func() -> bool: return false, 600)
+	var v3 := Snow.total_volume()
+	runner.check(Snow.volume_in_rect(gr) == 0.0 and absf(v3 - v2) < 1e-4, "§15 a blade pushing snow at the open door leaves it outside: none inside, the volume kept (%+.6f m³)" % (v3 - v2))
+	await _drop(v)
+	# A back-drag from the closed door.
+	await _s15_door(false)
+	Snow.set_rect(gr.grow(6.0), 0.3)
+	Snow.sync_all()
+	var v4 := Snow.total_volume()
+	var p2 := _s15_at(6.0, gz0 - 4.0)
+	var dv := await _truck("pickup_plow", p2.x, p2.z, _s15_yaw_in())
+	await _s15_hold(dv, ["veh_accelerate"], func() -> bool: return false, 400)
+	dv.set_blade(true)
+	await _frames(60)
+	await _s15_hold(dv, ["veh_reverse"], func() -> bool: return false, 300)
+	var v5 := Snow.total_volume()
+	runner.check(Snow.volume_in_rect(gr) == 0.0 and absf(v5 - v4) < 1e-4, "§15 back-dragging from the closed door: none inside, the volume kept (%+.6f m³)" % (v5 - v4))
+	await _drop(dv)
+	await _unload()
+
+
+## Inside the garage a vehicle gathers no roof snow, and the snow it brought in melts off on the
+## clock; the ground snow's hide rect covers the garage, the house's rect as before.
+func test_s15_climate_and_hide() -> void:
+	await _s15_world()
+	var e := {"uid": Game.uid(), "id": "pickup_plow", "pos": _s15_at(6.0, 3.6), "yaw": _s15_yaw_in(), "snow": 0.9}
+	Game.vehicles.append(e)
+	var v: Vehicle = world.spawn_vehicle_node(e)
+	var e2 := {"uid": Game.uid(), "id": "pickup", "pos": Vector3(60.0, 0, 84.95), "yaw": -PI * 0.5, "snow": 0.0}
+	Game.vehicles.append(e2)
+	var o: Vehicle = world.spawn_vehicle_node(e2)
+	await _frames(3)
+	world._veh_melt_last = Clock.minutes
+	world._veh_snow_last = Snow.fall_total
+	Snow.fall_total += 0.05
+	Clock.minutes += 60.0
+	world._roof_timer = 0.0
+	world._vehicle_snow_step(0.1)
+	var after1 := v.snow_load
+	Clock.minutes += 180.0
+	world._roof_timer = 0.0
+	world._vehicle_snow_step(0.1)
+	runner.check(is_equal_approx(after1, 0.9 - Catalog.balance.garage_snow_melt_per_hour) and v.snow_load == 0.0 and o.snow_load > 0.0,
+		"§15 a vehicle in the garage gathers no roof snow and its snow melts off (0.90 → %.2f after an hour, gone after four); one outside gathers it (%.3f)" % [after1, o.snow_load])
+	var hide: Dictionary = world.snow_hide_rects(true)
+	var c: Vector4 = hide["snow_hide_c"]
+	var a: Vector4 = hide["snow_hide_a"]
+	var sh_src := FileAccess.get_file_as_string("res://shaders/snow_ground.gdshader")
+	var gr: Rect2 = _GarageS.footprint()
+	var body: Rect2 = (Layout.house_info(Layout.player_lot)["body"] as Rect2).grow(0.05)
+	runner.check(c == Vector4(gr.position.x, gr.position.y, gr.end.x, gr.end.y) and a.is_equal_approx(Vector4(body.position.x, body.position.y, body.end.x, body.end.y)) and sh_src.contains("in_rect(snow_hide_c, v_world.xz)"),
+		"§15 the ground snow is hidden inside the garage (snow_hide_c %s); the house's rect as before" % str(c))
+	await _unload()
+
+
+## The first time in the garage opens its hint (the button, the rack), once.
+func test_s15_hint() -> void:
+	await _s15_world()
+	var pl: Player = world.player
+	pl.teleport(_s15_at(5.0, 2.0))
+	await _frames(4)
+	var hp = world.hint_panel
+	var first: bool = hp.is_open("garage") and hp.text_l.text.contains(Settings.action_label("interact"))
+	hp.next()
+	await _frames(2)
+	var second: bool = hp.text_l.text.contains(Settings.action_label("store"))
+	hp.ok()
+	pl.teleport(_s15_at(-3.0, -8.0))
+	await _frames(3)
+	pl.teleport(_s15_at(5.0, 2.0))
+	await _frames(4)
+	runner.check(first and second and not hp.is_open(), "§15 the first time in the garage its hint opens (the button with %s, the rack with %s), once" % [Settings.action_label("interact"), Settings.action_label("store")])
+	await _unload()

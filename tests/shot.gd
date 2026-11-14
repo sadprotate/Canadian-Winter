@@ -191,6 +191,11 @@ extends Node
 ##                            lowered; the camera in front of it. --blade_upgrade=1 grants the plow
 ##                            width upgrade first (with --hour=22 its lamps light with the headlights).
 ##                            Use with --unlock=1 and --fixed-fps 60
+##   --garage=open|closed     (polish 8 §15) the garage's overhead door set at once; --garage_rack=a,b,…
+##                            hangs those tools on its rack; --garage_truck=1 parks the truck inside
+##                            (the middle, nose to the back wall). Its hint is marked seen. Frame the
+##                            inside with --hcam / --hlook (the house frame; the garage is x 2.75–9.25,
+##                            z sb−0.5 … sb+7)
 
 var args := {}
 var game: Node = null
@@ -513,6 +518,32 @@ func _street_scoop() -> void:
 	print("street scoop at ", at, ": %.1f L, %d tiles settled in %d ms" % [float(r["volume"]) * 1000.0, n, Time.get_ticks_msec() - t0])
 
 
+## Polish 8 §15: --garage=open|closed sets the overhead door at once; --garage_rack=a,b,… hangs those
+## tools on the rack; --garage_truck=1 parks the player's truck in the garage (the middle, nose to the
+## back wall). The garage's hint is marked seen (no panel over the shot).
+func _garage_setup(w: Node) -> void:
+	Game.mark_hint_seen("garage")
+	var g = w.get("garage")
+	if g == null:
+		return
+	if args.has("garage"):
+		var open := str(args["garage"]) == "open"
+		g.opening = open
+		g.t = 1.0 if open else 0.0
+		g._place_door()
+		Game.garage["door_open"] = open
+	if args.has("garage_rack"):
+		var ids := str(args["garage_rack"]).split(",")
+		var r: Array = g.rack()
+		for k in range(mini(ids.size(), r.size())):
+			r[k] = ids[k]
+	if args.has("garage_truck") and not w.vehicle_nodes().is_empty():
+		var lot := Layout.player_lot
+		var p := HouseBuilder.lot_transform(lot) * Vector3(5.25, 0, float(lot["setback"]) + 3.3)
+		var inward := Vector2(lot["inward"]).normalized()
+		(w.vehicle_nodes()[0] as Vehicle).park_at(Vector3(p.x, 0, p.z), atan2(-inward.x, -inward.y))
+
+
 func _setup_after_spawn() -> void:
 	var w = game
 	var lot := Layout.player_lot
@@ -535,6 +566,8 @@ func _setup_after_spawn() -> void:
 		Game.inventory_changed.emit()
 	if args.has("showcase"):
 		_showcase(w)
+	if args.has("garage") or args.has("garage_rack") or args.has("garage_truck"):
+		_garage_setup(w)
 	if args.has("player"):
 		var p := str(args["player"]).split(",")
 		var pp := Layout.lot_to_world(lot, Layout.gu(lot, float(p[0])), float(p[1]))

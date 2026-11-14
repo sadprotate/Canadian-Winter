@@ -39,6 +39,7 @@ var focus_prompt := ""
 var indoors := false
 var in_player_house := false
 var in_neighbor_house := false
+var in_garage := false           # polish 8 §15: in the player's garage (sheltered, not heated; not indoors)
 var freecam := false
 var _step_acc := 0.0
 var _bob := 0.0
@@ -349,8 +350,11 @@ func _update_location_flags() -> void:
 	in_player_house = ph.has_point(p) and global_position.y > 0.3
 	in_neighbor_house = nh.has_point(p) and global_position.y > 0.3
 	indoors = in_player_house or in_neighbor_house
+	# Polish 8 §15: the garage (its footprint; the driver too, so a vehicle parked inside counts).
+	in_garage = (Layout.house_info(Layout.player_lot)["garage"] as Rect2).has_point(p)
 	Survival.in_player_house = in_player_house
 	Survival.in_neighbor_house = in_neighbor_house
+	Survival.in_garage = in_garage
 	AudioMgr.indoors = indoors
 	if in_player_house:
 		var fire: Vector3 = Game.world.fireplace_pos if Game.world and "fireplace_pos" in Game.world else Vector3.ZERO

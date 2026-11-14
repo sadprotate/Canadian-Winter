@@ -219,8 +219,23 @@ static func property_rects() -> Array:
 	return out
 
 
-## Can the pad go down on this footprint? "" if it can, otherwise why not.
+## Polish 8 §15: the garage floor the pad may lie on (its clear floor, off the steps).
+static func pad_garage_ok(r: Rect2) -> bool:
+	var lt := Layout.player_lot
+	if lt.is_empty():
+		return false
+	var L := HouseBuilder.lot_transform(lt)
+	var s := float(lt["setback"])
+	var floor_r := HouseBuilder._world_rect(L, HouseBuilder.GAR_X0 + HouseBuilder.GAR_IN_X0, HouseBuilder.GAR_X1 - HouseBuilder.WALL_T, s - 0.5 + HouseBuilder.WALL_T, s + 7.0 - HouseBuilder.WALL_T)
+	var steps := HouseBuilder._world_rect(L, HouseBuilder.GAR_X0, HouseBuilder.GAR_X0 + HouseBuilder.STEPS_X1 + 0.05, s + HouseBuilder.STEPS_Z0 - 0.1, s + HouseBuilder.LANDING_Z1)
+	return floor_r.grow(0.001).encloses(r) and not steps.intersects(r)
+
+
+## Can the pad go down on this footprint? "" if it can, otherwise why not. Polish 8 §15: the
+## garage floor is fine too (it lies there and stays; nothing melts or is billed there).
 static func pad_spot_problem(r: Rect2) -> String:
+	if pad_garage_ok(r):
+		return ""
 	var inside := false
 	for pr in property_rects():
 		if (pr as Rect2).grow(0.001).encloses(r):
@@ -259,7 +274,8 @@ static func pad_spot(pl: Node3D, fwd: Vector2, yaw: float) -> Dictionary:
 static func put_down_pad(pl: Node3D, fwd: Vector2, yaw: float) -> String:
 	if not pad_carried():
 		return "You aren't carrying the pad."
-	if _Buildings.indoors(pl.global_position):
+	var in_gar := (Layout.house_info(Layout.player_lot)["garage"] as Rect2).has_point(Vector2(pl.global_position.x, pl.global_position.z))
+	if _Buildings.indoors(pl.global_position) and not in_gar:
 		return "Put the pad down outside, on your own lot."
 	var sp := pad_spot(pl, fwd, yaw)
 	var why := pad_spot_problem(sp["rect"])

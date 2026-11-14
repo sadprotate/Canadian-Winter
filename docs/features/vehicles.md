@@ -10,7 +10,11 @@
   - Blade up, it pushes off slowly, bogs in the driveway's snow, and gets out with run-ups from the
     garage.
   - **When you sleep, the truck goes home** to its spot in the driveway, its blade raised, wherever you
-    left it. A vehicle parked on its spot is moved just clear.
+    left it. A vehicle parked on its spot is moved just clear. A truck parked in the garage is home
+    too: it stays there (round 8 §15).
+- **The garage** (round 8 §15, [garage.md](garage.md)): the pickups and the ATV fit (the plowed
+  pickup with its blade up or down, angled, with the width upgrade); bigger vehicles stop at the door
+  line ("Too big for the garage."). Inside, no roof snow gathers and what was carried in melts off.
 - **Driving** (all keys rebindable): drive forward and brake/reverse, steer, handbrake, the camera,
   the horn, the radio forecast, and get out.
 - **In deep snow, blade up,** the truck handles like a pickup:
@@ -189,12 +193,15 @@
   night passes (`Clock.skip`) and the save:
   - The truck is the first `is_pickup()` vehicle (lowest uid). `park_at()` puts it at
     `Game.truck_start()`, stopped, its blade raised (`tool_on` off, `blade_node` at `BLADE_LIFT`).
+  - Round 8 §15: unless it is in the garage (`game_root.in_garage`: every corner of its solid boxes
+    in the footprint); then nothing moves.
   - Its blade angle, load, roof snow and upgrades stay. The snow isn't touched, so on a buried spot
     it sits in the snow. It goes with or without the keys.
   - A vehicle or walk-behind machine on the spot (a physics query of the truck's boxes there) moves
     first. It goes to the nearest place in the player's lot or driveway (`MOVE_STEP` grid, facing as
     it did) where its boxes are `MOVE_GAP` clear of everything solid, of the truck's spot and of
-    where moved bodies stood and stand. If there's none, it stays.
+    where moved bodies stood and stand, never into the garage or the house (round 8 §15). If there's
+    none, it stays.
   - The physics only applies a moved vehicle's position on its next step, so the truck goes home
     two physics frames later. Otherwise where the other one stood would push it off its spot.
   - Other vehicles stay where they are: bought vehicles have no home spot.

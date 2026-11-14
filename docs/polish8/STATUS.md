@@ -14,7 +14,19 @@ Branch `cw-polish8-pg` from `main` (`b81e79e`, the Polish 7 merge). Brief: `POLI
   `test_s7_every_app_fits`, `test_s13b_snowshoes`, polish7 `test_s11_`, gameplay settings / tutorial
   / mailbox / computer / keys, polish3 `test_gerry`, systems save round trip, the polish3, polish4
   and polish5 fixture tests. 3 shots (`report/s17.md`).
-- [ ] §15 — The garage
+- [x] §15 — The garage. The player's garage shell made usable (walls inward from the old faces,
+  floor, ceiling, steps); a door from the house (locked until the keys); an overhead door run from
+  its button inside (blocks people, vehicles and the blade at the old face; won't close on
+  something in the doorway; saved); the plowed pickup in every blade setting and the ATV / blowers
+  fit, bigger vehicles stop at the door ("Too big for the garage."); a 6-slot rack (F / E; saved);
+  the pad allowed on the floor (no melt, no bill); no snow inside (cells unchanged; the ground snow
+  hidden with `snow_hide_c`); no roof snow inside, it melts off; a truck in the garage stays when you
+  sleep; the light; the first-visit hint. Tested: polish8 `test_s15_` (11 new); updated polish5
+  `test_s7_v3_save_round_trips`; also run polish8 (all), polish7 `test_pf3_`, `test_pf1_`,
+  `test_s10_`, `test_s11_`, polish5 `test_s3_`, `test_s13b_`, `test_s2_`, `test_s12_`, the app fit,
+  the photo, polish3 houses / menu / playthrough, polish4 photo, polish6 generator / preloads / blade,
+  gameplay and systems in full, the polish3, polish4 and polish5 fixture tests; perf `--only=garage`
+  (14.5 ms p95). 3 shots now, the 4th with §7 (`report/s15.md`).
 - [ ] §14 — Cold nights, and a colder player
 - [ ] §7 — Weather you can see and hear
 - [ ] §12 — Every key can be rebound
@@ -56,6 +68,31 @@ Branch `cw-polish8-pg` from `main` (`b81e79e`, the Polish 7 merge). Brief: `POLI
 notifications stack (5 at most, 5.5 s each); modals (`open_modal`) free the cursor and freeze the
 player. The hint panel queues its own hints, waits under the modals that aren't the map / TV /
 letter / photo, and sits right of the speech box.
+
+### §15: the garage before this round
+
+- **The shell** (`house_builder.gd`, every lot the same): one solid siding box 6.5 × 7.5 × 2.9 m
+  (house frame x 2.75–9.25, z sb−0.5 … sb+7; the player's lot: world Rect2(36.75, 100.5, 6.5, 7.5)),
+  one solid collider, a decorative door (panel 5.1 × 2.2 m with 6 lit windows). Registered by
+  `Buildings._build()` (not `register()`) as `garage_7`, counted as indoors for snow work; its cells
+  `S_BLOCKED` in the snow sim (no snowfall, a wall for every operation); throws already stop at it.
+- **No door from the house:** the house's right wall (x 2.75) had no opening. The house floor is at
+  0.54 m, the garage's at the ground.
+- **Single sources:** `Game.truck_start()` (40, 0, 96.6), nose to the street; `Game.shovel_spot()`;
+  the driveway box `lot7_driveway` already ends at the garage's line (Z 100.5), so it wasn't
+  extended; the keys flag `flags.truck_keys`. The photo and the menu's home shot build from them.
+- **Polish 7:** the blade's solid box (`blade_cs`) stops at layer-1 colliders; the old solid face at
+  Z 100.5 was the stop line its tests measure. `send_truck_home()` in `_do_sleep()` sends the first
+  pickup to `truck_start()`; `_clear_place()` searched the lot and driveway (the solid garage kept it
+  out).
+- **`store` (F):** bound and capped since round 5 §2, read nowhere. A $90 "Garage Tool Rack" upgrade
+  already exists (8 tools, outside the front wall, `Game.rack`); left as it is (answer 4).
+- **The heated pad:** `put_down_pad` refused indoors and `pad_spot_problem` any building or blocked
+  cell; `Heating.sources()` always listed a placed pad.
+- **Vehicles:** pickup_plow 6.0 × 2.4 × 1.9 m (blade 2.4 m, 2.76 m upgraded): in the bay with
+  0.28–1.10 m to spare, through the 5.1 m door with 2.3+ m; the ATV 2.6 × 1.5 × 1.2; tractors 2.6 m
+  tall (the door is 2.22 m); the grader, plow truck, rotary and dump truck 7.5–8.5 m long. It fits:
+  no resize.
 
 ## Questions
 
@@ -117,4 +154,29 @@ And every listed default.
 
 ## Check at the end
 
+- §17: `Settings.shares()` is now the one sharing rule `rebind()` uses (same three contexts plus
+  "hint"); `Game.serialize()` gains `hints_seen` (every state-equality test compares it). The full
+  suite reruns every test that loops over the actions or compares saves.
+- §15: shared code changed — `HouseBuilder.build` (the player's garage is hollow; the menu builds it
+  too), `hollow_colliders` (the player's house wall split for the door), every vehicle's collision
+  mask (`VEHICLE_ONLY_LAYER`, and `GARAGE_GATE_LAYER` for the big ones), `exit_vehicle` (inside the
+  garage only), `send_truck_home` / `_clear_place`, `_vehicle_snow_step`, `Game.serialize()` (the
+  `garage` key), `Equipment.pad_spot_problem` / `put_down_pad`, `Heating.sources`, the
+  `snow_hide_c` shader global (a new project setting: the owner's editor may need a restart). The
+  full suite and the perf run (`--only=garage` back to back with `main`) cover them.
+
 ## Issues
+
+- §17: with hints off, the vehicle and tool tips show nowhere in play until the Help app unlocks at
+  the end of the tutorial (Gerry's tips are spoken instead).
+- §15: a walk-behind blower being pushed has its collider off (round 5), so it passes through the
+  garage's steps, walls and closed door like everywhere else. Not changed.
+- §15: with the truck and the ATV both inside there's little floor left for the blowers and the pad
+  (no resize, as the brief says).
+- §15: the "Garage Tool Rack" upgrade ($90, 8 tools, outside the front wall) still exists beside the
+  new garage rack (the owner's answer 4: for the items round).
+- §15 shots: three now (outside by day, outside at night with the door open, inside); the brief's
+  fourth, the door open in a snowfall from inside, is taken with §7 (until then flakes fall inside
+  the garage). Four shots for the section (CLAUDE.md says two) because the brief lists four.
+- §15: the keys' pickup message (`buried_keys.gd`) still names only the truck, not the garage door
+  (GAME.md says the keys unlock both). The brief keeps the buried keys unchanged.

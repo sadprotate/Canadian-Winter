@@ -36,6 +36,9 @@ extends Node
 ## the player in the front yard beside the driveway, at 1× and at fast-forward (capped at 2× in the
 ## snow). On older builds the same storm without the heating (the upgrades do nothing, no pad).
 ##   -- --only=heat    runs just the world and the heating
+## Polish 8 §15 (last): inside the garage, the truck parked, the door open, a storm's heaviest hour
+## (on older builds, the same spot in front of the garage's door).
+##   -- --only=garage  runs just the world and the garage
 ## Polish 7 playtest fix 2: -- --only=plow runs just the world, idle outdoors, the blizzard +
 ## shovelling (it sets up the next), the hand push (RMB) in deep snow and the plow truck pushing a berm:
 ## a quicker before/after for a change to the snow ops.
@@ -131,6 +134,10 @@ func _ready() -> void:
 		return
 	if only == "heat":
 		await _heated_storm(pl)
+		AudioMgr.quit()
+		return
+	if only == "garage":
+		await _garage_storm(pl)
 		AudioMgr.quit()
 		return
 	# Polish 4: indoors, the desk with the computer screen and the photo by the door in view.
@@ -238,6 +245,7 @@ func _ready() -> void:
 	await _city_pass_near(pl)
 	await _pickup_shove(pl)
 	await _heated_storm(pl)
+	await _garage_storm(pl)
 	# AudioMgr.quit: stop every sound before quitting, so nothing is reported leaked at exit
 	# (HANDOFF §13 item 13).
 	AudioMgr.quit()
@@ -478,6 +486,40 @@ func _pickup_shove(pl: Player) -> void:
 ## Polish 5 §13b: the heated driveway and path and the heated pad (a pile on it) melting in a storm's
 ## heaviest hour, the player beside the driveway; 1× and fast-forward. Looked up at run time, so the
 ## same scenario runs on builds without the heating (the storm alone).
+## Polish 8 §15: inside the garage, the truck parked, the door open, a heavy snowfall (on a build
+## without the garage, the same spot in front of its door).
+func _garage_storm(pl: Player) -> void:
+	var lot := Layout.player_lot
+	var sb: float = lot["setback"]
+	var L := HouseBuilder.lot_transform(lot)
+	var g = world.get("garage")
+	var inward := Vector2(lot["inward"]).normalized()
+	var yaw_in := atan2(-inward.x, -inward.y)
+	if g != null:
+		g.opening = true
+		g.t = 1.0
+		g._place_door()
+		Game.mark_hint_seen("garage")
+		var tp := L * Vector3(5.25, 0, sb + 3.3)
+		for v in world.vehicle_nodes():
+			if (v as Vehicle).is_pickup():
+				(v as Vehicle).park_at(Vector3(tp.x, 0, tp.z), yaw_in)
+				break
+		var stand := L * Vector3(7.8, 0.05, sb + 4.5)
+		pl.teleport(stand, yaw_in + PI)
+	else:
+		var out := L * Vector3(6.0, 0.05, sb - 2.0)
+		pl.teleport(Vector3(out.x, Snow.surface_height(out.x, out.z) + 0.05, out.z), yaw_in)
+	Weather.force(Weather.C.HEAVY, 12.0, FF_STORM_CM_H)
+	Clock.set_speed(1)
+	Clock.running = true
+	for k in range(60):
+		await get_tree().process_frame
+	await _measure("garage, door open, storm (1×)", 600, func(_i): pass)
+	print("  garage: %s" % ("inside, the truck parked, the door open" if g != null else "no garage on this build: in front of its door"))
+	Weather.override_cond = -1
+
+
 func _heated_storm(pl: Player) -> void:
 	var lot := Layout.player_lot
 	Game.upgrades["heated_driveway"] = true

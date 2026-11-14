@@ -94,3 +94,7 @@ snow_hide_b={
 "type": "vec4",
 "value": Vector4(0, 0, 0, 0)
 }
+snow_hide_c={
+"type": "vec4",
+"value": Vector4(0, 0, 0, 0)
+}

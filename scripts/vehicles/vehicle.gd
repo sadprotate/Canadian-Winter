@@ -108,6 +108,11 @@ func setup(vd: VehicleData, e: Dictionary) -> void:
 func _ready() -> void:
 	collision_layer = 1 << 3
 	collision_mask = 1 | (1 << 2) | (1 << 3)
+	# Polish 8 §15: every vehicle meets the block round the garage's steps; one too big for the
+	# garage meets its doorway's gate (it stops at the door line, the status line says why).
+	collision_mask |= HouseBuilder.VEHICLE_ONLY_LAYER
+	if not fits_garage(data):
+		collision_mask |= HouseBuilder.GARAGE_GATE_LAYER
 	floor_snap_length = 0.5
 	blade_mult = _ItemUpgrades.mult(data.id, &"vehicle_blade_width")   # polish 7 playtest fix 3: its model shows it
 	info = VehicleModels.build(data, blade_mult)
@@ -284,6 +289,11 @@ func exit_vehicle() -> void:
 	# Polish 7 playtest fix 3: never into the blade's solid shape (the grader's, beside its cab, with
 	# the width upgrade and angled).
 	spots = spots.filter(func(s: Vector3) -> bool: return not _in_blade(s, p.capsule.radius + 0.1))
+	# Polish 8 §15: in the garage, only where the player fits (clear of its walls, its steps and the
+	# other vehicles), so getting out never puts you in a wall or outside the closed door.
+	if (Layout.house_info(Layout.player_lot)["garage"] as Rect2).has_point(Vector2(global_position.x, global_position.z)):
+		spots.append_array([global_position - global_transform.basis.z * (data.length * 0.5 + 1.0)])
+		spots = spots.filter(func(s: Vector3) -> bool: return _player_fits(s, p))
 	var out: Vector3 = spots[0] if not spots.is_empty() else global_position + global_transform.basis.z * (data.length * 0.5 + 1.0)
 	for s in spots:
 		if Snow.depth_at(s.x, s.z) < 0.7:
@@ -549,6 +559,13 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 	if get_slide_collision_count() > 0 and absf(speed) > 2.0:
 		speed *= 0.6
+	if occupied and _warn_timer <= 0.0:
+		for k in get_slide_collision_count():
+			var col := get_slide_collision(k).get_collider()
+			if col is Node and (col as Node).has_meta("garage_gate"):
+				_warn_timer = 2.0
+				set_status("Too big for the garage.", 3.0)     # polish 8 §15
+				break
 	global_position.y = maxf(global_position.y, 0.0)
 	# Wheels spin
 	for w in wheels:
@@ -888,6 +905,28 @@ func wheel_snow_depth() -> float:
 
 
 ## Show a short status line in the HUD (it clears itself after a few seconds).
+## Polish 8 §15: fits through the garage's door and in its bay (the pickups, the ATV, the walk-behind
+## size; the tractors' cabs are taller than the door, the trucks and the grader too long).
+static func fits_garage(vd: VehicleData) -> bool:
+	return vd.height < HouseBuilder.GAR_DOOR_H - 0.1 and vd.length < 6.5 and vd.width < HouseBuilder.GAR_DOOR_X1 - HouseBuilder.GAR_DOOR_X0 - 0.5
+
+
+## Polish 8 §15: the player's capsule stands at `s` (on the floor) clear of anything solid — walls,
+## vehicles, the steps' block — inside the garage.
+func _player_fits(s: Vector3, p: Player) -> bool:
+	if not (Layout.house_info(Layout.player_lot)["garage"] as Rect2).grow(-0.1).has_point(Vector2(s.x, s.z)):
+		return false
+	var sh := CapsuleShape3D.new()
+	sh.radius = p.capsule.radius + 0.05
+	sh.height = 1.7
+	var q := PhysicsShapeQueryParameters3D.new()
+	q.shape = sh
+	q.transform = Transform3D(Basis(), Vector3(s.x, 0.92, s.z))
+	q.collision_mask = 1 | (1 << 3) | HouseBuilder.VEHICLE_ONLY_LAYER
+	q.exclude = [get_rid()]
+	return get_world_3d().direct_space_state.intersect_shape(q, 1).is_empty()
+
+
 func set_status(text: String, secs := 2.5) -> void:
 	status_text = text
 	_status_t = secs

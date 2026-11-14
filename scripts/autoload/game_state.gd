@@ -34,6 +34,10 @@ var vehicles: Array = []
 var items: Array = []
 var machines: Array = []
 var rack: Array = []              # tools stored on the garage rack (ids)
+## Polish 8 §15: the player's garage — {door_open: bool, rack: [tool id or "", one per slot]}. Saved
+## (version 3, optional): an older save starts with the door closed and the rack empty. (`rack` above
+## is the Garage Tool Rack upgrade's, outside: a separate rack.)
+var garage: Dictionary = {}
 ## Polish 5 §13: the equipment picked up (Equipment): id -> its state (the coat worn, the snowshoes
 ## on or off, the heated pad carried or put down with its position). Saved from version 3.
 var equipment: Dictionary = {}
@@ -109,6 +113,7 @@ func new_game(m: String, seed_override := -1) -> void:
 	equipment = {}
 	_Equipment.pending_note = ""
 	hints_seen = {}
+	garage = {"door_open": false, "rack": []}
 	next_uid = 1
 	camera_third = Settings.get_value("camera", "default_third", false)
 	weather_seed = int(Time.get_unix_time_from_system()) % 100000 + 17 if seed_override < 0 else seed_override
@@ -356,7 +361,7 @@ func cycle_slot(dir: int) -> void:
 
 
 func owns_tool(tool_id: String) -> bool:
-	if tool_id in slots or carried == tool_id or tool_id in rack:
+	if tool_id in slots or carried == tool_id or tool_id in rack or tool_id in garage.get("rack", []):
 		return true
 	for it in items:
 		if it["tool"] == tool_id:
@@ -411,7 +416,8 @@ func serialize() -> Dictionary:
 		"heat_pouches": heat_pouches, "upgrades": upgrades, "vehicles": _pack_list(vehicles),
 		"items": _pack_list(items), "machines": _pack_list(machines), "rack": rack, "equipment": _Equipment.pack(equipment),
 		"player_pos": a3(player_pos), "player_yaw": player_yaw, "camera_third": camera_third,
-		"next_uid": next_uid, "weather_seed": weather_seed, "hints_seen": _sorted_keys(hints_seen)}
+		"next_uid": next_uid, "weather_seed": weather_seed, "hints_seen": _sorted_keys(hints_seen),
+		"garage": {"door_open": bool(garage.get("door_open", false)), "rack": (garage.get("rack", []) as Array).duplicate()}}
 
 
 static func _sorted_keys(d: Dictionary) -> Array:
@@ -508,3 +514,11 @@ func deserialize(d: Dictionary) -> void:
 		tools.append(carried)
 		tools.append_array(rack)
 		hints_seen = hints_from(flags, tools)
+	# Polish 8 §15 (version 3, optional): the garage's door and rack.
+	garage = {"door_open": false, "rack": []}
+	var gd = d.get("garage", null)
+	if gd is Dictionary:
+		garage["door_open"] = bool(gd.get("door_open", false))
+		var gr = gd.get("rack", [])
+		if gr is Array:
+			garage["rack"] = (gr as Array).map(func(x): return str(x))

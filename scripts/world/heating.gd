@@ -32,7 +32,7 @@ static var last_melt: Dictionary = {}
 static func sources() -> Array:
 	var out := []
 	var b: BalanceData = Catalog.balance
-	if _Equipment.pad_placed():
+	if _Equipment.pad_placed() and not _Equipment.pad_garage_ok(_Equipment.pad_rect()):   # polish 8 §15: not in the garage
 		out.append({"id": "pad", "rects": [_Equipment.pad_rect()], "rate": b.pad_melt_cm_h / 6000.0,
 			"area": _Equipment.PAD_SIZE.x * _Equipment.PAD_SIZE.y, "box": ""})
 	if Game.has_upgrade(&"heated_driveway") or Game.has_upgrade(&"heated_path"):

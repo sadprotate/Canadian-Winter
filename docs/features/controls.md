@@ -93,6 +93,9 @@
 ## Decisions
 
 - Round 5 §2: drop moved to G, store on F, the pouch on H; the press cap; the version-2 migration.
+- Round 8 §15: `store` (F) hangs the tool in your hands on the garage rack, read in
+  `game_root._unhandled_input` only on foot inside the garage (elsewhere F does nothing). See
+  [garage.md](garage.md).
 - Round 5 §9: fast-forward is capped and works at the computer.
 - Round 7 §11: `veh_blade_up` / `veh_blade_down` on Up / Down, capped, read before the GUI. Existing
   players get them through the migration, with no version bump.

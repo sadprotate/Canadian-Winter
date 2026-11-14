@@ -3257,6 +3257,9 @@ func test_s7_v3_save_round_trips() -> void:
 	# Polish 8 §17: the hints seen (optional key, default derived from the stage and the flags).
 	Game.hints_seen = {"gerry_snow": true, HelpText.vehicle_hint_id(VehicleData.Kind.PICKUP_PLOW): true, "tool_scraper": true}
 	var want_p8 := JSON.stringify(Game.serialize()["hints_seen"])
+	# Polish 8 §15: the garage's door and rack (optional key, default closed and empty).
+	Game.garage = {"door_open": true, "rack": ["small_shovel", "", "wide_pusher", "", "", ""]}
+	var want_g := JSON.stringify(Game.serialize()["garage"])
 	runner.check(Saves.save_game(), "§7 a version-3 save")
 	Game.upgrades = {}
 	Game.company_name = ""
@@ -3267,8 +3270,10 @@ func test_s7_v3_save_round_trips() -> void:
 	Economy.heat_acc = {}
 	Snow.melted = 0.0
 	Game.hints_seen = {}
+	Game.garage = {}
 	await _unload()
 	runner.check(Saves.load_game("fun"), "§7 …loads")
+	runner.check(JSON.stringify(Game.serialize()["garage"]) == want_g and bool(Game.garage["door_open"]), "§15 (polish 8) …and the garage's door and rack exactly as saved (%s)" % want_g)
 	runner.check(JSON.stringify(Game.serialize()["hints_seen"]) == want_p8 and Game.hints_seen.size() == 3, "§17 (polish 8) …and the hints seen exactly as saved (%s)" % str(Game.hints_seen.keys()))
 	var got_p6 := JSON.stringify(Snow.serialize_pending())
 	runner.check(got_p6 == want_p6 and Snow.relax_pending() == pend_p6 and pend_p6 > 0 and not Snow.settle_on_load, "§3 (polish 6) …and the snow's pending relaxation (%d tiles, hot and cold in order) and blade_push's stream exactly as saved" % pend_p6)

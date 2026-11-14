@@ -11,6 +11,8 @@ const _SidewalkCrew := preload("res://scripts/vehicles/sidewalk_crew.gd")
 const _SpeedControl := preload("res://scripts/ui/speed_control.gd")
 # Polish 8 §17: the hint panel (a script without a class_name).
 const _HintPanel := preload("res://scripts/ui/hint_panel.gd")
+# Polish 8 §15: the player's garage (a script without a class_name).
+const _Garage := preload("res://scripts/world/garage.gd")
 
 var builder: WorldBuilder
 var refs: Dictionary = {}
@@ -31,6 +33,9 @@ var hud: HUD
 var time_layer: CanvasLayer     # polish 5 §9: the fast-forward control, above the modals
 var speed_ctrl: _SpeedControl
 var hint_panel: _HintPanel       # polish 8 §17: on time_layer too, above the modals
+var garage: _Garage              # polish 8 §15: the overhead door, the rack, the light
+var garage_house_door: Door      # polish 8 §15: the door from the house into the garage
+var _veh_melt_last := -1.0       # polish 8 §15: the game minute roof snow last melted in the garage
 var modal: Control = null
 var modal_kind := ""
 var fade: ColorRect
@@ -73,6 +78,7 @@ func _ready() -> void:
 	_build_photo_look()
 	_set_snow_hide(true)
 	_build_doors()
+	_build_garage()
 	_build_mailbox()
 	_build_keys()
 	store = Store.new()
@@ -186,6 +192,14 @@ func _build_photo_look() -> void:
 
 ## No ground-snow mesh is drawn inside the two houses with interiors (see snow_ground.gdshader).
 static func _set_snow_hide(on: bool) -> void:
+	var rects := snow_hide_rects(on)
+	for n in rects.keys():
+		RenderingServer.global_shader_parameter_set(n, rects[n])
+
+
+## The hide rects (x0, z0, x1, z1) by uniform name; zero when off.
+static func snow_hide_rects(on: bool) -> Dictionary:
+	var out := {}
 	var names := ["snow_hide_a", "snow_hide_b"]
 	var lots := [Layout.player_lot, Layout.neighbor_lot]
 	for k in range(2):
@@ -195,7 +209,14 @@ static func _set_snow_hide(on: bool) -> void:
 			# hidden area reaches 5 cm out (still inside every wall) to cover the door's gaps too.
 			var r: Rect2 = (Layout.house_info(lots[k])["body"] as Rect2).grow(0.05)
 			v = Vector4(r.position.x, r.position.y, r.end.x, r.end.y)
-		RenderingServer.global_shader_parameter_set(names[k], v)
+		out[names[k]] = v
+	# Polish 8 §15: nor inside the player's garage (its footprint: its door's outer face is the line).
+	var g := Vector4.ZERO
+	if on and not Layout.player_lot.is_empty():
+		var gr: Rect2 = Layout.house_info(Layout.player_lot)["garage"]
+		g = Vector4(gr.position.x, gr.position.y, gr.end.x, gr.end.y)
+	out["snow_hide_c"] = g
+	return out
 
 
 func _build_doors() -> void:
@@ -209,6 +230,17 @@ func _build_doors() -> void:
 		var d := Door.make(self, Transform3D(Basis(Vector3.UP, yaw + PI), c), lot["door_color"], "front door")
 		if which == "player":
 			player_door = d
+			# Polish 8 §15: the door into the garage, in the house's right wall. Locked until the truck
+			# keys are found (derived from the keys flag; you can always let yourself out of the garage).
+			var zc: float = sb + (HouseBuilder.HDOOR_Z0 + HouseBuilder.HDOOR_Z1) * 0.5
+			var gc := L * Vector3(HouseBuilder.BODY_X1, Layout.PORCH_H, zc)
+			var gf := (L * Vector3(HouseBuilder.BODY_X1 + 1.0, 0, zc)) - (L * Vector3(HouseBuilder.BODY_X1, 0, zc))
+			garage_house_door = Door.make(self, Transform3D(Basis(Vector3.UP, atan2(gf.x, gf.z) + PI), gc), Color(0.92, 0.91, 0.88), "door to the garage")
+			garage_house_door.name = "GarageHouseDoor"
+			garage_house_door.locked_fn = func():
+				if Game.flags.get("truck_keys", false) or (player and player.in_garage):
+					return ""
+				return "Locked: the keys are missing."
 		else:
 			neighbor_door = d
 			d.locked_fn = func():
@@ -218,6 +250,16 @@ func _build_doors() -> void:
 				if neighbor and is_instance_valid(neighbor) and neighbor.invited:
 					return ""
 				return "Gerry's door (nobody answers)" if Game.stage() >= Game.Stage.COMPLETE else "The door is locked."
+
+
+## Polish 8 §15: the garage's door, rack and light (the shell is HouseBuilder's).
+func _build_garage() -> void:
+	var h: Dictionary = refs["houses"].get(Layout.player_lot["index"], {})
+	if not h.has("garage_door"):
+		return
+	garage = _Garage.new()
+	add_child(garage)
+	garage.setup(self, h["garage_door"])
 
 
 func _build_mailbox() -> void:
@@ -551,6 +593,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if modal != null:
 		return
+	if event.is_action_pressed("store") and garage and player.state == "foot" and player.in_garage:
+		# Polish 8 §15: F hangs the tool in your hands on the garage rack (elsewhere F does nothing).
+		get_viewport().set_input_as_handled()
+		if Settings.accept_press("store"):
+			garage.store(player, _Garage.looked_slot(player))
+		return
 	if event.is_action_pressed("interact"):
 		if Settings.accept_press("interact"):   # polish 5 §2: capped per second
 			# Polish 5 §13: with the Tab overview up, Interact takes the snowshoes off or puts them on.
@@ -615,15 +663,24 @@ func _process(delta: float) -> void:
 	(interior["ups_led"] as MeshInstance3D).material_override = Mats.emissive(Color(1.0, 0.6, 0.1), 3.0) if not on and fmod(Time.get_ticks_msec() / 1000.0, 1.0) < 0.5 else null
 
 
-## Snow accumulates on parked vehicles (once a real second).
+## Snow accumulates on parked vehicles (once a real second). Polish 8 §15: not on one in the garage;
+## the snow it carried in melts off there (Catalog.balance.garage_snow_melt_per_hour, on the clock).
 func _vehicle_snow_step(delta: float) -> void:
 	_roof_timer -= delta
 	if _roof_timer <= 0.0:
 		_roof_timer = 1.0
 		var fall := Snow.fall_total - _veh_snow_last
-		if fall > 0.0:
-			for v in vehicle_nodes():
-				(v as Vehicle).add_snowfall(fall)
+		if _veh_melt_last < 0.0:
+			_veh_melt_last = Clock.minutes
+		var melt := maxf(0.0, Clock.minutes - _veh_melt_last) / 60.0 * Catalog.balance.garage_snow_melt_per_hour
+		_veh_melt_last = Clock.minutes
+		for v in vehicle_nodes():
+			var veh: Vehicle = v
+			if _Garage.contains(veh.global_position):
+				if melt > 0.0 and veh.snow_load > 0.0:
+					veh.snow_load = maxf(0.0, veh.snow_load - melt)
+			elif fall > 0.0:
+				veh.add_snowfall(fall)
 		_veh_snow_last = Snow.fall_total
 		RenderingServer.global_shader_parameter_set("snow_cover", clampf(0.45 + Snow.roof_depth * 0.9, 0.35, 1.0))
 
@@ -737,6 +794,8 @@ func _update_lights() -> void:
 		l.visible = night and i < sorted.size()
 		if l.visible:
 			l.global_position = sorted[i]
+	if garage:
+		garage.update_light(pp)     # polish 8 §15
 	for v in vehicle_nodes():
 		var veh: Vehicle = v
 		if veh.occupied:
@@ -1003,7 +1062,7 @@ var _morning_line_due := false    # the opening's "December 1…" subtitle is st
 
 ## A shovel in your hands, slots or on the rack (the one buried outside doesn't count).
 static func has_shovel() -> bool:
-	var held: Array = Game.slots + [Game.carried] + Game.rack
+	var held: Array = Game.slots + [Game.carried] + Game.rack + Game.garage.get("rack", [])
 	for id in held:
 		var t: ToolData = Catalog.tool(StringName(str(id))) if str(id) != "" else null
 		if t != null and t.kind == ToolData.Kind.SHOVEL:
@@ -1163,12 +1222,13 @@ func _do_sleep(_days := 0) -> void:
 ## walk-behind machine on the spot moves just clear of it first: to the nearest place in the driveway or
 ## yard (MOVE_STEP apart, facing as it did) where it overlaps nothing, MOVE_GAP clear, nor where the
 ## truck stands. Nothing else moves.
+## Polish 8 §15: a truck parked inside the garage is home too: it stays where it is.
 func send_truck_home() -> void:
 	var truck: Vehicle = null
 	for v in vehicle_nodes():
 		if (v as Vehicle).is_pickup() and (truck == null or (v as Vehicle).uid < truck.uid):
 			truck = v
-	if truck == null:
+	if truck == null or in_garage(truck):
 		return
 	var ts := Game.truck_start()
 	var home := Transform3D(Basis(Vector3.UP, float(ts["yaw"])), ts["pos"])
@@ -1200,6 +1260,20 @@ func send_truck_home() -> void:
 
 const MOVE_STEP := 0.5
 const MOVE_GAP := 0.1
+
+
+## Polish 8 §15: a vehicle (or machine) wholly inside the garage: every corner of its solid boxes in
+## the garage's footprint.
+func in_garage(o: Node3D) -> bool:
+	var gr: Rect2 = _Garage.footprint()
+	var boxes := _solid_boxes(o, o.global_transform)
+	if boxes.is_empty():
+		return gr.has_point(Vector2(o.global_position.x, o.global_position.z))
+	for b in boxes:
+		for p in _box_corners(b[0], b[1]):
+			if not gr.has_point(p):
+				return false
+	return true
 
 
 ## The boxes a body's solid shapes (its BoxShape3D children) would fill were it at `xf`:
@@ -1252,6 +1326,9 @@ func _clear_place(o: Node3D, taken: Array, skip: Array[RID]) -> Array:
 	var lot: Rect2 = Layout.player_lot["rect"]
 	var drive: Rect2 = Layout.house_info(Layout.player_lot)["driveway"]
 	var area := lot.merge(drive)
+	# Polish 8 §15: never into the house or the garage (the garage is hollow now).
+	var hi := Layout.house_info(Layout.player_lot)
+	var keep_out := [hi["garage"], hi["body"]]
 	var p0 := Vector2(o.global_position.x, o.global_position.z)
 	var spots := []
 	for i in range(int(area.size.x / MOVE_STEP) + 1):
@@ -1269,6 +1346,10 @@ func _clear_place(o: Node3D, taken: Array, skip: Array[RID]) -> Array:
 			var corners := _box_corners(b[0], b[1] + Vector3(MOVE_GAP, 0, MOVE_GAP) * 2.0)
 			for p in corners:
 				if not (lot.has_point(p) or drive.has_point(p)):
+					ok = false
+			for kr in keep_out:
+				var kc := PackedVector2Array([kr.position, Vector2(kr.end.x, kr.position.y), kr.end, Vector2(kr.position.x, kr.end.y)])
+				if not Geometry2D.intersect_polygons(corners, kc).is_empty():
 					ok = false
 			for t in taken:
 				for tb in t:

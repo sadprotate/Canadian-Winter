@@ -267,3 +267,10 @@ extends Resource
 ## at 12 ¢); the game charges less so the house upgrades stay a comfort, not a burden: the heated
 ## driveway costs up to $1.11 an hour while it melts, about $70 in a December, $160 in a stormy January.
 @export var melt_cost_per_m3: float = 1.5
+
+@export_group("Garage")
+## Polish 8 §15: the tool rack in the player's garage holds this many tools (one per slot).
+@export var garage_rack_slots: int = 6
+## Polish 8 §15: the roof snow a vehicle carries into the garage melts off at this rate (of its
+## snow load, 0.9 at most, per game hour: a world rate): gone in about 3 game hours.
+@export var garage_snow_melt_per_hour: float = 0.3

@@ -969,6 +969,9 @@ func _property() -> void:
 			_p(line, Color.WHITE)
 	if Game.has_upgrade(&"tool_rack"):
 		_p("Garage tool rack: %s" % (", ".join(Game.rack.map(func(x): return Catalog.item_name(StringName(x)))) if not Game.rack.is_empty() else "empty"), Color.WHITE)
+	# Polish 8 §15: the rack in the garage.
+	var gr: Array = (Game.garage.get("rack", []) as Array).filter(func(x): return str(x) != "")
+	_p("In the garage, on the rack: %s" % (", ".join(gr.map(func(x): return Catalog.item_name(StringName(x)))) if not gr.is_empty() else "nothing"), Color.WHITE)
 	_section("Vehicles")
 	var g3 := _table(2)
 	for v in Game.vehicles:

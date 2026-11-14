@@ -25,6 +25,7 @@ var dead := false
 var in_player_house := false
 var in_neighbor_house := false
 var near_fire := false
+var in_garage := false       # polish 8 §15: in the player's garage (sheltered, not heated; §14 reads it)
 var vehicle_heat := 0.0      # 0..1 while in a heated running vehicle cab
 var last_rate := 0.0
 var _state := St.COMFORTABLE
@@ -37,6 +38,7 @@ func start_winter() -> void:
 	house_heat = 1.0
 	pouch_until = -1.0
 	dead = false
+	in_garage = false
 	_state = St.COMFORTABLE
 
 

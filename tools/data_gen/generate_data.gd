@@ -235,4 +235,6 @@ static func _balance(out: Dictionary) -> void:
 	b.min_scoop_hold_s = 0.25        # polish 6 §8.1: a release sooner than this throws nothing
 	b.upgrade_hands_capacity_step = 1.75  # polish 6 §8.2: bare hands' capacity levels (the ladder)
 	b.pickup_stuck_depth = 0.9       # polish 7 playtest fix 1: was 0.6 (the first morning's ~80 cm held the truck)
+	b.garage_rack_slots = 6          # polish 8 §15: the garage's tool rack
+	b.garage_snow_melt_per_hour = 0.3  # polish 8 §15: a vehicle's roof snow melts off in the garage
 	out["balance.tres"] = b

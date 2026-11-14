@@ -18,6 +18,8 @@ global uniform float night_factor;
 // snow mesh is never drawn. Outside them nothing changes.
 global uniform vec4 snow_hide_a;
 global uniform vec4 snow_hide_b;
+// Polish 8 §15: the player's garage (its footprint), the same way.
+global uniform vec4 snow_hide_c;
 
 varying float v_depth;
 varying float v_surf;
@@ -40,7 +42,7 @@ bool in_rect(vec4 r, vec2 p) {
 }
 
 void fragment() {
-	if (in_rect(snow_hide_a, v_world.xz) || in_rect(snow_hide_b, v_world.xz)) {
+	if (in_rect(snow_hide_a, v_world.xz) || in_rect(snow_hide_b, v_world.xz) || in_rect(snow_hide_c, v_world.xz)) {
 		discard;
 	}
 	float n1 = cw_noise(v_world.xz * 2.7);

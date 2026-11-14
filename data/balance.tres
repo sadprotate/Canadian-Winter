@@ -64,3 +64,5 @@ heated_melt_cm_h = 1.0
 melt_cost_per_m3 = 1.5
 moved_repose_max_diff = 0.19
 moved_crest_max_diff = 0.08
+garage_rack_slots = 6
+garage_snow_melt_per_hour = 0.3

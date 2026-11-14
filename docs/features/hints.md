@@ -26,7 +26,9 @@
   - The first pickup of each kind of tool (`tool_<kind>`): the small shovel's old "You found a
     small snow shovel!" sentence (now only the hint), the one-line controls reminder's wording for
     the others; the walk-behind blower's first grab (it was a notification).
-  - Later rounds add their own: §15's garage hint, §14's cold hints.
+  - The first time in the garage (`garage`): the door's button, the rack (F and E). See
+    [garage.md](garage.md).
+  - §14 adds the cold hints.
 - **What doesn't** (Decision 1): Gerry's story lines and the player's thoughts (speech box), the
   interaction prompts, status lines ("Stuck: …", "Blade down"), notifications (snowshoes and the pad
   collected, the plow fitted), the one-line controls reminder on a tool switch and in Tab.

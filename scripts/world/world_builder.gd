@@ -157,7 +157,7 @@ func _houses(_minimal: bool) -> void:
 		refs["roof_snows"].append(h["roof_snow"])
 		if hollow:
 			var body: StaticBody3D = h["root"].get_node("Collision")
-			HouseBuilder.hollow_colliders(body, h["L"], h["wall_h"], lot["setback"], lot["setback"] + HouseBuilder.DEPTH)
+			HouseBuilder.hollow_colliders(body, h["L"], h["wall_h"], lot["setback"], lot["setback"] + HouseBuilder.DEPTH, bool(lot["is_player"]))
 		var hi := Layout.house_info(lot)
 		var mb := MeshInstance3D.new()
 		mb.name = "Mailbox_%d" % lot["index"]

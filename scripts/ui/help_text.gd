@@ -49,6 +49,11 @@ const GERRY_SNOW := {"title": "Two ways to move snow", "pages": [
 	"Or hold [{secondary}] and walk to push it ahead of you. Quick on a long flat walk, but it piles up in front of you.",
 	"Clear my walk inside the blue line, from the sidewalk up to my door."]}
 
+## Polish 8 §15: the first time in the garage — the door's button and the rack.
+const GARAGE := {"title": "Your garage", "pages": [
+	"The button beside the big door opens and closes it: look at it and press {interact}.",
+	"The rack: {store} hangs the tool in your hands. {interact} on a tool takes it back, or swaps it for the one you hold."]}
+
 
 ## The hint ids of the first pickups, one per kind of tool ("tool_shovel", "tool_walk_blower", …).
 static func tool_hint_id(kind: int) -> String:
@@ -105,6 +110,8 @@ static func tool_hint(kind: int, display_name: String, angle_adjustable: bool) -
 static func hint(id: String, data: Resource = null) -> Dictionary:
 	if id == "gerry_snow":
 		return GERRY_SNOW.duplicate(true)
+	if id == "garage":
+		return GARAGE.duplicate(true)
 	if id.begins_with("vehicle_"):
 		var vd := data as VehicleData
 		if vd == null:
@@ -136,6 +143,7 @@ static func hint_help() -> Array:
 			pages.append(Settings.with_keys(str(p)))
 		out.append([Settings.with_keys(str(h["title"])), "\n".join(pages)])
 	add.call(GERRY_SNOW)
+	add.call(GARAGE)
 	add.call(vehicle_hint("Vehicles", true, true, true))
 	var kinds := {}
 	for t in Catalog.tools.values():
