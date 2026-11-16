@@ -39,6 +39,12 @@ extends Node
 ## Polish 8 §15 (last): inside the garage, the truck parked, the door open, a storm's heaviest hour
 ## (on older builds, the same spot in front of the garage's door).
 ##   -- --only=garage  runs just the world and the garage
+## Polish 8 §7 (last): the weather you can see — light snow, heavy snow and a blizzard's peak with
+## the ground drift (its forced 70 km/h) — the player in the front yard, each at 1× and at
+## fast-forward as the caps allow it (10× asked: 2× in snow, 1× at a major event's peak); the
+## particles alive per layer printed with each ("n/a" on a build without them).
+##   -- --only=weather runs just the world and the weather
+##   -- --novsync=1    vsync off for this run (windowed runs, which measure the GPU too)
 ## Polish 7 playtest fix 2: -- --only=plow runs just the world, idle outdoors, the blizzard +
 ## shovelling (it sets up the next), the hand push (RMB) in deep snow and the plow truck pushing a berm:
 ## a quicker before/after for a change to the snow ops.
@@ -80,6 +86,10 @@ func _ready() -> void:
 		elif a.begins_with("--ff_sweep="):
 			sweep = a.substr(11)
 			only = "ff"
+		elif a == "--novsync=1":
+			# Polish 8 §7: a windowed run measures the GPU too; vsync would pin every frame at the
+			# refresh rate (this run only, the settings are untouched).
+			DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 	# Headless runs in low-processor mode (sleeps ~7 ms per frame); measure real work instead.
 	OS.low_processor_usage_mode = false
 	await get_tree().process_frame
@@ -138,6 +148,10 @@ func _ready() -> void:
 		return
 	if only == "garage":
 		await _garage_storm(pl)
+		AudioMgr.quit()
+		return
+	if only == "weather":
+		await _weather_look(pl, p)
 		AudioMgr.quit()
 		return
 	# Polish 4: indoors, the desk with the computer screen and the photo by the door in view.
@@ -246,6 +260,7 @@ func _ready() -> void:
 	await _pickup_shove(pl)
 	await _heated_storm(pl)
 	await _garage_storm(pl)
+	await _weather_look(pl, p)
 	# AudioMgr.quit: stop every sound before quitting, so nothing is reported leaked at exit
 	# (HANDOFF §13 item 13).
 	AudioMgr.quit()
@@ -483,9 +498,6 @@ func _pickup_shove(pl: Player) -> void:
 	Weather.override_cond = -1
 
 
-## Polish 5 §13b: the heated driveway and path and the heated pad (a pile on it) melting in a storm's
-## heaviest hour, the player beside the driveway; 1× and fast-forward. Looked up at run time, so the
-## same scenario runs on builds without the heating (the storm alone).
 ## Polish 8 §15: inside the garage, the truck parked, the door open, a heavy snowfall (on a build
 ## without the garage, the same spot in front of its door).
 func _garage_storm(pl: Player) -> void:
@@ -520,6 +532,39 @@ func _garage_storm(pl: Player) -> void:
 	Weather.override_cond = -1
 
 
+## Polish 8 §7: the weather you can see — light snow, heavy snow, a blizzard's peak with the ground
+## drift — at 1× and at fast-forward as the caps allow it, the particles alive printed with each.
+func _weather_look(pl: Player, p: Vector2) -> void:
+	pl.teleport(Vector3(p.x, Snow.surface_height(p.x, p.y) + 0.05, p.y), PI)
+	Clock.caps_on = true
+	Clock.time_scale = 1.0
+	Clock.running = true
+	var b: BalanceData = Catalog.balance
+	for c in [["light snow", Weather.C.LIGHT, b.rate_light_cm_h], ["heavy snow", Weather.C.HEAVY, b.rate_heavy_cm_h], ["blizzard peak + drift", Weather.C.BLIZZARD, PEAK_MAJOR_CM_H]]:
+		for sp in [1, 10]:
+			Weather.force(int(c[1]), 6.0, float(c[2]))
+			Clock.set_speed(sp)
+			for k in range(60):
+				await get_tree().process_frame
+			var lbl := "weather: %s (%s)" % [c[0], "1×" if sp == 1 else "fast-forward"]
+			var fx = world.get("weather_fx")
+			var fx_us: Array = []
+			await _measure(lbl, 300, func(_i):
+				if Clock.speed != sp:
+					Clock.set_speed(sp)
+				if fx != null and fx.get("usec_last") != null:
+					fx_us.append(int(fx.get("usec_last"))))
+			var counts = fx.call("particle_counts") if fx != null and fx.has_method("particle_counts") else "n/a"
+			fx_us.sort()
+			var fx_line := "WeatherFX µs p95 %d max %d" % [fx_us[int(fx_us.size() * 0.95)], fx_us[fx_us.size() - 1]] if not fx_us.is_empty() else "WeatherFX µs n/a"
+			print("  %s: ran at %d×; particles %s; %s" % [lbl, Clock.effective_speed(), str(counts), fx_line])
+			Clock.set_speed(1)
+	Weather.override_cond = -1
+
+
+## Polish 5 §13b: the heated driveway and path and the heated pad (a pile on it) melting in a storm's
+## heaviest hour, the player beside the driveway; 1× and fast-forward. Looked up at run time, so the
+## same scenario runs on builds without the heating (the storm alone).
 func _heated_storm(pl: Player) -> void:
 	var lot := Layout.player_lot
 	Game.upgrades["heated_driveway"] = true

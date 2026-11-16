@@ -127,6 +127,10 @@ extends Resource
 @export var rate_moderate_cm_h: float = 1.0
 @export var rate_heavy_cm_h: float = 1.8
 @export var rate_blizzard_cm_h: float = 25.0
+## Polish 8 §7: blowing snow (wisps along the ground, streams off roofs and banks) shows from this
+## wind (km/h, the hour's wind as the visuals blend it) when there's snow on the ground, snowing
+## or not. Visual only.
+@export var blowing_snow_wind_kmh: float = 20.0
 ## Polish 4 §1: storms and major events open with this light-to-moderate rate (cm per game hour)
 ## over their first one to two game hours (a partial first hour plus one full hour); the rest of
 ## the event's total is spread over the remaining hours, so totals, starts and ends are unchanged.

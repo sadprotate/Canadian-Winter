@@ -175,7 +175,9 @@ func apply(day: float, hour: float, cond: int, intensity: float) -> void:
 	amb = amb.lerp(oc, overcast * 0.5)
 	env.ambient_light_color = amb
 	env.ambient_light_energy = 0.62 + overcast * 0.4
-	var fogs := [0.0035, 0.004, 0.007, 0.012, 0.02, 0.05]
+	# Polish 8 §7: heavy snow hides the far end of the street and softens the houses across it (was
+	# 0.02); a blizzard is a near whiteout, visibility in the tens of metres (was 0.05).
+	var fogs := [0.0035, 0.004, 0.007, 0.012, 0.026, 0.065]
 	var fog_base: float = fogs[clampi(cond, 0, 5)]
 	if _blend_from >= 0 and _blend_f < 1.0:
 		fog_base = lerpf(fogs[clampi(_blend_from, 0, 5)], fog_base, _blend_f)

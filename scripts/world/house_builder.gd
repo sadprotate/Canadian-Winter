@@ -36,6 +36,12 @@ const GARAGE_GATE_LAYER := 1 << 4
 const VEHICLE_ONLY_LAYER := 1 << 5
 
 
+## The two wall lanterns (beside the front door and the garage door), in the house frame, for a
+## house set back `sb` (polish 8 §7: the falling snow glints near them at night).
+static func lantern_points(sb: float) -> Array:
+	return [Vector3(-0.55, 2.0, sb - 0.12), Vector3(GAR_X0 + 0.45, 2.0, sb - 0.5 - 0.12)]
+
+
 static func lot_transform(lot: Dictionary) -> Transform3D:
 	var right: Vector2 = lot["right"]
 	var inward: Vector2 = lot["inward"]
@@ -106,8 +112,7 @@ static func build(lot: Dictionary, parent: Node3D, hollow: bool) -> Dictionary:
 	for cx in [GAR_X0 + 0.08, GAR_X1]:
 		kit.box(trim, L * Transform3D(Basis(), Vector3(cx, gh * 0.5, gz0)), Vector3(0.16, gh, 0.16))
 	# Wall lanterns (beside the door and the garage)
-	var lantern_pts := [Vector3(-0.55, 2.0, z0 - 0.12), Vector3(GAR_X0 + 0.45, 2.0, gz0 - 0.12)]
-	for lp in lantern_pts:
+	for lp in lantern_points(sb):
 		kit.box(trim, L * Transform3D(Basis(), lp + Vector3(0, 0.02, 0.03)), Vector3(0.22, 0.36, 0.16))
 		kit.box(lamp, L * Transform3D(Basis(), lp + Vector3(0, 0.0, -0.03)), Vector3(0.15, 0.24, 0.1))
 	# ---------------- Windows ----------------

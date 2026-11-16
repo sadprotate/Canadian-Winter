@@ -85,11 +85,16 @@ static func snow_soft() -> ShaderMaterial:
 
 
 static func needles() -> ShaderMaterial:
-	return shader_mat("foliage", {"albedo": Color(0.1, 0.25, 0.17), "snow_amount": 1.0, "snow_threshold": 0.45})
+	return shader_mat("foliage", {"albedo": Color(0.1, 0.25, 0.17), "snow_amount": 1.0, "snow_threshold": 0.45, "sway": 1.0})
 
 
 static func bark() -> ShaderMaterial:
-	return shader_mat("foliage", {"albedo": Color(0.32, 0.22, 0.15), "snow_amount": 1.2, "snow_threshold": 0.6})
+	return shader_mat("foliage", {"albedo": Color(0.32, 0.22, 0.15), "snow_amount": 1.2, "snow_threshold": 0.6, "sway": 1.0})
+
+
+## Polish 8 §7: the snow on a tree's boughs, swaying with them in strong wind.
+static func tree_snow() -> ShaderMaterial:
+	return shader_mat("snow_soft", {"sway": 1.0})
 
 
 static func wood(color := Color(0.58, 0.38, 0.22), snow := 1.0) -> ShaderMaterial:

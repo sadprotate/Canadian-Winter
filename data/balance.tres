@@ -6,6 +6,7 @@
 script = ExtResource("1_2gprt")
 box_completion = 0.9
 storm_onset_cm_h = 1.0
+blowing_snow_wind_kmh = 20.0
 storm_onset_mean_frac = 0.5
 fc_error_base = 0.06
 fc_error_per_day = 0.12

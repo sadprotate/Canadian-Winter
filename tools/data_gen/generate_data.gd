@@ -237,6 +237,7 @@ static func _balance(out: Dictionary) -> void:
 	b.pickup_stuck_depth = 0.9       # polish 7 playtest fix 1: was 0.6 (the first morning's ~80 cm held the truck)
 	b.garage_rack_slots = 6          # polish 8 §15: the garage's tool rack
 	b.garage_snow_melt_per_hour = 0.3  # polish 8 §15: a vehicle's roof snow melts off in the garage
+	b.blowing_snow_wind_kmh = 20.0    # polish 8 §7: blowing snow from this wind (visual only)
 	b.player_cold_mult = 2.2         # polish 8 §14: the colder player
 	b.player_base_loss_per_hour = 5.0    # polish 8 §14: the colder player's own loss outdoors
 	b.night_cold_mult = 1.5          # polish 8 §14: cold nights

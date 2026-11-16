@@ -60,6 +60,7 @@ func generate(y: int, s: int) -> void:
 	alerts.clear()
 	override_cond = -1
 	_last_cond = -1
+	debug_visual_wind = -1.0
 
 
 ## 0 for the first winter, 1 for the hardest (difficulty at its cap).
@@ -984,7 +985,25 @@ func visual_prev_condition() -> int:
 	return cond[maxi(_hidx() - 1, 0)]
 
 
+## Polish 8 §7: F1's "Windy (no snow)" — a look only: the falling snow, the blowing snow and the
+## weather sound show this wind (km/h) and no snowfall until debug_visual_until (game minutes).
+## Nothing else reads it (what falls, the wind chill, the forecasts), and it is never saved.
+var debug_visual_wind := -1.0
+var debug_visual_until := -1.0
+
+
+func debug_visual() -> bool:
+	return debug_visual_wind >= 0.0 and Clock.minutes < debug_visual_until
+
+
+func debug_windy(kmh: float, hours: float) -> void:
+	debug_visual_wind = kmh
+	debug_visual_until = Clock.minutes + hours * 60.0
+
+
 func visual_rate() -> float:
+	if debug_visual():
+		return 0.0
 	if _overriding() or rate.is_empty():
 		return snow_rate()
 	return lerpf(rate[maxi(_hidx() - 1, 0)], rate[_hidx()], visual_mix())
@@ -995,6 +1014,8 @@ func visual_intensity() -> float:
 
 
 func visual_wind_kmh() -> float:
+	if debug_visual():
+		return debug_visual_wind
 	if _overriding() or wind.is_empty():
 		return wind_kmh()
 	return lerpf(wind[maxi(_hidx() - 1, 0)], wind[_hidx()], visual_mix())

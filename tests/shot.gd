@@ -191,6 +191,8 @@ extends Node
 ##                            lowered; the camera in front of it. --blade_upgrade=1 grants the plow
 ##                            width upgrade first (with --hour=22 its lamps light with the headlights).
 ##                            Use with --unlock=1 and --fixed-fps 60
+##   --wind=kmh               (polish 8 §7) F1's "Windy (no snow)": that wind shown and no snowfall
+##                            (the look only; with --weather=1 for a dry windy hour)
 ##   --cold_night=frames      (polish 8 §14, Survival) the clock just before dusk on --day, run across
 ##                            it that many frames with the cold-night threshold above any air: the
 ##                            warning as at dusk
@@ -594,6 +596,9 @@ func _setup_after_spawn() -> void:
 		Input.action_release("veh_accelerate")
 	if args.has("light"):
 		w.day_night.override_hour = float(args["light"])
+	if args.has("wind"):
+		# Polish 8 §7: F1's "Windy (no snow)": this wind (km/h) shown, no snowfall (the look only).
+		Weather.debug_windy(float(args["wind"]), 48.0)
 	if args.has("cold_night"):
 		# Polish 8 §14: the clock just before dusk on --day, run across it with the cold-night
 		# threshold above any air (this shot only), so the warning shows as in play.

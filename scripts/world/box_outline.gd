@@ -70,6 +70,7 @@ func _ready() -> void:
 	_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_mat.disable_fog = true     # polish 8 §7: readable in a whiteout (the blue and the money green)
 	_mat.albedo_color = Color(COLOR, 0.0)
 	material_override = _mat
 	visible = false

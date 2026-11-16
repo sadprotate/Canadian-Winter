@@ -1539,3 +1539,253 @@ func test_s14_fast_forward_equal() -> void:
 	Survival.vehicle_heat = 0.0
 	Clock.caps_on = caps
 	runner.check(bad.is_empty(), "§14 the night, the garage and a running cab: the same warmth at 1×, 2× and 10× %s" % str(bad))
+
+
+# =============================================================================
+# §7 Weather you can see and hear
+# =============================================================================
+
+const _S7Buildings := preload("res://scripts/world/buildings.gd")
+
+## The global random generator's callers in scripts/ before §7 (file → calls; all cosmetic or
+## outside the snow sim). §7's new code uses its own generators; its audio replaced three of these.
+const S7_RANDOM_BEFORE := {"scripts/autoload/audio_manager.gd": 7, "scripts/npc/neighbor.gd": 1,
+	"scripts/player/player.gd": 1, "scripts/player/tool_controller.gd": 3, "scripts/tools/thrown_snow.gd": 1,
+	"scripts/ui/debug_menu.gd": 1, "scripts/vehicles/vehicle.gd": 3, "scripts/world/store.gd": 2}
+
+
+## A line of GDScript without its comment and with its string literals emptied.
+static func _s7_code(line: String) -> String:
+	var out := ""
+	var q := ""
+	var i := 0
+	while i < line.length():
+		var c := line[i]
+		if q != "":
+			if c == "\\":
+				i += 2
+				continue
+			if c == q:
+				q = ""
+				out += c
+		else:
+			if c == "#":
+				break
+			if c == "\"" or c == "'":
+				q = c
+			out += c
+		i += 1
+	return out
+
+
+static func _s7_scripts(dir: String, out: Array) -> void:
+	var d := DirAccess.open(dir)
+	if d == null:
+		return
+	for f in d.get_files():
+		if f.ends_with(".gd"):
+			out.append(dir.path_join(f))
+	for sub in d.get_directories():
+		_s7_scripts(dir.path_join(sub), out)
+
+
+## No script calls the global randf() / randi() (or seeds it) more than before §7: weather visuals
+## and sounds use their own generator.
+func test_s7_no_global_random() -> void:
+	var re := RegEx.create_from_string("(?<![\\w.])(randf|randi|randf_range|randi_range|randfn|randomize|seed)\\s*\\(")
+	var files := []
+	_s7_scripts("res://scripts", files)
+	var bad := []
+	var counts := {}
+	for f in files:
+		var n := 0
+		for ln in FileAccess.get_file_as_string(f).split("\n"):
+			n += re.search_all(_s7_code(ln)).size()
+		var key := (f as String).trim_prefix("res://")
+		if n > 0:
+			counts[key] = n
+		if n > int(S7_RANDOM_BEFORE.get(key, 0)):
+			bad.append("%s: %d (was %d)" % [key, n, int(S7_RANDOM_BEFORE.get(key, 0))])
+	runner.info("§7 global random calls now: %s" % str(counts))
+	runner.check(files.size() > 50 and bad.is_empty(), "§7 no script calls the global randf()/randi() more than before (%d scripts scanned) %s" % [files.size(), str(bad)])
+	var fx_src := FileAccess.get_file_as_string("res://scripts/world/weather_fx.gd")
+	runner.check(fx_src.contains("RandomNumberGenerator.new()") and not counts.has("scripts/world/weather_fx.gd"), "§7 the weather's look and its gusts draw from their own generator")
+
+
+## No flake is emitted or drawn inside a building (every Buildings footprint, the garage included):
+## the shader holds every footprint up to its eaves and discards a particle inside one; the CPU
+## mirror agrees; the flakes start above every eave, and the other layers' start points are
+## outside every building — with the camera outdoors, in the house and in the garage. Indoors the
+## snow still falls outside (through the windows and the open garage door).
+func test_s7_no_flake_inside() -> void:
+	await _world("fun")
+	var fx: WeatherFX = world.weather_fx
+	var blds: Array = _S7Buildings.all()
+	var hs: Dictionary = fx.shader_hide()
+	var rects: PackedVector4Array = hs["rects"]
+	var cuts: PackedFloat32Array = hs["cut"]
+	var n := int(hs["count"])
+	var missing := []
+	for b in blds:
+		var r: Rect2 = b["rect"]
+		var found := false
+		for i in range(n):
+			var v := rects[i]
+			if is_equal_approx(v.x, r.position.x) and is_equal_approx(v.y, r.position.y) and is_equal_approx(v.z, r.end.x) and is_equal_approx(v.w, r.end.y) and cuts[i] >= 2.8 and cuts[i] <= float(b["top"]) + 0.11:
+				found = true
+		if not found:
+			missing.append(b["id"])
+	var gid := "garage_%d" % int(Layout.player_lot["index"])
+	var has_garage := blds.any(func(b): return b["id"] == gid)
+	runner.check(n == blds.size() and missing.is_empty() and has_garage, "§7 the flake shader holds every building's footprint up to its eaves (%d of %d, the player's garage %s) %s" % [n, blds.size(), gid, str(missing)])
+	var code: String = WeatherFX.FLAKE_SHADER.code
+	runner.check(code.contains("p.y < hide_cut[i]") and code.contains("v_hide = hidden_at(c)") and code.contains("discard"), "§7 the shader discards a particle inside one (as snow_ground.gdshader does)")
+	var vols := WeatherFX.hide_volumes()
+	var wrong := []
+	for v in vols:
+		var r: Rect2 = v["rect"]
+		var c := r.get_center()
+		if not WeatherFX.hidden_at(Vector3(c.x, 1.0, c.y), vols):
+			wrong.append("inside %s" % str(r))
+		if WeatherFX.hidden_at(Vector3(c.x, float(v["cut"]) + 0.2, c.y), vols):
+			wrong.append("above %s" % str(r))
+		for o in [Vector2(-0.3, 0), Vector2(0.3, 0), Vector2(0, -0.3), Vector2(0, 0.3)]:
+			var oo: Vector2 = o
+			var q: Vector2 = Vector2(r.position.x if oo.x < 0 else (r.end.x if oo.x > 0 else c.x), r.position.y if oo.y < 0 else (r.end.y if oo.y > 0 else c.y)) + oo
+			if _S7Buildings.at(q).is_empty() and WeatherFX.hidden_at(Vector3(q.x, 1.0, q.y), vols):
+				wrong.append("outside %s" % str(q))
+	runner.check(wrong.is_empty(), "§7 hidden inside every footprint below its eaves, shown above it and outside it %s" % str(wrong.slice(0, 4)))
+	var max_cut := 0.0
+	for v in vols:
+		max_cut = maxf(max_cut, float(v["cut"]))
+	# A blizzard: snowfall, a gale and snow on the ground, so every layer emits.
+	Weather.force(Weather.C.BLIZZARD, 6.0)
+	await _s15_door(true)
+	var lot := Layout.player_lot
+	var L := HouseBuilder.lot_transform(lot)
+	var yard := Layout.lot_to_world(lot, Layout.gu(lot, 8.0), 6.0)
+	var spots := [["outdoors", Vector3(yard.x, Snow.surface_height(yard.x, yard.y), yard.y), Vector3(yard.x, 1.5, yard.y - 20.0), false],
+		["in the house", L * Vector3(-6.0, InteriorBuilder.FY, 14.0), L * Vector3(-6.2, InteriorBuilder.FY + 1.5, 0.0), true],
+		["in the garage", _s15_at(6.0, 4.0), _s15_at(6.0, -10.0, 1.4), true]]
+	for s in spots:
+		_stand(s[1], s[2])
+		await _frames(45)
+		var cam := world.get_viewport().get_camera_3d()
+		var inside := WeatherFX.hidden_at(cam.global_position, vols)
+		var emit_floor := fx.particles.global_position.y - WeatherFX.FLAKE_BOX.y
+		var bad := []
+		var npts := {}
+		for k in ["fill", "near", "streaks", "drift", "streams"]:
+			var pts := fx.layer_points(k)
+			npts[k] = pts.size()
+			for p in pts:
+				if WeatherFX.hidden_at(p, vols):
+					bad.append("%s %s" % [k, str(p)])
+		var counts := fx.particle_counts()
+		runner.info("§7 %s: camera inside a building %s; flakes from %.1f m (eaves up to %.1f); points %s; particles %s" % [s[0], inside, emit_floor, max_cut, str(npts), str(counts)])
+		runner.check(inside == s[3] and emit_floor > max_cut and bad.is_empty() and int(npts["streaks"]) > 0 and int(npts["drift"]) > 0 and int(counts["flakes"]) > 0 and fx.particles.visible,
+			"§7 %s: the flakes start above every roof's eaves, every other layer starts outside every building, and the snow falls (seen through the window / the door) %s" % [s[0], str(bad.slice(0, 3))])
+	Weather.override_cond = -1
+	await _unload()
+
+
+## Each level reads at a glance: more, faster flakes as the snowfall gets heavier; large soft flakes
+## near the camera only in light snow; streaks only in strong wind with snow; blowing snow from
+## blowing_snow_wind_kmh with snow down, snowing or not (F1's "Windy (no snow)", the look only);
+## the trees sway only in strong wind; the graphics setting scales the counts (High as Medium);
+## the wind sound rises with the weather, the hush only in light snow, the howl only in a blizzard.
+func test_s7_levels_read_at_a_glance() -> void:
+	await _world("fun")
+	var fx: WeatherFX = world.weather_fx
+	var lot := Layout.player_lot
+	var yard := Layout.lot_to_world(lot, Layout.gu(lot, 8.0), 6.0)
+	_stand(Vector3(yard.x, Snow.surface_height(yard.x, yard.y), yard.y), Vector3(yard.x, 1.5, yard.y - 20.0))
+	var b: BalanceData = Catalog.balance
+	var rows := {}
+	var winds := {}
+	for c in [Weather.C.CLEAR, Weather.C.LIGHT, Weather.C.MODERATE, Weather.C.HEAVY, Weather.C.BLIZZARD]:
+		Weather.force(c, 6.0)
+		await _frames(40)
+		rows[c] = fx.particle_counts()
+		winds[c] = fx.wind_vec.length()
+		runner.info("§7 %s (%.1f cm/h, %d km/h): %s" % [Weather.NAMES[c], Weather.visual_rate(), int(Weather.visual_wind_kmh()), str(rows[c])])
+	var f := func(c, k): return int(rows[c][k])
+	var C := Weather.C
+	runner.check(f.call(C.CLEAR, "flakes") == 0 and f.call(C.LIGHT, "flakes") < f.call(C.MODERATE, "flakes") and f.call(C.MODERATE, "flakes") < f.call(C.HEAVY, "flakes") and f.call(C.HEAVY, "flakes") < f.call(C.BLIZZARD, "flakes"),
+		"§7 more flakes at every level: light %d, moderate %d, heavy %d, blizzard %d" % [f.call(C.LIGHT, "flakes"), f.call(C.MODERATE, "flakes"), f.call(C.HEAVY, "flakes"), f.call(C.BLIZZARD, "flakes")])
+	runner.check(f.call(C.LIGHT, "near") > 0 and f.call(C.BLIZZARD, "near") == 0 and f.call(C.LIGHT, "streaks") == 0 and f.call(C.MODERATE, "streaks") == 0 and f.call(C.BLIZZARD, "streaks") > f.call(C.HEAVY, "streaks"),
+		"§7 large soft flakes near the camera in light snow only; the streaks in the blizzard (%d; heavy %d)" % [f.call(C.BLIZZARD, "streaks"), f.call(C.HEAVY, "streaks")])
+	runner.check(f.call(C.LIGHT, "drift") == 0 and f.call(C.BLIZZARD, "drift") > 0 and f.call(C.BLIZZARD, "streams") > 0,
+		"§7 blowing snow along the ground and off roofs and banks in the blizzard (%d, %d), none in light snow's breeze" % [f.call(C.BLIZZARD, "drift"), f.call(C.BLIZZARD, "streams")])
+	runner.check(float(winds[C.LIGHT]) < 8.0 and float(winds[C.BLIZZARD]) >= 12.0, "§7 the trees sway in the blizzard's wind (%.1f m/s), not in light snow's (%.1f; sway from 8)" % [winds[C.BLIZZARD], winds[C.LIGHT]])
+	var needles: ShaderMaterial = Mats.needles()
+	var prop: ShaderMaterial = Mats.prop(Color(0.5, 0.5, 0.5))
+	var foliage_code: String = needles.shader.code
+	var prop_sway = prop.get_shader_parameter("sway")
+	runner.check(foliage_code.contains("uniform float sway = 0.0") and float(needles.get_shader_parameter("sway")) == 1.0 and float(Mats.tree_snow().get_shader_parameter("sway")) == 1.0 and (prop_sway == null or float(prop_sway) == 0.0),
+		"§7 only the trees (needles, bark, the snow on the boughs) sway")
+	# A windy hour without snow (F1's look): no flakes, wisps along the snow; the weather unchanged.
+	Weather.force(Weather.C.CLOUDY, 6.0)
+	var truth := [Weather.wind_kmh(), Weather.snow_rate(), Weather.wind_chill(), JSON.stringify(Weather.serialize())]
+	Weather.debug_windy(40.0, 2.0)
+	await _frames(40)
+	var windy := fx.particle_counts()
+	var after := [Weather.wind_kmh(), Weather.snow_rate(), Weather.wind_chill(), JSON.stringify(Weather.serialize())]
+	runner.check(int(windy["flakes"]) == 0 and int(windy["drift"]) > 0 and int(windy["streams"]) > 0 and truth == after and Weather.visual_wind_kmh() == 40.0,
+		"§7 a windy hour without snow: wisps along the snow and off the roofs (%s), no flakes; the weather itself unchanged (wind %d km/h, not saved)" % [str(windy), int(after[0])])
+	Weather.debug_visual_wind = -1.0
+	# The graphics setting: Low 0.4, High as Medium (moderate snow: no gusts to vary the count).
+	Weather.force(Weather.C.MODERATE, 6.0)
+	await _frames(10)
+	var dens := {}
+	for d in [1.0, 0.4, 1.5]:
+		fx.density = d
+		await _frames(5)
+		dens[d] = int(fx.particle_counts()["flakes"])
+	fx.density = 1.0
+	runner.check(dens[1.5] == dens[1.0] and absf(float(dens[0.4]) - 0.4 * dens[1.0]) <= 2.0, "§7 the particle setting scales the snow: Low %d, Medium %d, High %d" % [dens[0.4], dens[1.0], dens[1.5]])
+	# The sound.
+	var wt := [8.0, 12.0, 15.0, 22.0, 35.0, 70.0]
+	var rt := [0.0, 0.0, b.rate_light_cm_h, b.rate_moderate_cm_h, b.rate_heavy_cm_h, b.rate_blizzard_cm_h]
+	var mix := func(c: int) -> Dictionary: return AudioMgr.weather_mix(rt[c], wt[c])
+	var ml: Dictionary = mix.call(C.LIGHT)
+	var mm: Dictionary = mix.call(C.MODERATE)
+	var mh: Dictionary = mix.call(C.HEAVY)
+	var mb: Dictionary = mix.call(C.BLIZZARD)
+	var mw := AudioMgr.weather_mix(0.0, 40.0)
+	runner.info("§7 sound (dB): light %s; heavy %s; blizzard %s; windy, no snow %s" % [str(ml), str(mh), str(mb), str(mw)])
+	runner.check(ml["snow_hush"] > -80.0 and mb["snow_hush"] <= -80.0 and mh["wind_strong"] > mm["wind_strong"] and mm["wind_strong"] > ml["wind_strong"] and mb["blizzard_howl"] > -80.0 and mh["blizzard_howl"] <= -80.0 and mw["wind_strong"] > ml["wind_strong"] and mw["snow_hush"] <= -80.0,
+		"§7 the wind sound rises with the weather (strong wind light %.0f, moderate %.0f, heavy %.0f dB); the hush in light snow only; the howl in the blizzard only; wind without snow sounds" % [ml["wind_strong"], mm["wind_strong"], mh["wind_strong"]])
+	Weather.override_cond = -1
+	await _unload()
+
+
+## Gusts are visual and audio only: in a blizzard they come and go (denser snow, a gust sound
+## asked for with each), while the hourly wind, the exposure and the weather are untouched.
+func test_s7_gusts_visual_and_audio_only() -> void:
+	await _world("survival")
+	var fx: WeatherFX = world.weather_fx
+	var lot := Layout.player_lot
+	var yard := Layout.lot_to_world(lot, Layout.gu(lot, 8.0), 6.0)
+	_stand(Vector3(yard.x, Snow.surface_height(yard.x, yard.y), yard.y), Vector3(yard.x, 1.5, yard.y - 20.0))
+	Weather.force(Weather.C.BLIZZARD, 6.0)
+	await _frames(10)
+	var wind0 := Weather.wind_kmh()
+	var loss0 := Survival.outdoor_loss_per_hour()
+	var w0 := JSON.stringify(Weather.serialize())
+	var asked0 := AudioMgr.gusts_requested
+	var peak := 0.0
+	var calm := 0
+	var loss_gust := loss0
+	for k in range(900):
+		await _tree().process_frame
+		if fx.gust > peak:
+			peak = fx.gust
+			loss_gust = Survival.outdoor_loss_per_hour()
+		if fx.gust == 0.0:
+			calm += 1
+	var asked := AudioMgr.gusts_requested - asked0
+	runner.check(peak > 0.3 and calm > 30 and asked >= 1, "§7 gusts come and go in the blizzard (peak %.2f, %d calm frames of 900), a gust sound with each (%d)" % [peak, calm, asked])
+	runner.check(Weather.wind_kmh() == wind0 and is_equal_approx(loss_gust, loss0) and JSON.stringify(Weather.serialize()) == w0, "§7 a gust changes neither the hourly wind (%d km/h), the exposure (%.1f %%/game h) nor the weather" % [int(wind0), loss0])
+	Weather.override_cond = -1
+	await _unload()

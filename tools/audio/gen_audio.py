@@ -1389,6 +1389,64 @@ def snd_rattle(rng):
     return nrm(y) + nrm(buzz, 0.12)
 
 
+def snd_snow_hush(rng):
+    """LOOP 10 s (polish 8 §7): the hush of light snow falling in still air: a soft, airy, slightly
+    breathy band of noise that swells very slowly, with a faint high shimmer (no wind tone)."""
+    n = ns(10.0)
+    C = True
+    sw = 0.5 + 0.5 * np.tanh(1.1 * pmod(n, rng, 0.35, 0.05, tilt=0.8))
+    bed = bp(pink(n, rng), 280, 2400, 2, C) * (0.7 + 0.3 * sw)
+    air = bp(white(n, rng), 1800, 5200, 2, C) * (0.5 + 0.5 * sw)
+    shimmer = bp(white(n, rng), 6000, 10000, 2, C) * (0.3 + 0.7 * sw ** 2)
+    return nrms(bed) + nrms(air, 0.35) + nrms(shimmer, 0.08)
+
+
+# (duration s, whistle Hz, second whistle Hz, double surge) for each gust variant
+WIND_GUSTS = ((2.4, 540.0, 860.0, False), (3.1, 700.0, 1120.0, False), (2.0, 820.0, 1300.0, False),
+              (3.5, 600.0, 950.0, True))
+
+
+def snd_wind_gust(rng, v):
+    """One-shot gust variant v (polish 8 §7, played when a gust shows on screen): a swell of roaring
+    air with whistles that bend with it; variant 4 surges twice."""
+    dur, f1, f2, double = WIND_GUSTS[v - 1]
+    n = ns(dur)
+    if double:
+        pts = [(0, 0), (0.45, 0.6), (0.9, 0.95), (1.35, 0.55), (1.8, 1.0), (2.5, 0.45), (3.1, 0.1), (dur, 0)]
+    else:
+        pk = dur * rng.uniform(0.42, 0.55)
+        pts = [(0, 0), (pk * 0.45, 0.4), (pk, 1.0), (pk + dur * 0.15, 0.75), (dur * 0.85, 0.15), (dur, 0)]
+    e = np.clip(smooth(env_pts(n, pts), 110), 0, None)
+    wob = pmod(n, rng, 4.5, 0.6)
+    roar = svf(pink(n, rng), 260.0 + 1300.0 * e, 0.7, "lp") * e
+    wh1 = svf(white(n, rng), (f1 + 0.9 * f1 * e) * (1.0 + 0.012 * wob), 28.0)
+    wh2 = svf(white(n, rng), (f2 + 0.6 * f2 * e) * (1.0 + 0.016 * wob), 36.0)
+    hiss = bp(white(n, rng), 2800, 8500) * e ** 2
+    return nrms(roar) + nrms(wh1, 0.45) * e ** 2 + nrms(wh2, 0.22) * e ** 3 + nrms(hiss, 0.15)
+
+
+def snd_blizzard_howl(rng):
+    """LOOP 12 s (polish 8 §7): the howl layered over the blizzard: low moaning resonances that
+    rise and fall in pitch with slow surges, a hollow drone under them."""
+    n = ns(12.0)
+    C = True
+    g = pmod(n, rng, 0.45, 0.04, tilt=0.6)
+    surge = 0.5 + 0.5 * np.tanh(1.4 * g)
+    wob = pmod(n, rng, 3.5, 0.8)
+    howl = np.zeros(n)
+    for f0, bw, lag, depth, lvl, pw in ((210, 9, 0.0, 0.45, 1.0, 1.6), (315, 11, 0.8, 0.4, 0.75, 1.8),
+                                        (470, 13, 1.6, 0.35, 0.5, 2.2), (690, 12, 2.3, 0.3, 0.3, 2.8)):
+        gl = np.roll(surge, ns(lag))
+        fc = f0 * (1.0 + depth * (gl - 0.5) + 0.02 * wob)
+        howl += lvl * nrms(nb_noise(n, rng, fc, bw)) * (0.15 + 0.85 * gl ** pw)
+    xf = ns(1.0)
+    sx = np.concatenate([surge, surge[:xf]])
+    moan = svf(white(n + xf, rng), 180.0 + 160.0 * sx, 11.0)
+    moan = make_loop_seamless(moan, n, xf)
+    drone = lp(brown(n, rng), 140, 2, C) * (0.6 + 0.4 * surge)
+    return howl + nrms(moan, 0.45) * (0.3 + 0.7 * surge) + nrms(drone, 0.35)
+
+
 # =============================================================================
 # SOUNDS: UI / interaction
 # =============================================================================
@@ -1899,6 +1957,10 @@ SOUNDS = [
     loop("heartbeat", snd_heartbeat, -16.0),
     oneshot("gust_whistle", snd_gust_whistle),
     oneshot("rattle", snd_rattle),
+    # polish 8 §7: the light-snow hush, gust variants (timed to the visual gusts), the blizzard's howl
+    loop("snow_hush", snd_snow_hush, -27.0),
+    *[oneshot(f"wind_gust_{i}", lambda r, i=i: snd_wind_gust(r, i), ("loud", -18.0)) for i in range(1, 5)],
+    loop("blizzard_howl", snd_blizzard_howl, -19.0),
     # --- UI / interaction ---------------------------------------------------
     oneshot("ui_click", snd_ui_click),
     oneshot("ui_hover", snd_ui_hover, -16.0),

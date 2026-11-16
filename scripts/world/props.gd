@@ -10,7 +10,7 @@ static func evergreen() -> ArrayMesh:
 		return _cache["evergreen"]
 	var kit := MeshKit.new()
 	var green := Mats.needles()
-	var snow := Mats.snow_soft()
+	var snow := Mats.tree_snow()     # polish 8 §7: sways with the boughs
 	kit.cylinder(Mats.bark(), Transform3D(), 0.2, 0.14, 1.2, 8, false)
 	var tiers := 5
 	var rng := RandomNumberGenerator.new()

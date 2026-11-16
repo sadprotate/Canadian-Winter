@@ -39,7 +39,16 @@ Branch `cw-polish8-pg` from `main` (`b81e79e`, the Polish 7 merge). Brief: `POLI
   polish5 `test_s9_`, `test_s13b_`, `test_s2_`, the round trip, the app fit, polish7 `test_s10_`,
   `test_s11_`, `test_pf1_`, `test_pf3_`, polish6 `test_s1_`, `test_s2_`, polish3 playthrough / Gerry /
   menu / fixtures, the polish4 and polish5 fixture tests. 2 shots (`report/s14.md`).
-- [ ] §7 — Weather you can see and hear
+- [x] §7 — Weather you can see and hear. Visual and audio only. Real crystal flakes (an atlas drawn
+  in code), more, faster and smaller as the snow gets heavier, slanted by the wind; large soft flakes
+  near the camera in light snow; streaks driven sideways, gust pulses, blowing snow off the ground,
+  roofs and banks (`blowing_snow_wind_kmh`), swaying trees in a blizzard; a glint near lamps at
+  night; heavier fog in heavy snow and the blizzard; no flake inside any building, seen through
+  windows and the open garage door; outlines and the scoop ring ignore fog; the hush, gust variants
+  and a howl (gen_audio.py, answer 11) mixed from the visual rate and wind; F1 "Windy (no snow)".
+  Tested: polish8 `test_s7_` (4 new); also polish8, gameplay, systems, polish3 in full, the truth,
+  fast-forward, seeded-generator, outline, ring and fixture tests; perf `--only=weather` back to back
+  with `main`, headless and windowed (`report/s7.md`). 22 before/after shots + 2.
 - [ ] §12 — Every key can be rebound
 
 ## Audits (the brief's "look at first")
@@ -181,6 +190,28 @@ minutes), as round 5 §9's audit set them.
   the weather's × 2.2; at night × 1.5; a running cab +`cab_warmth_per_hour` 50 (40 %/real min;
   indoors 112); shelter: the air's exposure × the coat × 2.2, no wind, night or own loss.
 
+### §7: the weather's look and sound before this round
+
+Round 6's findings, rechecked on the build before §7 (`a804690`); all still held:
+
+- **The flakes** (`weather_fx.gd`): one `GPUParticles3D` of 5 cm round dots, 2,400 at most, from a box
+  44 m across 10 m above the camera. Amount `0.12 + 0.88 × rate / 2.5 cm/h`, so from 2.5 cm/h
+  (heavy storm hours, any blizzard) everything looks the same. At the forced rates: light ≈ 795,
+  moderate ≈ 1,133, heavy ≈ 1,810, blizzard 2,400. Wind only slanted the fall (a sideways gravity);
+  the `wind_vec` global was set but read by nothing. Every flake was hidden while the player or the
+  camera was in one of the two enterable houses (so none showed through a window), and none in the
+  garage (flakes fell inside it). Graphics High = Medium (the density clamped at 1.0).
+- **The fog** (`DayNight`): per condition `[0.0035, 0.004, 0.007, 0.012, 0.02, 0.05]` × the intensity,
+  blended between hours.
+- **The sound** (`AudioMgr`): `wind_light` / `wind_strong` / `blizzard` crossfaded by the hour's
+  `Weather.condition()` (snapping at the hour, not the visual blend); `gust_whistle` every 3–9 s in a
+  blizzard, 8–18 s from moderate, and a `rattle` half the time — from the global random generator,
+  tied to nothing on screen.
+- **Particle cost before, by condition** (`perf.tscn -- --only=weather`, the same scenario run on
+  `main`, headless = CPU): light 3.1–3.9 ms p95, heavy 8.3–9.2, the blizzard's peak (109.6 cm/h) with
+  drift 16.7–22.7 (the snow's meshing: 534–557 chunk updates); windowed (GPU too, vsync off) about
+  21 ms p95 in every condition, as idle (21.9) on this PC.
+
 ## Questions
 
 Asked before starting (one message, 2026-11-13). Answers recorded below each once given.
@@ -251,6 +282,14 @@ Asked during §14 (2026-11-16):
 exposure before the coat, the pouch, `player_cold_mult` (2.2) and the night multiply it; outdoors
 only (shelter and indoors don't read it).
 
+Asked at §7 (2026-11-16):
+
+11. **numpy and scipy** (answer 7: checked again at §7): still missing. Install them, let the owner
+    install them, or skip the new sounds?
+
+**Owner's answer: "Install them for me".** Installed with `py -m pip install --user numpy scipy`
+(numpy 2.4.6, scipy 1.17.1); only the six new sounds rendered, every existing .wav unchanged.
+
 ## Check at the end
 
 - §17: `Settings.shares()` is now the one sharing rule `rebind()` uses (same three contexts plus
@@ -272,6 +311,14 @@ only (shelter and indoors don't read it).
   `veh_engine`. Could affect any test or fixture run that keeps a Survival player outdoors for long,
   and the key-list tests. The full suite covers them; `weather_truth` must stay identical (§14 only
   reads the weather).
+
+- §7: shared code changed — `WeatherFX` (rewritten: five layers, a fill, the hide volumes),
+  `AudioMgr` (the weather mix from the visual rate and wind, gusts from WeatherFX, two new loops; the
+  old gust timer and its 3 global random draws gone), `Weather` (`debug_windy`: `visual_rate` /
+  `visual_wind_kmh` only), `DayNight` (heavy and blizzard fog), the `foliage` and `snow_soft` shaders
+  (a `sway` uniform, 0 by default), `BoxOutline` and the scoop rings (no fog), `HouseBuilder`
+  (`lantern_points`). Could affect: `weather_truth` / `depth_report` (must stay identical), the
+  fast-forward equality, every test that seeds the global generator, the menu, the perf run.
 
 ## Issues
 
@@ -297,3 +344,13 @@ only (shelter and indoors don't read it).
   (`ItemUpgrades.has_heated_cab` stays unwired, Decision 4).
 - §14: the opening bench's walk from the shovel to Gerry is partly estimated (the last 29.5 m at
   the game's wading pace): the bot can't thread the yard's sharp banks there.
+- §7: the blizzard's peak (a major event's 109.6 cm/h) is at the 16.7 ms line headless on both
+  builds (this build 16.3–17.6 ms p95, `main` 16.7–22.7): the snow's meshing (about 550 chunk updates);
+  WeatherFX's own work is about 1 ms. Windowed, this PC is over 16.7 ms p95 even idle (about 21 ms on
+  both builds).
+- §7: falling snow isn't cut inside a vehicle's cab: in the cab view flakes can pass through the
+  roof (as before §7; the brief covers buildings).
+- §7: `preprocess` on `GPUParticles3D` does nothing on this renderer (GL Compatibility); the air is
+  filled with a one-shot layer instead.
+- §15's fourth shot (the open garage door in a snowfall, from inside) is `s7_after_garage` (and
+  `s7_after_garage_heavy`).

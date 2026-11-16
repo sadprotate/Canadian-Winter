@@ -194,6 +194,7 @@ static func _ring(color: Color) -> Mesh:
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	m.no_depth_test = false
+	m.disable_fog = true     # polish 8 §7: readable in a whiteout
 	var seg := 24
 	for i in range(seg):
 		var a0 := TAU * i / seg

@@ -6,7 +6,11 @@ extends Node
 const DIR := "res://assets/audio/"
 const LOOPS := ["push_scrape", "push_snow", "plow_scrape", "blower_small", "blower_large", "blower_discharge",
 	"electric_motor", "engine_truck", "engine_diesel", "engine_small", "tires_snow", "wind_light", "wind_strong",
-	"blizzard", "fire_crackle", "furnace_hum", "room_tone", "shiver", "heartbeat", "music_calm", "music_snow"]
+	"blizzard", "fire_crackle", "furnace_hum", "room_tone", "shiver", "heartbeat", "music_calm", "music_snow",
+	"snow_hush", "blizzard_howl"]
+## Polish 8 §7: the weather loops (the Ambience bus), mixed from the snowfall and wind as the
+## visuals show them.
+const WEATHER_LOOPS := ["wind_light", "wind_strong", "blizzard", "snow_hush", "blizzard_howl"]
 
 var _streams: Dictionary = {}
 var _pool2d: Array = []
@@ -17,7 +21,7 @@ var _lowpass: AudioEffectLowPassFilter
 var indoors := false
 var ambience_enabled := false
 var music_enabled := true
-var _gust_timer := 4.0
+var gusts_requested := 0       # polish 8 §7: gust sounds WeatherFX asked for (tests)
 ## quit(): real time to wait after stopping every sound, so the audio thread can drop the
 ## stopped streams before the engine shuts down (it needs two mix steps, ~25 ms each at most).
 const QUIT_DRAIN_MS := 150
@@ -42,7 +46,7 @@ func _ready() -> void:
 		p3.attenuation_filter_cutoff_hz = 9000.0
 		add_child(p3)
 		_pool3d.append(p3)
-	for n in ["wind_light", "wind_strong", "blizzard", "fire_crackle", "furnace_hum", "room_tone"]:
+	for n in WEATHER_LOOPS + ["fire_crackle", "furnace_hum", "room_tone"]:
 		var a := AudioStreamPlayer.new()
 		a.bus = "Interior" if n in ["fire_crackle", "furnace_hum", "room_tone"] else "Ambience"
 		a.stream = stream(n)
@@ -225,22 +229,7 @@ func _process(delta: float) -> void:
 	if not ambience_enabled or _quitting:
 		return
 	var cond := Weather.condition()
-	var paused := get_tree().paused
-	var targets := {"wind_light": -80.0, "wind_strong": -80.0, "blizzard": -80.0}
-	match cond:
-		0, 1:
-			targets["wind_light"] = -16.0
-		2:
-			targets["wind_light"] = -9.0
-		3:
-			targets["wind_light"] = -10.0
-			targets["wind_strong"] = -11.0
-		4:
-			targets["wind_strong"] = -5.0
-			targets["blizzard"] = -16.0
-		5:
-			targets["wind_strong"] = -8.0
-			targets["blizzard"] = 0.0
+	var targets := weather_mix(Weather.visual_rate(), Weather.visual_wind_kmh())
 	var inside_gain := -10.0 if indoors else 0.0
 	for k in targets.keys():
 		var a: AudioStreamPlayer = _amb[k]
@@ -270,14 +259,45 @@ func _process(delta: float) -> void:
 		if m.stream and not m.playing and pair[1] > -79.0:
 			m.play()
 		m.volume_db = move_toward(m.volume_db, pair[1], delta * 6.0)
-	# Gusts and rattles in strong weather.
-	if not paused and not indoors and cond >= 3:
-		_gust_timer -= delta
-		if _gust_timer <= 0.0:
-			_gust_timer = randf_range(3.0, 9.0) if cond == 5 else randf_range(8.0, 18.0)
-			play("gust_whistle", -6.0 if cond == 5 else -14.0)
-			if cond >= 4 and randf() < 0.5:
-				play("rattle", -12.0)
+
+
+## Polish 8 §7: the weather loops' levels (dB, −80 off) for a snowfall (cm/h) and a wind (km/h) as
+## the visuals show them: a soft hush in light snow and calm air; the light wind rising with the
+## breeze; the strong wind from about 15 km/h, loud by heavy snow; the blizzard's roar and its howl
+## in a gale. Outdoors; indoors everything is muffled as before.
+static func weather_mix(rate: float, wind: float) -> Dictionary:
+	var m := {}
+	m["wind_light"] = lerpf(-16.0, -9.0, smoothstep(5.0, 25.0, wind)) - 6.0 * smoothstep(40.0, 70.0, wind)
+	m["wind_strong"] = -80.0 if wind < 15.0 else lerpf(-18.0, -5.0, smoothstep(15.0, 45.0, wind))
+	m["blizzard"] = -80.0 if wind < 40.0 or rate < 0.5 else lerpf(-16.0, 0.0, smoothstep(40.0, 70.0, wind))
+	m["blizzard_howl"] = -80.0 if wind < 45.0 else lerpf(-14.0, -2.0, smoothstep(45.0, 75.0, wind))
+	var hush := -80.0
+	if rate > 0.05 and wind < 35.0:
+		hush = lerpf(-10.0, -16.0, smoothstep(0.8, 2.5, rate)) - 30.0 * smoothstep(20.0, 35.0, wind)
+	m["snow_hush"] = hush
+	return m
+
+
+## Polish 8 §7: a gust's sound, started by WeatherFX as the gust shows (its own generator chose the
+## variant and the pitch: no draw from the global one). Not indoors, not while paused.
+func weather_gust(sound: String, volume_db: float, pitch: float) -> void:
+	gusts_requested += 1
+	if _quitting or not ambience_enabled or indoors or get_tree().paused:
+		return
+	if not has_sound(sound):
+		sound = "gust_whistle"
+	var s := stream(sound)
+	if s == null:
+		return
+	for p in _pool2d:
+		var pl: AudioStreamPlayer = p
+		if not pl.playing:
+			pl.stream = s
+			pl.volume_db = volume_db
+			pl.pitch_scale = pitch
+			pl.bus = "SFX"
+			pl.play()
+			return
 
 
 func stop_all_ambience() -> void:

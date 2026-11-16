@@ -49,7 +49,8 @@ func _ready() -> void:
 	r = _row(v, "")
 	r.add_child(_b("Storm (≈25 cm in 12 h)", func(): Weather.force(Weather.C.HEAVY, 12.0, 2.1); _say("Storm!")))
 	r.add_child(_b("Major event (≈1 m in 4 h)", func(): Weather.force(Weather.C.BLIZZARD, 4.0, 25.0); _say("Major snow event!")))
-	r.add_child(_b("Clear override", func(): Weather.override_cond = -1; _say("Weather back to schedule")))
+	r.add_child(_b("Windy (no snow)", func(): Weather.debug_windy(40.0, 2.0); _say("Windy for 2 h (the look only: no snow falls, the cold is unchanged)")))
+	r.add_child(_b("Clear override", func(): Weather.override_cond = -1; Weather.debug_visual_wind = -1.0; _say("Weather back to schedule")))
 	# Time
 	r = _row(v, "Time of day")
 	hour_e = _edit(r, "12")
