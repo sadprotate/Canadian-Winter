@@ -1789,3 +1789,322 @@ func test_s7_gusts_visual_and_audio_only() -> void:
 	runner.check(Weather.wind_kmh() == wind0 and is_equal_approx(loss_gust, loss0) and JSON.stringify(Weather.serialize()) == w0, "§7 a gust changes neither the hourly wind (%d km/h), the exposure (%.1f %%/game h) nor the weather" % [int(wind0), loss0])
 	Weather.override_cond = -1
 	await _unload()
+
+
+# =============================================================================
+# §12 Every key can be rebound
+# =============================================================================
+
+## Action names read that aren't game actions: Godot's ui_* built-ins (docs/features/controls.md,
+## "Exceptions"): ui_cancel leaves a focused computer field.
+const S12_ACTION_EXCEPTIONS := ["ui_cancel"]
+## Raw key / button reads outside Settings, each a documented exception: the settings menu's Esc
+## (cancels a waiting rebind), the computer's left-button poll (holds its live refresh while you
+## click or drag; Godot's GUI clicks are the left button).
+const S12_RAW_EXCEPTIONS := {"scripts/ui/settings_menu.gd": ["KEY_ESCAPE", "keycode"], "scripts/ui/computer_ui.gd": ["MOUSE_BUTTON_LEFT", "is_mouse_button_pressed"]}
+## 42 keys bound to nothing by default, one per action (the menu test moves every action to one).
+const S12_SPARE := [KEY_F2, KEY_F3, KEY_F4, KEY_F5, KEY_F6, KEY_F7, KEY_F8, KEY_F9, KEY_F10, KEY_F11, KEY_F12,
+	KEY_KP_0, KEY_KP_1, KEY_KP_2, KEY_KP_3, KEY_KP_4, KEY_KP_5, KEY_KP_6, KEY_KP_7, KEY_KP_8, KEY_KP_9,
+	KEY_KP_ADD, KEY_KP_SUBTRACT, KEY_KP_MULTIPLY, KEY_KP_DIVIDE, KEY_KP_PERIOD,
+	KEY_INSERT, KEY_DELETE, KEY_HOME, KEY_END, KEY_PAGEUP, KEY_PAGEDOWN,
+	KEY_J, KEY_K, KEY_L, KEY_N, KEY_O, KEY_P, KEY_U, KEY_Y, KEY_B, KEY_Q]
+
+
+## A key press (or release) by physical key.
+static func _s12_key(code: Key, pressed := true) -> InputEventKey:
+	var e := InputEventKey.new()
+	e.physical_keycode = code
+	e.keycode = code
+	e.pressed = pressed
+	return e
+
+
+## The settings screen as the pause menu opens it, on its Controls tab, laid out.
+func _s12_menu() -> SettingsMenu:
+	var sm := SettingsMenu.new()
+	runner.add_child(sm)
+	await _frames(2)
+	sm.tabs.current_tab = 4
+	await _frames(3)
+	return sm
+
+
+## The binding button of an action in the menu's Controls list (the button in the row its label heads).
+static func _s12_button(sm: SettingsMenu, action: String) -> Button:
+	var page := sm.tabs.get_child(4) as ScrollContainer
+	var v := page.get_child(0)
+	for row in v.get_children():
+		if not (row is HBoxContainer) or row.get_child_count() < 2:
+			continue
+		var l := row.get_child(0) as Label
+		if l != null and l.text == Settings.ACTIONS[action][0]:
+			for c in row.get_children():
+				if c is Button:
+					return c
+	return null
+
+
+## Every action name read in scripts/ is a game action in Settings.ACTIONS (or a documented
+## exception), every action is read somewhere, and the settings menu shows each one, under its
+## context's group (On foot, General, Vehicles & machines, Hint panel).
+func test_s12_every_action_in_the_menu() -> void:
+	var files := []
+	_s7_scripts("res://scripts", files)
+	var call_re := RegEx.create_from_string("(is_action_pressed|is_action_just_pressed|is_action_just_released|is_action_released|is_action|get_action_strength|accept_press|action_press|action_release)\\(\\s*\"([A-Za-z0-9_]+)\"")
+	var multi_re := RegEx.create_from_string("(get_axis|get_vector)\\(([^)]*)\\)")
+	var name_re := RegEx.create_from_string("\"([A-Za-z0-9_]+)\"")
+	var read := {}
+	for f in files:
+		var src := FileAccess.get_file_as_string(f)
+		for m in call_re.search_all(src):
+			read[m.get_string(2)] = f
+		for m in multi_re.search_all(src):
+			for n in name_re.search_all(m.get_string(2)):
+				read[n.get_string(1)] = f
+		# A list of action names read in a loop (the hint panel's KEYS).
+		for m in RegEx.create_from_string("const KEYS := \\[([^\\]]*)\\]").search_all(src):
+			for n in name_re.search_all(m.get_string(1)):
+				read[n.get_string(1)] = f
+	var unknown := []
+	for n in read.keys():
+		if not Settings.ACTIONS.has(n) and n not in S12_ACTION_EXCEPTIONS:
+			unknown.append("%s (%s)" % [n, read[n]])
+	var unread := []
+	for a in Settings.ACTIONS.keys():
+		if not read.has(a):
+			unread.append(a)
+	runner.info("§12 %d action names read in %d scripts" % [read.size(), files.size()])
+	runner.check(unknown.is_empty() and unread.is_empty(), "§12 every action name read is in Settings.ACTIONS or a documented exception %s, and every action is read %s" % [str(unknown), str(unread)])
+	# The menu: every action once, in its group.
+	var sm := await _s12_menu()
+	var page := sm.tabs.get_child(4) as ScrollContainer
+	var group := ""
+	var seen := {}
+	var titles := {"On foot": "foot", "General": "global", "Vehicles & machines": "vehicle", "Hint panel": "hint"}
+	var wrong := []
+	for row in page.get_child(0).get_children():
+		if row is Label and titles.has((row as Label).text):
+			group = titles[(row as Label).text]
+		elif row is HBoxContainer and row.get_child_count() >= 2 and row.get_child(0) is Label:
+			var text := (row.get_child(0) as Label).text
+			for a in Settings.ACTIONS.keys():
+				if Settings.ACTIONS[a][0] == text:
+					seen[a] = int(seen.get(a, 0)) + 1
+					if Settings.ACTIONS[a][1] != group:
+						wrong.append(a)
+	var missing := []
+	for a in Settings.ACTIONS.keys():
+		if int(seen.get(a, 0)) != 1:
+			missing.append(a)
+	runner.check(missing.is_empty() and wrong.is_empty() and seen.has("hint_ok") and seen.has("veh_blade_up") and seen.has("veh_blade_down") and seen.has("veh_engine"),
+		"§12 the settings menu lists all %d actions once each under their group (the hint panel's three, the blade keys, the engine included) %s %s" % [Settings.ACTIONS.size(), str(missing), str(wrong)])
+	sm.queue_free()
+	await _frames(1)
+
+
+## No key or button is read hard-coded outside Settings, except the documented ones.
+func test_s12_no_hard_coded_keys() -> void:
+	var files := []
+	_s7_scripts("res://scripts", files)
+	var raw_re := RegEx.create_from_string("\\b(KEY_[A-Z0-9_]+|MOUSE_BUTTON_[A-Z0-9_]+|JOY_[A-Z0-9_]+|is_key_pressed|is_physical_key_pressed|is_mouse_button_pressed|physical_keycode|keycode)\\b")
+	var ui_re := RegEx.create_from_string("is_action[a-z_]*\\(\\s*\"(ui_[a-z_]+)\"")
+	var bad := []
+	var found := {}
+	for f in files:
+		var key := (f as String).trim_prefix("res://")
+		if key == "scripts/autoload/settings.gd":
+			continue      # the bindings themselves: defaults, encode / decode, labels, the input map
+		var src := FileAccess.get_file_as_string(f)
+		for ln in src.split("\n"):
+			for m in raw_re.search_all(_s7_code(ln)):
+				var tok := m.get_string(1)
+				found[key + ": " + tok] = true
+				if tok not in S12_RAW_EXCEPTIONS.get(key, []):
+					bad.append("%s: %s" % [key, tok])
+		for m in ui_re.search_all(src):
+			found[key + ": " + m.get_string(1)] = true
+			if m.get_string(1) not in S12_ACTION_EXCEPTIONS:
+				bad.append("%s: %s" % [key, m.get_string(1)])
+	runner.info("§12 raw reads outside Settings: %s" % str(found.keys()))
+	runner.check(bad.is_empty(), "§12 no key is read hard-coded outside Settings and the documented exceptions %s" % str(bad))
+	var doc := FileAccess.get_file_as_string("res://docs/features/controls.md")
+	runner.check(doc.contains("## Exceptions") and doc.contains("KEY_ESCAPE") and doc.contains("ui_cancel") and doc.contains("MOUSE_BUTTON_LEFT") and doc.contains("F1"), "§12 the exceptions are listed in docs/features/controls.md")
+
+
+## Every action, one by one, rebound in the settings menu to a key bound to nothing: the menu shows
+## it, the input map has it, and it works with the new key (and no longer with the old one).
+## Restore defaults then gives this round's defaults (the engine on I, the hint keys on Left /
+## Right / X).
+func test_s12_every_action_rebound() -> void:
+	var keep: Dictionary = Settings.bindings.duplicate(true)
+	var sm := await _s12_menu()
+	var acts: Array = Settings.ACTIONS.keys()
+	runner.check(acts.size() <= S12_SPARE.size(), "§12 a spare key for every action (%d of %d)" % [acts.size(), S12_SPARE.size()])
+	var bad := []
+	var vp := sm.get_viewport()
+	for i in range(acts.size()):
+		var a: String = acts[i]
+		var code: Key = S12_SPARE[i]
+		var b := _s12_button(sm, a)
+		if b == null:
+			bad.append("%s: no button" % a)
+			continue
+		b.pressed.emit()
+		vp.push_input(_s12_key(code))
+		vp.push_input(_s12_key(code, false))
+		await _frames(1)
+		var want := "key:%d" % code
+		if Settings.bindings[a] != [want] or not InputMap.action_has_event(a, _s12_key(code)) or b.text != Settings.action_label(a) or sm._msg.text != "":
+			bad.append("%s: bound %s, button '%s', msg '%s'" % [a, str(Settings.bindings[a]), b.text, sm._msg.text])
+	await _frames(2)
+	# Each one works with its new key, and not with its old one.
+	var dead := []
+	for i in range(acts.size()):
+		var a: String = acts[i]
+		Input.parse_input_event(_s12_key(S12_SPARE[i]))
+		Input.flush_buffered_events()
+		await _tree().process_frame
+		var on := Input.is_action_pressed(a)
+		Input.parse_input_event(_s12_key(S12_SPARE[i], false))
+		Input.flush_buffered_events()
+		await _tree().process_frame
+		var old: Array = keep.get(a, [])
+		var old_on := false
+		if not old.is_empty() and str(old[0]).begins_with("key:"):
+			var oc := int(str(old[0]).trim_prefix("key:"))
+			Input.parse_input_event(_s12_key(oc))
+			Input.flush_buffered_events()
+			await _tree().process_frame
+			old_on = Input.is_action_pressed(a)
+			Input.parse_input_event(_s12_key(oc, false))
+			Input.flush_buffered_events()
+			await _tree().process_frame
+		if not on or old_on:
+			dead.append("%s (new %s, old %s)" % [a, on, old_on])
+	runner.check(bad.is_empty(), "§12 every action (%d) rebound from the settings menu, shown and in the input map %s" % [acts.size(), str(bad.slice(0, 4))])
+	runner.check(dead.is_empty(), "§12 …and each works with its new key, not its old one %s" % str(dead.slice(0, 4)))
+	# Restore defaults (the menu's button): this round's defaults.
+	var restore: Button = null
+	for c in sm.find_children("*", "Button", true, false):
+		if (c as Button).text == "Restore defaults":
+			restore = c
+	restore.pressed.emit()
+	await _frames(2)
+	var off := []
+	for a in acts:
+		if Settings.bindings[a] != Settings.ACTIONS[a][2]:
+			off.append(a)
+	runner.check(off.is_empty() and Settings.bindings["veh_engine"] == ["key:%d" % KEY_I] and Settings.bindings["hint_ok"] == ["key:%d" % KEY_X] and _s12_button(sm, "hint_back").text == Settings.action_label("hint_back"),
+		"§12 Restore defaults gives this round's defaults (the engine on %s, the hint keys %s / %s / %s) %s" % [Settings.action_label("veh_engine"), Settings.action_label("hint_back"), Settings.action_label("hint_next"), Settings.action_label("hint_ok"), str(off)])
+	sm.queue_free()
+	Settings.bindings = keep
+	Settings.apply_input()
+	Settings.save()
+	await _frames(1)
+
+
+## No conflict in any place with the defaults; the check follows every place an action is read: a
+## key that would do two things at a walk-behind (Move forward and the chute, the chute and
+## fast-forward), in a vehicle (a vehicle key and a slot key, read there too) or at the computer is
+## refused, while a foot key and a vehicle key may still share (never live together).
+func test_s12_no_conflict_in_any_place() -> void:
+	var keep: Dictionary = Settings.bindings.duplicate(true)
+	Settings.restore_default_controls()
+	var clashes := []
+	for place in Settings.PLACES:
+		for c in Settings.conflicts(place):
+			clashes.append("%s: %s" % [place, str(c)])
+	runner.check(clashes.is_empty(), "§12 the defaults clash nowhere (%s) %s" % [", ".join(Settings.PLACES), str(clashes)])
+	var refused := [
+		["move_forward", KEY_Z, "veh_aim_left"],     # at a walk-behind
+		["veh_aim_left", KEY_T, "fast_forward"],     # at a walk-behind
+		["veh_horn", KEY_1, "slot_1"],               # in a vehicle
+		["slot_2", KEY_I, "veh_engine"],             # in a vehicle
+		["fast_forward", KEY_F1, "debug"],           # at the computer
+		["hint_ok", KEY_W, "move_forward"],          # the hint keys clash with everything
+	]
+	var wrong := []
+	for r in refused:
+		var holder := Settings.rebind(r[0], _s12_key(r[1]))
+		if holder != r[2]:
+			wrong.append("%s → %s: %s" % [r[0], OS.get_keycode_string(r[1]), holder])
+	var allowed := [["jump", KEY_J], ["veh_horn", KEY_K], ["use_pouch", KEY_K]]   # horn and pouch never live together
+	for r in allowed:
+		var holder := Settings.rebind(r[0], _s12_key(r[1]))
+		if holder != "":
+			wrong.append("%s → %s refused by %s" % [r[0], OS.get_keycode_string(r[1]), holder])
+	runner.check(wrong.is_empty(), "§12 the conflict check follows every place an action is read (walk-behind, vehicle, computer, hint panel), and still lets a foot key and a vehicle key share %s" % str(wrong))
+	Settings.bindings = keep
+	Settings.apply_input()
+	Settings.save()
+
+
+## The settings migration: a saved file from before this round keeps its custom bindings, gets the new
+## actions' defaults (no CONTROLS_VERSION bump), and a new action whose key a custom binding holds
+## where both are read starts unbound.
+func test_s12_migration() -> void:
+	var c := ConfigFile.new()
+	c.set_value("meta", "controls_version", 2)
+	for a in Settings.ACTIONS.keys():
+		if a in ["veh_engine", "hint_back", "hint_next", "hint_ok", "veh_blade_up", "veh_blade_down"]:
+			continue     # not in a round 6 file
+		c.set_value("controls", a, (Settings.ACTIONS[a][2] as Array).duplicate())
+	c.set_value("controls", "jump", ["key:%d" % KEY_J])
+	var b := Settings.controls_from(c)
+	runner.check(Settings.CONTROLS_VERSION == 2 and b["jump"] == ["key:%d" % KEY_J] and b["veh_engine"] == ["key:%d" % KEY_I] and b["hint_back"] == ["key:%d" % KEY_LEFT] and b["hint_ok"] == ["key:%d" % KEY_X] and b["veh_blade_up"] == ["key:%d" % KEY_UP],
+		"§12 an older file keeps its custom key (jump on J) and gets the new actions' defaults (engine I, hint keys, blade keys), still controls version 2")
+	c.set_value("controls", "slot_1", ["key:%d" % KEY_I])
+	b = Settings.controls_from(c)
+	runner.check(b["slot_1"] == ["key:%d" % KEY_I] and (b["veh_engine"] as Array).is_empty(), "§12 a custom key already doing something where the new action is read (slot 1 on I, read in a vehicle) keeps it; the engine starts unbound")
+
+
+## The snowshoes toggle (hold Inventory, press Interact) reads the actions: with both rebound it
+## follows the new keys.
+func test_s12_snowshoes_follow_the_keys() -> void:
+	var keep: Dictionary = Settings.bindings.duplicate(true)
+	await _world("fun")
+	Game.equipment.erase("snowshoes")
+	Equipment.collect(Equipment.SHOES)
+	await _frames(2)
+	runner.check(Settings.rebind("inventory", _s12_key(KEY_K)) == "" and Settings.rebind("interact", _s12_key(KEY_L)) == "", "§12 Inventory → K, Interact → L")
+	var on0 := Equipment.snowshoes_on()
+	Input.parse_input_event(_s12_key(KEY_K))
+	await _frames(3)
+	var open: bool = world.inventory_panel != null
+	world.get_viewport().push_input(_s12_key(KEY_L))
+	world.get_viewport().push_input(_s12_key(KEY_L, false))
+	await _frames(2)
+	var toggled := Equipment.snowshoes_on() != on0
+	Input.parse_input_event(_s12_key(KEY_K, false))
+	await _frames(2)
+	runner.check(open and toggled, "§12 hold K, press L: the snowshoes toggle (%s → %s)" % [on0, Equipment.snowshoes_on()])
+	Settings.bindings = keep
+	Settings.apply_input()
+	Settings.save()
+	await _unload()
+
+
+## The Controls list fits and scrolls: the panel fits the smallest canvas the game shows (1280×720
+## and 3440×1440 both give at least 1920×1080 with canvas_items stretching), and the list scrolls.
+func test_s12_menu_fits_and_scrolls() -> void:
+	var sm := await _s12_menu()
+	var page := sm.tabs.get_child(4) as ScrollContainer
+	var panel: Control = null
+	for c in sm.get_children():
+		if c is PanelContainer:
+			panel = c
+	var base := Vector2(float(ProjectSettings.get_setting("display/window/size/viewport_width")), float(ProjectSettings.get_setting("display/window/size/viewport_height")))
+	var fits := []
+	for win in [Vector2(1280, 720), Vector2(1920, 1080), Vector2(2560, 1440), Vector2(3440, 1440)]:
+		var s := minf(win.x / base.x, win.y / base.y)
+		var canvas: Vector2 = win / s
+		fits.append(panel != null and panel.size.x <= canvas.x and panel.size.y <= canvas.y)
+	var content := page.get_child(0) as Control
+	var scrolls := content.size.y > page.size.y + 10.0 and page.vertical_scroll_mode != ScrollContainer.SCROLL_MODE_DISABLED
+	page.scroll_vertical = 100000
+	await _frames(2)
+	var bottom := page.scroll_vertical > 0
+	runner.check(not fits.has(false) and scrolls and bottom and str(ProjectSettings.get_setting("display/window/stretch/mode")) == "canvas_items",
+		"§12 the settings panel (%s) fits every canvas from 1280×720 to 3440×1440 (base %s, canvas_items) and the Controls list scrolls (%d of %d px shown)" % [str(panel.size if panel else Vector2.ZERO), str(base), int(page.size.y), int(content.size.y)])
+	sm.queue_free()
+	await _frames(1)

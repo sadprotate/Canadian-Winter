@@ -86,6 +86,8 @@ const OLD_DEFAULTS := {
 const MACHINE_ACTIONS := ["move_forward", "move_back", "move_left", "move_right", "primary",
 	"slot_1", "slot_2", "slot_3", "slot_4", "veh_aim_left", "veh_aim_right"]
 const PLACES := ["foot", "vehicle", "machine", "computer", "menu"]
+## Polish 8 §12: the tool-slot keys (read in a vehicle too).
+const SLOT_ACTIONS := ["slot_1", "slot_2", "slot_3", "slot_4"]
 
 ## Polish 5 §2: world-changing presses, capped per action at Catalog.balance.input_max_presses_per_s
 ## (accept_press). UI clicks, F1, movement, the camera, map, Tab, slots, horn and radio aren't.
@@ -153,10 +155,17 @@ static func controls_from(c: ConfigFile) -> Dictionary:
 
 ## True when two actions can be live at the same time (the rule rebind() refuses conflicts by).
 ## Polish 8 §17: the hint keys are live everywhere the panel shows, like a global action.
+## Polish 8 §12: two actions share when some place reads both (live_actions: on foot, in a vehicle,
+## at a walk-behind, at the computer, in a menu), so a key that would do two things anywhere is
+## refused — e.g. Move forward and the chute key at a walk-behind, a slot key and a vehicle key
+## (the slot keys are read in a vehicle too). It refuses a few more rebinds than the contexts alone
+## did, never fewer.
 static func shares(a: String, b: String) -> bool:
-	var ca: String = ACTIONS[a][1]
-	var cb: String = ACTIONS[b][1]
-	return ca == cb or ca == "global" or cb == "global" or ca == "hint" or cb == "hint"
+	for place in PLACES:
+		var live := live_actions(place)
+		if a in live and b in live:
+			return true
+	return false
 
 
 ## The action other than `action` that shares a context with it and is bound to `code`, or "".
@@ -177,14 +186,16 @@ static func live_actions(place: String) -> Array:
 				if ctx == "foot" or ctx == "global" or ctx == "hint":
 					out.append(a)
 			"vehicle":
-				if ctx == "vehicle" or ctx == "global" or ctx == "hint":
+				# Polish 8 §12: the slot keys are read in a vehicle too (game_root).
+				if ctx == "vehicle" or ctx == "global" or ctx == "hint" or a in SLOT_ACTIONS:
 					out.append(a)
 			"machine":
-				if a in MACHINE_ACTIONS or ctx == "global" or ctx == "hint":
+				# Polish 8 §12: fast-forward is read at a walk-behind too (game_root).
+				if a in MACHINE_ACTIONS or ctx == "global" or ctx == "hint" or a == "fast_forward":
 					out.append(a)
 			"computer":
-				# Polish 5 §9: fast-forward works at the computer too.
-				if a == "pause" or a == "fast_forward":
+				# Polish 5 §9: fast-forward works at the computer too. Polish 8 §12: and F1.
+				if a == "pause" or a == "fast_forward" or a == "debug":
 					out.append(a)
 			"menu":
 				if a == "pause":

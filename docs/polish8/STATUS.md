@@ -49,7 +49,16 @@ Branch `cw-polish8-pg` from `main` (`b81e79e`, the Polish 7 merge). Brief: `POLI
   Tested: polish8 `test_s7_` (4 new); also polish8, gameplay, systems, polish3 in full, the truth,
   fast-forward, seeded-generator, outline, ring and fixture tests; perf `--only=weather` back to back
   with `main`, headless and windowed (`report/s7.md`). 22 before/after shots + 2.
-- [ ] §12 — Every key can be rebound
+- [x] §12 — Every key can be rebound. The audit found every action already in `Settings.ACTIONS`
+  and the menu, the snowshoes toggle and F1 already rebindable; what was left: the conflict check now
+  follows every place an action is read (a walk-behind, a vehicle's slot keys, the computer; answer 9),
+  and `controls.md` lists the exceptions (Godot's `ui_*`, the settings menu's Esc, the computer's
+  left-button poll, mouse look, the F1 menu's fields). Tested: polish8 `test_s12_` (7 new: the action
+  scan and the menu, the raw-key scan, every action rebound from the menu and working, Restore
+  defaults, no conflict anywhere, the migration, the snowshoes with rebound keys, the fit); also
+  polish5 `test_s2_`, `test_s7_typing…`, `test_s9_auto_return…`, `test_s13b_snowshoes`,
+  `test_s4_gerry_snow_tips`, gameplay `test_settings_rebinding`, polish7 `test_s11_`, polish8
+  `test_s17_`, polish6 `test_s3_menu_starts_once…`. 2 shots (`report/s12.md`).
 
 ## Audits (the brief's "look at first")
 
@@ -212,6 +221,31 @@ Round 6's findings, rechecked on the build before §7 (`a804690`); all still hel
   drift 16.7–22.7 (the snow's meshing: 534–557 chunk updates); windowed (GPU too, vsync off) about
   21 ms p95 in every condition, as idle (21.9) on this PC.
 
+### §12: every key read, before this section
+
+- **Every input read in `scripts/`** (`is_action*`, `get_axis`, `get_vector`, `InputEvent`): the 42
+  actions of `Settings.ACTIONS` (foot 20, global 6, vehicle 13, hint 3), each read somewhere —
+  `game_root` (fast-forward, interact, debug, pause, store, camera, map, the slots, inventory),
+  `player` (movement, jump, sprint, crouch; mouse look), `tool_controller` (primary, secondary,
+  tool angle, drop, pouch), `vehicle` (the vehicle keys, the blade keys in `_input`, the engine),
+  `walk_behind` (the chute keys, primary), `hint_panel` (its three), `map_ui` and `computer_ui`
+  (map, pause). One more name: Godot's `ui_cancel` (`computer_ui`, leaving a focused field).
+- **Hard-coded keys:** `settings_menu.gd`'s `KEY_ESCAPE` (cancels a waiting rebind; compared by
+  logical keycode); the computer's `Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)` (holds its
+  refresh while clicking); no other `KEY_*` / `MOUSE_BUTTON_*` / `JOY_*` outside `Settings`; no input
+  events in scenes, resources or `project.godot`. **The snowshoes toggle** (Tab + E) already reads
+  `inventory` (held) and `interact`, so a rebind carries over. **F1** is already the `debug` action
+  (rebindable, in "General"). **The computer's fields** are Godot's LineEdits (`ui_*`).
+- **The menu** shows every action once under its context: "On foot", "General", "Vehicles &
+  machines", "Hint panel" (the hint keys, `veh_blade_up` / `_down`, `veh_engine` all there). The panel
+  is 1180 × 820 on a canvas never smaller than 1920 × 1080 (`canvas_items`, `expand`); the Controls list
+  (about 2,900 px) scrolls.
+- **Gaps found:** the conflict check (`shares()` by context) missed places where actions from
+  different contexts are read together — at a walk-behind (Move forward and the chute keys; the chute
+  keys and fast-forward), in a vehicle (the slot keys are read there too) and at the computer (F1). No
+  default clashes; a player could make one (e.g. Move forward → Z). `controls.md` had no exceptions
+  list and lagged (`veh_engine`, the readers).
+
 ## Questions
 
 Asked before starting (one message, 2026-11-13). Answers recorded below each once given.
@@ -320,6 +354,10 @@ Asked at §7 (2026-11-16):
   (`lantern_points`). Could affect: `weather_truth` / `depth_report` (must stay identical), the
   fast-forward equality, every test that seeds the global generator, the menu, the perf run.
 
+- §12: `Settings.shares()` now follows the places (`live_actions`: the slots in a vehicle,
+  fast-forward at a walk-behind, F1 at the computer). It refuses more rebinds than before, never
+  fewer; the migration uses it for new actions. The full suite reruns every key test.
+
 ## Issues
 
 - §17: with hints off, the vehicle and tool tips show nowhere in play until the Help app unlocks at
@@ -354,3 +392,11 @@ Asked at §7 (2026-11-16):
   filled with a one-shot layer instead.
 - §15's fourth shot (the open garage door in a snowfall, from inside) is `s7_after_garage` (and
   `s7_after_garage_heavy`).
+- §12 (found reading the code, not changed): the hotbar's slot labels are fixed "1"–"4" (the
+  owner's default: noted here); Gerry's scripted dialogue is answered with the mouse or Godot's
+  `ui_accept` on its focused button, not Interact; while the tree is paused the pause menu likely
+  can't be closed with the Pause key (game_root isn't processed then; its Resume button works) —
+  inferred, not run; closing the first letter with Pause skips the Close button's callback (the
+  stage then advances when Gerry is met); while a binding waits in Settings, the wheel or a click is
+  taken as the new binding; `interact` at Gerry's lines and the photo isn't capped; the slot keys are
+  read in a vehicle (now covered by the conflict check).
