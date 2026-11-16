@@ -27,7 +27,18 @@ Branch `cw-polish8-pg` from `main` (`b81e79e`, the Polish 7 merge). Brief: `POLI
   the photo, polish3 houses / menu / playthrough, polish4 photo, polish6 generator / preloads / blade,
   gameplay and systems in full, the polish3, polish4 and polish5 fixture tests; perf `--only=garage`
   (14.5 ms p95). 3 shots now, the 4th with §7 (`report/s15.md`).
-- [ ] §14 — Cold nights, and a colder player
+- [x] §14 — Cold nights, and a colder player. Survival only. A colder player: outdoors (the
+  exposure + an own loss `player_base_loss_per_hour` 5) × `player_cold_mult` 2.2 (the owner chose the
+  base loss, answer 10): the measured opening (6.1–6.2 real min outdoors, done ~12:30 Dec 1) ends at
+  12.7–32.9 % on five seeds (mean 22.3; was 85–94 %), never frozen; indoors unchanged. Nights on foot
+  × `night_cold_mult` 1.5 (dusk to 7:00). Enclosed cabs (`heated_cabin`): engine on warms at
+  `cab_warmth_per_hour` (slower than indoors), off shelters; the ATV and blowers don't; the garage
+  shelters. A new `veh_engine` key (I). Hints: cold night (forecast low under `cold_night_low_c`,
+  once a night, a notification with hints off) and warming up (once). Tested: polish8 `test_s14_`
+  (10 new); updated systems `test_warmth_rates`; also run polish8, systems and gameplay in full,
+  polish5 `test_s9_`, `test_s13b_`, `test_s2_`, the round trip, the app fit, polish7 `test_s10_`,
+  `test_s11_`, `test_pf1_`, `test_pf3_`, polish6 `test_s1_`, `test_s2_`, polish3 playthrough / Gerry /
+  menu / fixtures, the polish4 and polish5 fixture tests. 2 shots (`report/s14.md`).
 - [ ] §7 — Weather you can see and hear
 - [ ] §12 — Every key can be rebound
 
@@ -94,6 +105,82 @@ letter / photo, and sits right of the speech box.
   tall (the door is 2.22 m); the grader, plow truck, rotary and dump truck 7.5–8.5 m long. It fits:
   no resize.
 
+### §14: warmth before this round
+
+Rates are warmth-% per game hour; felt = per real minute at 1× (× 0.8: a real minute is 48 game
+minutes), as round 5 §9's audit set them.
+
+- **Outdoors** (`outdoor_loss_per_hour`): `exposure(wind chill)` on `exposure_curve` (−2 °C 1, −8 °C 3,
+  −17 °C 9.5, −25 °C 14, −40 °C 20.5, −55 °C 26 per game h = 0.8 / 2.4 / 7.6 / 11.2 / 16.4 / 20.8 per
+  real min), × `moderate_cold_mult` 1.15 / `heavy_cold_mult` 1.4 / `blizzard_cold_mult` 3.2 by the
+  hour's condition, × the coat (`Equipment.cold_mult()` = 1 − `coat_cold_protection` 0.4 = 0.6 when
+  worn), × 0.6 while a pouch lasts. No day/night difference.
+- **Indoors:** Gerry's house + `warmth_recover_per_hour` 140 (112 per real min); the player's house
+  `house_heat × 140 × house_warm` (× 1.4 near the fire with power) − (1 − house_heat) ×
+  exposure(air) × 0.65 × coat. `house_heat` fills in an hour with power; after a cut it drains over
+  a day.
+- **Pouches:** +`pouch_warmth` 30 at once; for `pouch_protection_minutes` 60 (75 real s) loss × 0.6
+  and +`pouch_warmth_per_hour` 10.
+- **States and warnings:** Comfortable ≥ 70, Cooling ≥ 45, Cold ≥ 25, Dangerously cold ≥ 10,
+  Critical; each step down from Cold on: a notification, fast-forward to 1×; while skipping, warmth
+  under 30 interrupts. 0 % = frozen: the death screen for 6 s, then the main menu (unsaved progress
+  lost).
+- **Vehicles:** a vehicle whose data has `heated_cabin` (every one but the ATV) warmed the player as
+  fast as indoors once its heat had ramped up (`vehicle_heat_warmup_s` 20 s): `heat × 140 −
+  (1 − heat) × outdoor × 0.5`. There was no engine switch: the engine always ran. The ATV:
+  outdoors. Walk-behind blowers: on foot, outdoors. The ATV's heated-cab upgrade
+  (`ItemUpgrades.has_heated_cab`) is read by no warmth code.
+- **The opening** (Survival, from New Game, at the benches' human pace; `contract_bench --job=opening`):
+  measured with the bot
+  (`contract_bench.gd`; the walks round the walkway's banks and the truck by its own route-finder).
+  Seed 2024, real seconds:
+
+  | leg | real s |
+  |---|---|
+  | bedroom → front door (indoors, estimated from the distance) | 4.4 |
+  | front door → the mailbox | 11.3 |
+  | the letter, read (15 characters a second) | 26.7 |
+  | the mailbox → the buried shovel | 18.1 |
+  | the shovel dug out by hand (52 strokes × 1.1 s) | 57.2 |
+  | → Gerry (9.6 s walked; the last 29.5 m through the deep yard estimated at the game's wading pace: the bot can't thread the banks) | 48.1 |
+  | Gerry's dialogue, read | 29.1 |
+  | → the foot of his walk | 8.3 |
+  | his trail with the small shovel (142 strokes) | 158.1 |
+  | his thanks and the walk in to his fire | 14.0 |
+  | **outdoors** | **370.9 (6.2 real min = 4.9 game h; done at 12:30 on Dec 1)** |
+
+  Only the trail differs by seed (138–142 strokes). Warmth at the end, outside throughout (new
+  game, no coat, by day: the night multiplier doesn't reach it):
+
+  | seed | outdoors (real s) | Dec 1 wind chill on the way | warmth before (round 7) | after |
+  |---|---|---|---|---|
+  | 2024 | 370.9 | −5.6 … −9.9 °C | 85.0 % | 12.7 % |
+  | 7 | 368.6 | −4.3 … −7.6 °C | 88.8 % | 21.3 % |
+  | 99 | 366.4 | −5.8 … −9.6 °C | 85.4 % | 14.1 % |
+  | 4242 | 366.4 | −0.8 … −4.4 °C | 93.9 % | 32.9 % |
+  | 2050 | 366.4 | −1.5 … −5.4 °C | 92.9 % | 30.7 % |
+
+  Mean after: 22.3 % (target `opening_target_warmth` 20). One multiplier couldn't put every seed near
+  the target (×5.4: 2024 and 99 at ~20 %, 4242 and 2050 at 62–67 %, no warning); the owner chose a
+  base loss (Questions, §14). Tuned: `player_base_loss_per_hour` 5 %/game h, `player_cold_mult` 2.2.
+- **Time to danger:** real minutes at 1× from 100 % to the first cold warning (45 %) / to
+  freezing, on foot outdoors, clear weather, no coat (`test_s14_time_to_danger`):
+
+  | wind chill | day before | day after | night before | night after |
+  |---|---|---|---|---|
+  | −2 °C | 68.8 / 125.0 | 5.2 / 9.5 | 68.8 / 125.0 | 3.5 / 6.3 |
+  | −8 °C | 22.9 / 41.7 | 3.9 / 7.1 | 22.9 / 41.7 | 2.6 / 4.7 |
+  | −17 °C | 7.2 / 13.2 | 2.2 / 3.9 | 7.2 / 13.2 | 1.4 / 2.6 |
+  | −25 °C | 4.9 / 8.9 | 1.6 / 3.0 | 4.9 / 8.9 | 1.1 / 2.0 |
+  | −40 °C | 3.4 / 6.1 | 1.2 / 2.2 | 3.4 / 6.1 | 0.8 / 1.5 |
+
+  The coat (× 0.6) stretches every "after" figure by 1.67. A typical path job (1 real minute of
+  work, a minute's walk each way) is still done on Dec 6 with warm-up breaks indoors
+  (`test_s14_path_job_survival`).
+- **New felt rates:** the colder player's own loss 5 × 2.2 = 11 %/game h (8.8 %/real min) on top of
+  the weather's × 2.2; at night × 1.5; a running cab +`cab_warmth_per_hour` 50 (40 %/real min;
+  indoors 112); shelter: the air's exposure × the coat × 2.2, no wind, night or own loss.
+
 ## Questions
 
 Asked before starting (one message, 2026-11-13). Answers recorded below each once given.
@@ -152,6 +239,18 @@ garage layout and gates, shelter rules, dusk, the cold-night hint, F1 windy butt
 9. The conflict check follows every place an action is read.
 And every listed default.
 
+Asked during §14 (2026-11-16):
+
+10. **One multiplier can't hit the opening's target on every seed.** Dec 1's weather differs a lot
+    by seed (wind chill −1 to −10 °C) and the exposure curve is nearly flat when mild, so ×5.4 ends
+    seeds 2024 / 99 near 20 % but 4242 / 2050 at 62–67 % (no cold warning). Add a base loss (a second
+    value: a flat loss outdoors whatever the weather, so every seed ends in the band), or one
+    multiplier only, tuned to the coldest seeds?
+
+**Owner's answer: "Add a base loss".** `player_base_loss_per_hour` (5 %/game h) added to the
+exposure before the coat, the pouch, `player_cold_mult` (2.2) and the night multiply it; outdoors
+only (shelter and indoors don't read it).
+
 ## Check at the end
 
 - §17: `Settings.shares()` is now the one sharing rule `rebind()` uses (same three contexts plus
@@ -164,6 +263,15 @@ And every listed default.
   `garage` key), `Equipment.pad_spot_problem` / `put_down_pad`, `Heating.sources`, the
   `snow_hide_c` shader global (a new project setting: the owner's editor may need a restart). The
   full suite and the perf run (`--only=garage` back to back with `main`) cover them.
+
+- §14: shared code changed — `Survival.outdoor_loss_per_hour` (an own loss and × `player_cold_mult`,
+  × `night_cold_mult` at night: a Survival player outdoors cools 3–10× faster), `compute_rate` (the
+  cab, the garage), `on_advance` (the cold-night check each step), `Weather.forecast_low` (new, reads
+  the forecast model), `DayNight.sunset_hour` (new, static, `sun_angles`' formula), `Vehicle`
+  (engine switch: throttle, blade and blower refused when off; the cab's heat), a new action
+  `veh_engine`. Could affect any test or fixture run that keeps a Survival player outdoors for long,
+  and the key-list tests. The full suite covers them; `weather_truth` must stay identical (§14 only
+  reads the weather).
 
 ## Issues
 
@@ -180,3 +288,12 @@ And every listed default.
   the garage). Four shots for the section (CLAUDE.md says two) because the brief lists four.
 - §15: the keys' pickup message (`buried_keys.gd`) still names only the truck, not the garage door
   (GAME.md says the keys unlock both). The brief keeps the buried keys unchanged.
+- §14: GAME.md step 7 says Gerry's job takes "roughly until 5 p.m. with the shovel"; at the benches'
+  human pace the opening is done by about 12:30 (6 real minutes outdoors). Not changed: the brief
+  tunes warmth, not the job's length.
+- §14: GAME.md says a frozen player can reload that day; before the first sleep there is no save, so
+  freezing in the opening loses the new game (answer 5: a by-hand player warms up partway).
+- §14: the ATV's "cab" upgrade can still be bought and does nothing for warmth
+  (`ItemUpgrades.has_heated_cab` stays unwired, Decision 4).
+- §14: the opening bench's walk from the shovel to Gerry is partly estimated (the last 29.5 m at
+  the game's wading pace): the bot can't thread the yard's sharp banks there.

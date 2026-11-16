@@ -566,6 +566,15 @@ func fc_hour(target: int, issued: int, radio := false) -> Dictionary:
 	return {"cond": c, "rate": r, "temp": t, "wind": w}
 
 
+## Polish 8 §14: the forecast's lowest air temperature over hours from_h..to_h, from the forecast
+## model issued at hour `issued` (the TV's view: fc_hour, never the truth ahead; no draws).
+func forecast_low(from_h: int, to_h: int, issued: int) -> float:
+	var lo := INF
+	for h in range(maxi(from_h, 0), mini(to_h, HOURS - 1) + 1):
+		lo = minf(lo, float(fc_hour(h, issued)["temp"]))
+	return lo
+
+
 func forecast_days() -> int:
 	return int(Game.stat_value(&"forecast_days", 1.0)) + 1
 

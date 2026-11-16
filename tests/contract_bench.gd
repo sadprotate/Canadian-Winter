@@ -63,6 +63,10 @@ func _ready() -> void:
 		_pacing(int(args["pacing"]))
 		AudioMgr.quit()
 		return
+	if args.get("job", "") == "opening":
+		await _opening()
+		AudioMgr.quit()
+		return
 	var jobs := ["path", "driveway"] if args.get("job", "all") == "all" else [args["job"]]
 	var tools := ["small_shovel", "standard_shovel"] if args.get("tool", "all") == "all" else [args["tool"]]
 	for job in jobs:
@@ -207,6 +211,349 @@ func _run(job: String, tool: String) -> Dictionary:
 		bot_s * Clock.GAME_MIN_PER_REAL_SEC / 60.0, human_s / 60.0, human_s * Clock.GAME_MIN_PER_REAL_SEC / 60.0])
 	Input.action_release("primary")
 	return {"job": job, "tool": tool, "vol": vol0, "done": t_done > 0.0, "pct": pct, "bot_s": bot_s, "human_s": human_s, "strokes": strokes, "address": lot["address"]}
+
+
+# -----------------------------------------------------------------------------
+# Polish 8 §14: --job=opening — how long the opening takes a human
+# -----------------------------------------------------------------------------
+
+## Reading speed for the letter and Gerry's dialogue (characters a second).
+const READ_CPS := 15.0
+## Its figures (indoors, outdoors per seed) are held by test_polish8.gd's S14_OPENING_IN_S /
+## S14_OPENING_OUT_S: re-measure and update them there when the opening changes.
+
+## A new Survival game (--seed, default 2024) played through the opening by the bot at a human pace:
+## the bedroom to the front door (indoors), out to the mailbox and the letter read, round the
+## truck and the walkway's banks to the buried shovel, dug out by hand and picked up, across to Gerry and his dialogue
+## read, his trail cleared with the small shovel (strokes × 1.1 s plus the walking, as _run counts it),
+## and his thanks at the end. Prints each leg, in real seconds and game minutes, and the totals.
+func _opening() -> Dictionary:
+	var sd := int(args.get("seed", "2024"))
+	Game.force_input = true
+	Game.new_game("survival", sd)
+	world = load("res://scenes/game.tscn").instantiate()
+	add_child(world)
+	await _frames(90)
+	Clock.running = false
+	var pl: Player = world.player
+	var lot := Layout.player_lot
+	var hi := Layout.house_info(lot)
+	var legs := []
+	# Indoors: the bedroom to the front door (its straight distance at a walk, and the door).
+	var p0 := Vector2(pl.global_position.x, pl.global_position.z)
+	var door: Vector2 = hi["door"]
+	var indoor_s := p0.distance_to(door) * 1.3 / Catalog.balance.walk_speed + 2.0
+	legs.append(["bedroom → front door (indoors)", indoor_s, true])
+	var door_out: Vector2 = hi["door_outside"]
+	pl.teleport(Vector3(door_out.x, Snow.surface_height(door_out.x, door_out.y) + 0.05, door_out.y))
+	await _frames(3)
+	legs.append(["front door → the mailbox", await _walk_to(pl, hi["mailbox_path_point"]), false])
+	var letter_chars := 0
+	for t in [world.get("title"), world.get("body")]:
+		letter_chars += str(t).length() if t != null else 0
+	letter_chars = maxi(letter_chars, 400)
+	legs.append(["the letter, read", letter_chars / READ_CPS, false])
+	# Round the truck (its nose faces the street) to the shovel on its far side, round the banks of
+	# the walkway (_walk_route).
+	var sh := Game.shovel_spot()
+	var ts: Vector3 = Game.truck_start()["pos"]
+	var inward := Vector2(lot["inward"]).normalized()
+	var side := (sh - Vector2(ts.x, ts.z)).normalized()
+	var stand := sh + side * 0.9 - inward * 0.2
+	var truck_r := Rect2(ts.x - 1.7, ts.z - 3.6, 3.4, 7.2)
+	var t1: float = await _walk_route(pl, stand, [truck_r])
+	legs.append(["the mailbox → the buried shovel", t1, false])
+	# Dig it out by hand, then pick it up.
+	var item: ToolItem = null
+	for c in world.find_children("*", "ToolItem", true, false):
+		if (c as ToolItem).tool_id == "small_shovel" and (c as ToolItem).entry.get("buried", false):
+			item = c
+	# The ground the shovel covers (its own sample points), and a margin for the walls of the hole.
+	var cover := Rect2(sh, Vector2.ZERO)
+	if item != null:
+		for sp in item.sample_points():
+			cover = cover.expand(Vector2(sp.x, sp.z))
+	box_rects_g = [cover.grow(0.4)]
+	_into = (sh - Vector2(pl.global_position.x, pl.global_position.z)).normalized()
+	_skip.clear()
+	_fails.clear()
+	var dig := 0
+	var dig_walk := 0
+	var dside := 1.0
+	var dig_last := Vector2(INF, INF)
+	while item != null and is_instance_valid(item) and not item.can_pick_up() and dig < 400 and dig_walk < 120 * 60:
+		var ns := _nearest_snow(pl)
+		var pp := Vector2(pl.global_position.x, pl.global_position.z)
+		# Walk closer, unless the last walk got nowhere (then dig from here).
+		var moved := pp.distance_to(dig_last) > 0.01
+		dig_last = pp
+		if Vector2(ns.x - pp.x, ns.z - pp.y).length() > 1.1 and moved:
+			var to := Vector2(ns.x, ns.z) - pp
+			pl.set_yaw(atan2(-to.x, -to.y))
+			pl.pitch = 0.0
+			pl.head.rotation.x = 0.0
+			Input.action_press("move_forward")
+			await _frames(6)
+			Input.action_release("move_forward")
+			dig_walk += 6
+			continue
+		await _stroke(pl, dside, "hands")
+		dside = -dside
+		dig += 1
+		_strokes_now = dig
+		if dig % 25 == 0:
+			print("  dig: %d strokes, %.0f %% of the shovel showing" % [dig, item.exposure() * 100.0])
+	var got := item != null and is_instance_valid(item) and item.can_pick_up()
+	legs.append(["the shovel dug out by hand (%d strokes%s)" % [dig, "" if got else ", NOT out"], dig * 1.1 + dig_walk / 60.0, false])
+	print("  dig: %d strokes, %d walk frames, out=%s" % [dig, dig_walk, got])
+	if got:
+		item.interact(pl)
+		await _frames(2)
+	# Across to Gerry; his dialogue read; the job agreed.
+	var g: Node3D = world.get("neighbor")
+	var out := -Vector2(Layout.neighbor_lot["inward"]).normalized()
+	var at := Vector2(g.global_position.x, g.global_position.z) + out * 2.2
+	legs.append(["→ Gerry", await _walk_route(pl, at, [truck_r]), false])
+	var talk := 0
+	for s in ["Oh, thank goodness! I'm Gerry. I've been stuck out here since the storm — three feet of snow, and my back's no good for it.",
+			"My prescriptions come by mail. Could you clear me a trail from my mailbox to here? Not the whole driveway — just a path I can walk.",
+			"What would you charge me for that?", "\"$55? It's a lot of snow.\"", "Hmm... fair enough, it is a lot of snow. $55 it is.",
+			"Now, two ways to move snow."]:
+		talk += s.length()
+	legs.append(["Gerry's dialogue, read", talk / READ_CPS + 3.0, false])
+	Game.flags["mail_read"] = true
+	Game.set_stage(Game.Stage.LETTER_READ)
+	Contracts.create_tutorial_contract(55)
+	Game.set_stage(Game.Stage.NEIGHBOR_TALKED)
+	Game.slots = ["small_shovel", "", "", ""]
+	Game.selected = 0
+	Game.carried = ""
+	Game.inventory_changed.emit()
+	await _frames(3)
+	# His trail, from the street end, with the small shovel (the loop _run runs, on this box).
+	var nl := Layout.neighbor_lot
+	var nhi := Layout.house_info(nl)
+	var box := Boxes.get_box("gerry_trail")
+	box_rects_g = box["rects"]
+	_into = Vector2(nl["inward"])
+	var main_r: Rect2 = nhi["walkway"]
+	var start := Vector2(main_r.get_center().x, main_r.position.y + 0.3 if nl["dir"] > 0 else main_r.end.y - 0.3)
+	legs.append(["→ the foot of his walk", await _walk_route(pl, start), false])
+	_skip.clear()
+	_fails.clear()
+	_strokes_now = 0
+	var frames := 0
+	var strokes := 0
+	var walk_frames := 0
+	var tside := 1.0
+	var said := 0
+	while frames < 45 * 3600:
+		var q0 := Vector2(pl.global_position.x, pl.global_position.z)
+		var ns := _nearest_snow(pl)
+		var to := Vector2(ns.x - q0.x, ns.z - q0.y)
+		var stuck := q0.distance_to(_last_walk_pos) < 0.01 and _walked_last
+		_walked_last = false
+		if (to.length() > 0.75 and not stuck) or to.length() < 0.12:
+			if to.length() < 0.12:
+				to = -_into if (q0 - start).dot(_into) > main_r.size.y * 0.5 else _into
+			elif Snow.ground_at(ns.x, ns.z) > pl.global_position.y + 0.25:
+				var sc: Vector2 = (nhi["stairs"] as Rect2).get_center()
+				to = Vector2(sc.x, sc.y - _into.y * 0.6) - q0
+			pl.set_yaw(atan2(-to.x, -to.y))
+			pl.pitch = 0.0
+			pl.head.rotation.x = 0.0
+			_last_walk_pos = q0
+			_walked_last = true
+			Input.action_press("move_forward")
+			await _frames(6)
+			Input.action_release("move_forward")
+			frames += 6
+			walk_frames += 6
+		else:
+			if stuck:
+				_skip[_cell_key(ns)] = strokes + 120
+			var d0 := Snow.depth_at(ns.x, ns.z)
+			frames += await _stroke(pl, tside, "small_shovel")
+			tside = -tside
+			strokes += 1
+			var k := _cell_key(ns)
+			if Snow.depth_at(ns.x, ns.z) > d0 - 0.002:
+				_fails[k] = int(_fails.get(k, 0)) + 1
+				if int(_fails[k]) >= 3:
+					_skip[k] = strokes + 120
+					_fails.erase(k)
+			else:
+				_fails.erase(k)
+			_strokes_now = strokes
+		Boxes.measure(box, true)
+		if box["complete"] or Game.stage() >= Game.Stage.TRAIL_DONE:
+			break
+		if strokes >= said + 50:
+			said = strokes
+			print("  trail: %d strokes, %d frames" % [strokes, frames])
+	var done := Game.stage() >= Game.Stage.TRAIL_DONE or bool(box["complete"])
+	legs.append(["Gerry's trail with the small shovel (%d strokes%s)" % [strokes, "" if done else ", NOT done"], strokes * 1.1 + walk_frames / 60.0, false])
+	legs.append(["his thanks and the walk in to his fire", 14.0, false])
+	Input.action_release("primary")
+	var out_s := 0.0
+	print("")
+	print("THE OPENING at a human pace — Survival, seed %d (each leg: real s, game min)" % sd)
+	for l in legs:
+		print("  %-58s %7.1f s %7.1f min%s" % [l[0], l[1], l[1] * Clock.GAME_MIN_PER_REAL_SEC, "  (indoors)" if l[2] else ""])
+		if not l[2]:
+			out_s += l[1]
+	print("  outdoors: %.1f real min = %.1f game h; from %s the trail is done at %s" % [out_s / 60.0, out_s * Clock.GAME_MIN_PER_REAL_SEC / 60.0,
+		Clock.format_time(Clock.at(0, 7.5)), Clock.format_time(Clock.at(0, 7.5) + (indoor_s + out_s) * Clock.GAME_MIN_PER_REAL_SEC)])
+	return {"indoor_s": indoor_s, "outdoor_s": out_s, "legs": legs}
+
+
+## Walk straight toward `target` (stopping within 0.5 m, when stuck, or after 40 s). Real seconds.
+func _walk_to(pl: Player, target: Vector2, near := 0.5) -> float:
+	var f := 0
+	var last := Vector2(INF, INF)
+	var still := 0
+	while f < 2400:
+		var p := Vector2(pl.global_position.x, pl.global_position.z)
+		var to := target - p
+		if to.length() < near:
+			break
+		still = still + 1 if p.distance_to(last) < 0.005 else 0
+		if still > 30:
+			break
+		last = p
+		pl.set_yaw(atan2(-to.x, -to.y))
+		pl.pitch = 0.0
+		pl.head.rotation.x = 0.0
+		Input.action_press("move_forward")
+		await _frames(6)
+		f += 6
+	Input.action_release("move_forward")
+	await _frames(2)
+	return f / 60.0
+
+
+## Polish 8 §14: a walk a person would take: round snow above the hips (a wall, Player.can_wade_into),
+## buildings and `avoid` (the truck), on a 0.5 m grid (A*), straightened where the line is clear.
+## Real seconds, as _walk_to.
+func _walk_route(pl: Player, target: Vector2, avoid: Array = []) -> float:
+	var from := Vector2(pl.global_position.x, pl.global_position.z)
+	var pts := _route(from, target, avoid)
+	var t := 0.0
+	var at := from
+	var left := 0.0
+	for i in range(pts.size()):
+		var q: Vector2 = pts[i]
+		t += await _walk_to(pl, q, 0.15 if i < pts.size() - 1 else 0.5)
+		var pp := Vector2(pl.global_position.x, pl.global_position.z)
+		if pp.distance_to(q) > (0.6 if i < pts.size() - 1 else 1.0):
+			# The bot can't thread it (the banks are sharp; a person steps round them): the rest of
+			# the route at the game's wading pace through the snow on it, and the bot put there.
+			left = pp.distance_to(q)
+			for k in range(i + 1, pts.size()):
+				left += (pts[k - 1] as Vector2).distance_to(pts[k])
+			var dep := Snow.depth_at(q.x, q.y)
+			var est := left / (Catalog.balance.walk_speed * Player.snow_speed_mult(dep))
+			t += est
+			pl.teleport(Vector3(target.x, Snow.ground_at(target.x, target.y) + 0.05, target.y))
+			await _frames(3)
+			print("  (walk to %s: the last %.1f m estimated at the wading pace, %.1f s)" % [str(target), left, est])
+			break
+	return t
+
+
+func _passable(q: Vector2, avoid: Array) -> bool:
+	for r in avoid:
+		if (r as Rect2).grow(0.3).has_point(q):
+			return false
+	if Snow.surface_at(q.x, q.y) == Snow.S_BLOCKED or Snow.ground_at(q.x, q.y) >= 0.3:
+		return false
+	return Snow.ground_at(q.x, q.y) + Snow.max_depth_in_radius(q.x, q.y, 0.2) <= CharacterModel.HIP_HEIGHT - 0.08
+
+
+## A walk from a to b the player's own rule allows: at every point on the way, the probe
+## (Player.RADIUS + 0.12 ahead in the direction of travel, 0.12 round it) under the hips.
+func _clear_line(a: Vector2, b: Vector2, avoid: Array) -> bool:
+	var d := b - a
+	if d.length() < 0.01:
+		return true
+	var dir := d.normalized()
+	var n := maxi(int(ceil(d.length() / 0.2)), 1)
+	for k in range(0, n + 1):
+		var q := a.lerp(b, float(k) / n)
+		if not _passable(q + dir * (Player.RADIUS + 0.12), avoid):
+			return false
+		if k > 0 and not _passable(q, avoid):
+			return false
+	return true
+
+
+func _route(from: Vector2, to: Vector2, avoid: Array) -> PackedVector2Array:
+	if _clear_line(from, to, avoid):
+		return PackedVector2Array([to])
+	const C := 0.5
+	var lo := Vector2(minf(from.x, to.x), minf(from.y, to.y)) - Vector2(6, 6)
+	var nx := int(ceil((maxf(from.x, to.x) + 6.0 - lo.x) / C))
+	var nz := int(ceil((maxf(from.y, to.y) + 6.0 - lo.y) / C))
+	var cell := func(q: Vector2) -> Vector2i: return Vector2i(clampi(int((q.x - lo.x) / C), 0, nx - 1), clampi(int((q.y - lo.y) / C), 0, nz - 1))
+	var centre := func(c: Vector2i) -> Vector2: return lo + (Vector2(c) + Vector2(0.5, 0.5)) * C
+	var s: Vector2i = cell.call(from)
+	# The goal: the passable cell nearest the target (the target itself may be in deep snow).
+	var g: Vector2i = cell.call(to)
+	var best := INF
+	for dz in range(-6, 7):
+		for dx in range(-6, 7):
+			var c := g + Vector2i(dx, dz)
+			if c.x < 0 or c.y < 0 or c.x >= nx or c.y >= nz:
+				continue
+			var d := (centre.call(c) as Vector2).distance_to(to)
+			if d < best and _passable(centre.call(c), avoid):
+				best = d
+				g = c
+	var open := {s: 0.0}
+	var cost := {s: 0.0}
+	var prev := {}
+	while not open.is_empty():
+		var cur: Vector2i = open.keys()[0]
+		var cf := INF
+		for k in open:
+			var f: float = open[k]
+			if f < cf:
+				cf = f
+				cur = k
+		if cur == g:
+			break
+		open.erase(cur)
+		for dz in [-1, 0, 1]:
+			for dx in [-1, 0, 1]:
+				if dx == 0 and dz == 0:
+					continue
+				var nb := cur + Vector2i(dx, dz)
+				if nb.x < 0 or nb.y < 0 or nb.x >= nx or nb.y >= nz or not _clear_line(centre.call(cur), centre.call(nb), avoid):
+					continue
+				var nc: float = cost[cur] + Vector2(dx, dz).length()
+				if nc < float(cost.get(nb, INF)):
+					cost[nb] = nc
+					prev[nb] = cur
+					open[nb] = nc + (centre.call(nb) as Vector2).distance_to(centre.call(g)) / C
+	if not prev.has(g):
+		return PackedVector2Array([to])       # no way round: straight (stops when stuck)
+	var path := [to]
+	var c2 := g
+	while prev.has(c2):
+		path.push_front(centre.call(c2))
+		c2 = prev[c2]
+	# Straighten: from where you are, head for the farthest point with a clear line.
+	var out := PackedVector2Array()
+	var at := from
+	var i := 0
+	while i < path.size():
+		var j := path.size() - 1
+		while j > i and not _clear_line(at, path[j], avoid):
+			j -= 1
+		out.append(path[j])
+		at = path[j]
+		i = j + 1
+	return out
 
 
 static func _cell_key(p: Vector3) -> Vector2i:

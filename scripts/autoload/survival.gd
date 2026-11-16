@@ -26,6 +26,7 @@ var in_player_house := false
 var in_neighbor_house := false
 var near_fire := false
 var in_garage := false       # polish 8 §15: in the player's garage (sheltered, not heated; §14 reads it)
+var in_cab := false          # polish 8 §14: in an enclosed cab (VehicleData.heated_cabin), engine on or off
 var vehicle_heat := 0.0      # 0..1 while in a heated running vehicle cab
 var last_rate := 0.0
 var _state := St.COMFORTABLE
@@ -39,6 +40,7 @@ func start_winter() -> void:
 	pouch_until = -1.0
 	dead = false
 	in_garage = false
+	in_cab = false
 	_state = St.COMFORTABLE
 
 
@@ -116,12 +118,44 @@ func outdoor_loss_per_hour() -> float:
 		Weather.C.MODERATE: mult = b.moderate_cold_mult
 		Weather.C.HEAVY: mult = b.heavy_cold_mult
 		Weather.C.BLIZZARD: mult = b.blizzard_cold_mult
-	var loss := exposure(wc) * mult
+	# Polish 8 §14: the colder player's own loss, whatever the weather.
+	var loss := exposure(wc) * mult + b.player_base_loss_per_hour
 	# Polish 5 §13: the insulated coat (it replaces the old jacket and parka upgrades).
 	loss *= _Equipment.cold_mult()
 	if Clock.minutes < pouch_until:
 		loss *= 0.6
+	# Polish 8 §14: a colder player (its own loss above, and this), and colder on foot at night
+	# (dusk to 7:00 a.m.).
+	loss *= b.player_cold_mult
+	if night_at(Clock.minutes):
+		loss *= b.night_cold_mult
 	return loss
+
+
+## Polish 8 §14: in shelter (an enclosed cab with its engine off, the garage, a running cab still
+## warming up): out of the wind, the snowfall and the night, still in the cold air — the air's
+## exposure × the coat × the colder player (× 0.6 with a pouch, as outdoors). Warmth % per game hour.
+func sheltered_loss_per_hour() -> float:
+	var loss := exposure(Weather.temperature()) * _Equipment.cold_mult() * Catalog.balance.player_cold_mult
+	if Clock.minutes < pouch_until:
+		loss *= 0.6
+	return loss
+
+
+## Polish 8 §14: night for the cold — from dusk (the sun setting, DayNight.sunset_hour) to 7:00 a.m.
+## (the wake-up hour). On the clock, so 1×, 2× and 10× agree.
+const NIGHT_ENDS_H := 7.0
+
+
+static func night_at(minutes: float) -> bool:
+	var day := int(floor(minutes / 1440.0))
+	var h := fmod(minutes, 1440.0) / 60.0
+	return h >= DayNight.sunset_hour(day) or h < NIGHT_ENDS_H
+
+
+## Polish 8 §14: dusk on a day of winter (game minutes).
+static func dusk_at(day: int) -> float:
+	return Clock.at(day, DayNight.sunset_hour(day))
 
 
 func compute_rate() -> float:
@@ -136,8 +170,12 @@ func compute_rate() -> float:
 		if near_fire and power_on:
 			g *= 1.4
 		rate = house_heat * g - (1.0 - house_heat) * sheltered
-	elif vehicle_heat > 0.0:
-		rate = vehicle_heat * gain - (1.0 - vehicle_heat) * outdoor_loss_per_hour() * 0.5
+	elif in_cab or vehicle_heat > 0.0:
+		# Polish 8 §14: an enclosed cab keeps the wind out; with its engine running it warms you, at
+		# cab_warmth_per_hour once warmed up (slower than indoors).
+		rate = vehicle_heat * b.cab_warmth_per_hour - (1.0 - vehicle_heat) * sheltered_loss_per_hour()
+	elif in_garage:
+		rate = -sheltered_loss_per_hour()     # polish 8 §14: the garage shelters, unheated
 	else:
 		rate = -outdoor_loss_per_hour()
 	if Clock.minutes < pouch_until:
@@ -167,11 +205,43 @@ func on_advance(step_min: float) -> void:
 		if s > prev and s >= St.COLD:
 			Clock.drop_to_1x("cold")   # polish 5 §9: a cold warning stops fast-forward
 			Notify.push("You are %s." % STATE_NAMES[s].to_lower(), Notify.WARN if s < St.DANGER else Notify.BAD)
+			# Polish 8 §14: the first cold warning of a game: how to warm up (once).
+			if not Game.hint_seen("warm_up") and Game.world and Game.world.has_method("show_hint"):
+				Game.world.show_hint("warm_up")
+	_cold_night(Clock.minutes - step_min, Clock.minutes)
 	if Clock.skipping and warmth < 30.0:
 		Clock.request_interrupt("cold")
 	if warmth <= 0.0:
 		dead = true
 		died.emit()
+
+
+## Polish 8 §14: the cold-night warning. At dusk, if the forecast's low tonight (the forecast model
+## issued now, never the truth ahead) is under cold_night_low_c, it is due, once a night; it shows
+## when the player isn't indoors or in a running cab (at dusk, or the first time they're out later
+## that night). With hints off it is a notification.
+const COLD_NIGHT_TEXT := "Cold night ahead. Sleep, or work from a heated cab."
+
+
+func _cold_night(t0: float, t1: float) -> void:
+	var day := int(floor(t1 / 1440.0))
+	var dusk := dusk_at(day)
+	if t0 < dusk and t1 >= dusk and int(Game.flags.get("cold_night_day", -1)) != day:
+		Game.flags["cold_night_day"] = day
+		var low := Weather.forecast_low(int(floor(dusk / 60.0)), int(floor(Clock.at(day + 1, NIGHT_ENDS_H) / 60.0)), Weather.issued_hour())
+		if low < Catalog.balance.cold_night_low_c:
+			Game.flags["cold_night_due"] = day
+	if not Game.flags.has("cold_night_due"):
+		return
+	if not night_at(t1) and t1 >= Clock.at(int(Game.flags["cold_night_due"]) + 1, NIGHT_ENDS_H):
+		Game.flags.erase("cold_night_due")      # the night is over
+		return
+	if in_player_house or in_neighbor_house or (in_cab and vehicle_heat > 0.0):
+		return
+	Game.flags.erase("cold_night_due")
+	var shown: bool = Game.world != null and Game.world.has_method("show_hint") and bool(Game.world.show_hint("cold_night", true))
+	if not shown:
+		Notify.push(COLD_NIGHT_TEXT, Notify.WARN)
 
 
 ## Use a heating pouch (utility item). Returns true if one was used.

@@ -191,6 +191,11 @@ extends Node
 ##                            lowered; the camera in front of it. --blade_upgrade=1 grants the plow
 ##                            width upgrade first (with --hour=22 its lamps light with the headlights).
 ##                            Use with --unlock=1 and --fixed-fps 60
+##   --cold_night=frames      (polish 8 §14, Survival) the clock just before dusk on --day, run across
+##                            it that many frames with the cold-night threshold above any air: the
+##                            warning as at dusk
+##   --cab_warm=w             (polish 8 §14, Survival) in the truck, engine running, the cab warmed,
+##                            warmth w, the clock run --cab_run frames (default 240): the meter rising
 ##   --garage=open|closed     (polish 8 §15) the garage's overhead door set at once; --garage_rack=a,b,…
 ##                            hangs those tools on its rack; --garage_truck=1 parks the truck inside
 ##                            (the middle, nose to the back wall). Its hint is marked seen. Frame the
@@ -589,6 +594,25 @@ func _setup_after_spawn() -> void:
 		Input.action_release("veh_accelerate")
 	if args.has("light"):
 		w.day_night.override_hour = float(args["light"])
+	if args.has("cold_night"):
+		# Polish 8 §14: the clock just before dusk on --day, run across it with the cold-night
+		# threshold above any air (this shot only), so the warning shows as in play.
+		Catalog.balance.cold_night_low_c = 50.0
+		Clock.reset(Survival.dusk_at(Clock.day_index()) - 1.0)
+		Clock.running = true
+		await _wait(int(args["cold_night"]))
+	if args.has("cab_warm"):
+		# Polish 8 §14: in the truck with its engine running, the cab warmed up, warmth --cab_warm,
+		# the clock run --cab_run frames so the meter shows it rising.
+		Game.flags["truck_keys"] = true
+		Game.flags["help_vehicle_%d" % VehicleData.Kind.PICKUP_PLOW] = true   # no first-drive hint
+		var cv: Vehicle = w.vehicle_nodes()[0]
+		cv.enter_vehicle(w.player)
+		cv.heat = 1.0
+		Survival.warmth = float(args["cab_warm"])
+		Survival._state = Survival.state()
+		Clock.running = true
+		await _wait(int(args.get("cab_run", "240")))
 	if args.get("tp", "0") == "1":
 		w.player.set_third_person(true)
 	if args.has("pitch"):

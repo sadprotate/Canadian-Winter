@@ -28,7 +28,10 @@
     the others; the walk-behind blower's first grab (it was a notification).
   - The first time in the garage (`garage`): the door's button, the rack (F and E). See
     [garage.md](garage.md).
-  - §14 adds the cold hints.
+  - The first cold warning of a game (`warm_up`): how to warm up (indoors, a running cab, a pouch).
+  - Before a cold night (`cold_night`, shown again each such night): "Cold night ahead. Sleep, or
+    work from a heated cab." With hints off it is a notification (a warning, not just a tip). See
+    [survival.md](survival.md).
 - **What doesn't** (Decision 1): Gerry's story lines and the player's thoughts (speech box), the
   interaction prompts, status lines ("Stuck: …", "Blade down"), notifications (snowshoes and the pad
   collected, the plow fitted), the one-line controls reminder on a tool switch and in Tab.
@@ -77,6 +80,7 @@
 - `--only=polish8 --test=test_s17_`: the buttons (default keys, rebound, clicks), never frozen,
   the queue (two together, the computer, the sleep prompt, beside the speech box), once each (save
   → load, old fixtures), hints off (Help), Gerry, the vehicle and tool hints, the fit.
+- `--only=polish8 --test=test_s14_cold_night_hint`, `--test=test_s14_warm_up_hint_once`.
 - `--only=polish5 --test=test_s4_gerry_snow_tips`, `--only=polish7 --test=test_s11_help_lists_the_keys`,
   `--only=polish5 --test=test_s7_v3_save_round_trips`.
 

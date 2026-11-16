@@ -1094,3 +1094,448 @@ func test_s15_hint() -> void:
 	await _frames(4)
 	runner.check(first and second and not hp.is_open(), "§15 the first time in the garage its hint opens (the button with %s, the rack with %s), once" % [Settings.action_label("interact"), Settings.action_label("store")])
 	await _unload()
+
+
+# =============================================================================
+# §14 Cold nights, and a colder player
+# =============================================================================
+
+## The opening at a human pace, measured by tests/contract_bench.tscn -- --job=opening --seed=<n>
+## (docs/polish8/STATUS.md has the legs): the real seconds indoors before stepping out, and per seed
+## outdoors from the front door to Gerry's trail done and the walk in to his fire (only the trail's
+## strokes differ by seed).
+const S14_OPENING_IN_S := 4.4
+const S14_OPENING_OUT_S := {2024: 370.9, 7: 368.6, 99: 366.4, 4242: 366.4, 2050: 366.4}
+const S14_SEEDS := [2024, 7, 99, 4242, 2050]
+## The band the opening must end in, for every seed: the cold warnings showing (under 45) and not yet
+## critical (10 and up); the seeds' mean within 5 of Catalog.balance.opening_target_warmth.
+const S14_BAND := Vector2(10.0, 45.0)
+
+
+## A new Survival game, no world: the opening's clock, the player indoors for `in_s` real seconds,
+## then outdoors for `out_s`, stepped as play steps it (one frame at a time). {end, low, froze_at}.
+static func _s14_opening(sd: int, in_s: float, out_s: float) -> Dictionary:
+	Game.world = null
+	Game.player = null
+	Clock.running = false
+	Game.new_game("survival", sd)
+	Survival.in_neighbor_house = false
+	Survival.in_cab = false
+	Survival.in_garage = false
+	Survival.vehicle_heat = 0.0
+	Survival.near_fire = false
+	var step := Clock.GAME_MIN_PER_REAL_SEC / 15.0       # four frames a step
+	Survival.in_player_house = true
+	for k in range(int(in_s * 15.0)):
+		Clock.advance(step)
+	Survival.in_player_house = false
+	var low := 100.0
+	var froze := -1.0
+	for k in range(int(out_s * 15.0)):
+		Clock.advance(step)
+		low = minf(low, Survival.warmth)
+		if Survival.warmth <= 0.0 and froze < 0.0:
+			froze = k / 15.0
+	return {"end": Survival.warmth, "low": low, "froze_at": froze, "clock": Clock.format_time(Clock.minutes)}
+
+
+## The opening's target: for each seed, warmth at the end of the measured opening (outside
+## throughout) is in the band round opening_target_warmth, and the player never froze on the way.
+func test_s14_opening_target() -> void:
+	var bad := []
+	var rows := []
+	var mean := 0.0
+	for sd in S14_SEEDS:
+		var r := _s14_opening(int(sd), S14_OPENING_IN_S, float(S14_OPENING_OUT_S[sd]))
+		rows.append("seed %d: %.1f %% at %s (%.1f real min out)" % [sd, r["end"], r["clock"], float(S14_OPENING_OUT_S[sd]) / 60.0])
+		mean += float(r["end"]) / S14_SEEDS.size()
+		if r["froze_at"] >= 0.0 or r["end"] < S14_BAND.x or r["end"] > S14_BAND.y:
+			bad.append(sd)
+	var b: BalanceData = Catalog.balance
+	runner.info("§14 the opening (own loss %.1f, ×%.2f colder player): %s; mean %.1f %%" % [b.player_base_loss_per_hour, b.player_cold_mult, "; ".join(rows), mean])
+	runner.check(bad.is_empty() and absf(mean - b.opening_target_warmth) <= 5.0, "§14 the opening at a human pace ends with the cold warnings showing and the player not frozen (%.0f–%.0f %%), for every seed %s; the mean %.1f %% near the target %.0f %%" % [S14_BAND.x, S14_BAND.y, str(bad), mean, b.opening_target_warmth])
+	Survival.in_player_house = false
+
+
+## Still playable: indoors warms as fast as before and Gerry's fire still warms you, whatever the
+## colder player's multiplier (the house and his fire don't read it).
+func test_s14_indoors_unchanged() -> void:
+	Game.world = null
+	Game.player = null
+	Game.new_game("survival", 2024)
+	Weather.force(Weather.C.HEAVY, 400.0)
+	Clock.reset(Clock.at(2, 22.0))
+	var b: BalanceData = Catalog.balance
+	var keep := [b.player_cold_mult, b.night_cold_mult, b.player_base_loss_per_hour]
+	var got := []
+	for mults in [[1.0, 1.0, 0.0], keep]:
+		b.player_cold_mult = mults[0]
+		b.night_cold_mult = mults[1]
+		b.player_base_loss_per_hour = mults[2]
+		Survival.in_cab = false
+		Survival.in_garage = false
+		Survival.vehicle_heat = 0.0
+		Survival.in_neighbor_house = false
+		Survival.in_player_house = true
+		Survival.house_heat = 1.0
+		Survival.near_fire = false
+		var home := Survival.compute_rate()
+		Survival.house_heat = 0.5
+		var half := Survival.compute_rate()
+		Survival.in_player_house = false
+		Survival.in_neighbor_house = true
+		var gerry := Survival.compute_rate()
+		got.append([home, half, gerry])
+	b.player_cold_mult = keep[0]
+	b.night_cold_mult = keep[1]
+	b.player_base_loss_per_hour = keep[2]
+	Survival.in_neighbor_house = false
+	Survival.house_heat = 1.0
+	Weather.override_cond = -1
+	runner.check(got[0] == got[1] and is_equal_approx(float(got[1][0]), b.warmth_recover_per_hour * Game.stat_value(&"house_warm", 1.0)) and is_equal_approx(float(got[1][2]), b.warmth_recover_per_hour),
+		"§14 indoors warms as before (home +%.0f, half-heated %+.1f, Gerry's +%.0f %%/game h) with the colder player and the night" % [got[1][0], got[1][1], got[1][2]])
+
+
+## At the same wind chill a cold night costs more than a cold day: night loss / day loss is the
+## night multiplier, on foot outdoors.
+func test_s14_night_costs_more() -> void:
+	Game.world = null
+	Game.player = null
+	Game.new_game("survival", 2024)
+	Survival.in_player_house = false
+	Survival.in_cab = false
+	Survival.in_garage = false
+	Survival.vehicle_heat = 0.0
+	Weather.force(Weather.C.CLEAR, 400.0)
+	# The same air and wind every hour of days 2–3 (−12 °C, 20 km/h), so the wind chill is the same.
+	var keep_t := Weather.temp.duplicate()
+	var keep_w := Weather.wind.duplicate()
+	for h in range(2 * 24, 4 * 24 + 1):
+		Weather.temp[h] = -12.0
+		Weather.wind[h] = 20.0
+	var loss := func(at: float) -> float:
+		Clock.reset(at)
+		return Survival.outdoor_loss_per_hour()
+	var day := float(loss.call(Clock.at(2, 12.0)))
+	var night := float(loss.call(Clock.at(2, 22.0)))
+	var early := float(loss.call(Clock.at(3, 6.5)))
+	var after := float(loss.call(Clock.at(3, 7.25)))
+	var dusk := Survival.dusk_at(2)
+	var before_dusk := float(loss.call(dusk - 1.0))
+	var after_dusk := float(loss.call(dusk + 1.0))
+	Weather.temp = keep_t
+	Weather.wind = keep_w
+	var m: float = Catalog.balance.night_cold_mult
+	runner.check(m > 1.0 and night > day and is_equal_approx(night / day, m) and is_equal_approx(early / day, m) and is_equal_approx(after, day) and is_equal_approx(before_dusk, day) and is_equal_approx(after_dusk / day, m),
+		"§14 at the same wind chill night costs ×%.2f the day (10 p.m. %.1f, 6:30 a.m. %.1f, 7:15 a.m. %.1f vs noon %.1f %%/game h; from dusk at %s to 7:00 a.m.)" % [m, night, early, after, day, Clock.format_time(dusk)])
+	Weather.override_cond = -1
+
+
+## Shelter: a running enclosed cab warms the player (slower than indoors), an engine-off cab keeps the
+## wind out (the sheltered loss), the ATV and a walk-behind blower give none, the garage shelters.
+func test_s14_shelter() -> void:
+	await _s15_world("survival")
+	var pl: Player = world.player
+	Weather.force(Weather.C.MODERATE, 400.0)
+	Clock.reset(Clock.at(1, 22.0))
+	await _frames(2)
+	var outdoor := Survival.outdoor_loss_per_hour()
+	var sheltered := Survival.sheltered_loss_per_hour()
+	var t := await _truck("pickup_plow", 60.0)
+	t.heat = 1.0
+	await _frames(3)
+	var running := Survival.compute_rate()
+	await _key(_bound("veh_engine"))
+	var off_rate := Survival.compute_rate()
+	var engine_off: bool = not t.engine_on
+	var stays: bool = t.global_position.distance_to(Vector3(60.0, t.global_position.y, 84.95)) < 0.5
+	Input.action_press("veh_accelerate")
+	await _frames(30)
+	Input.action_release("veh_accelerate")
+	var moved_off: float = t.global_position.distance_to(Vector3(60.0, t.global_position.y, 84.95))
+	await _key(_bound("veh_engine"))
+	var back_on: bool = t.engine_on
+	runner.check(running > 0.0 and running < Catalog.balance.warmth_recover_per_hour and is_equal_approx(running, Catalog.balance.cab_warmth_per_hour),
+		"§14 a running enclosed cab warms the player: +%.1f %%/game h (indoors +%.0f)" % [running, Catalog.balance.warmth_recover_per_hour])
+	runner.check(engine_off and is_equal_approx(off_rate, -sheltered) and sheltered < outdoor and moved_off < 0.05 and back_on and stays,
+		"§14 the engine off (%s): no heat, the cab keeps the wind out (%.1f against %.1f outdoors at night %%/game h), it doesn't drive (%.3f m); on again" % [Settings.action_label("veh_engine"), -off_rate, outdoor, moved_off])
+	await _drop(t)
+	var a := await _truck("atv_blade", 60.0)
+	await _frames(3)
+	var atv := Survival.compute_rate()
+	runner.check(is_equal_approx(atv, -Survival.outdoor_loss_per_hour()) and not Survival.in_cab, "§14 the ATV gives no shelter (%.1f %%/game h, as on foot at night)" % atv)
+	await _drop(a)
+	var me := {"uid": Game.uid(), "tool": "small_blower", "pos": Vector3(62.0, 0, 88.0), "yaw": 0.0}
+	Game.machines.append(me)
+	var m: WalkBehind = world.spawn_machine_node(me)
+	pl.teleport(Vector3(62.0, 0.05, 86.9))
+	await _frames(2)
+	m.interact(pl)
+	await _frames(3)
+	var blower := Survival.compute_rate()
+	m.release()
+	runner.check(is_equal_approx(blower, -Survival.outdoor_loss_per_hour()), "§14 a walk-behind blower gives none either (%.1f)" % blower)
+	pl.teleport(_s15_at(6.0, 2.0))
+	await _frames(3)
+	var gar := Survival.compute_rate()
+	runner.check(Survival.in_garage and is_equal_approx(gar, -Survival.sheltered_loss_per_hour()), "§14 the garage shelters, unheated (%.1f %%/game h)" % gar)
+	Weather.override_cond = -1
+	await _unload()
+
+
+## The cold-night warning: at dusk, once a night, from the forecast (never the truth ahead); not
+## while indoors or in a running cab (then the first time out that night); a notification with
+## hints off.
+func test_s14_cold_night_hint() -> void:
+	var saved: Variant = _backup()
+	var b: BalanceData = Catalog.balance
+	var thr := b.cold_night_low_c
+	b.cold_night_low_c = 50.0          # every night counts as cold here
+	await _world("survival", 15.0)
+	var hp = world.hint_panel
+	var pl: Player = world.player
+	pl.teleport(Vector3(60.0, 0.05, 88.0))
+	await _frames(2)
+	var day := Clock.day_index()
+	var dusk := Survival.dusk_at(day)
+	Clock.reset(dusk - 2.0)
+	Clock.advance(4.0)
+	await _frames(3)
+	var first: bool = hp.is_open("cold_night") and hp.text_l.text == Survival.COLD_NIGHT_TEXT
+	hp.ok()
+	Clock.advance(120.0)
+	await _frames(3)
+	var once: bool = not hp.is_open()
+	# Next night, indoors at dusk: not shown; out later that night: shown.
+	Clock.reset(Survival.dusk_at(day + 1) - 2.0)
+	Survival.in_player_house = true
+	pl.teleport(Vector3(49.8, 0.59, 108.4))
+	await _frames(2)
+	Clock.advance(4.0)
+	await _frames(3)
+	var not_in: bool = not hp.is_open("cold_night") and Game.flags.has("cold_night_due")
+	pl.teleport(Vector3(60.0, 0.05, 88.0))
+	await _frames(2)
+	Clock.advance(30.0)
+	await _frames(3)
+	var later: bool = hp.is_open("cold_night")
+	hp.ok()
+	# A third night in a running cab at dusk: not shown.
+	Clock.reset(Survival.dusk_at(day + 2) - 2.0)
+	var v := await _truck("pickup_plow", 60.0)
+	v.heat = 1.0
+	await _frames(2)
+	Clock.advance(4.0)
+	await _frames(3)
+	var not_cab: bool = not hp.is_open("cold_night") and Game.flags.has("cold_night_due")
+	await _drop(v)
+	Game.flags.erase("cold_night_due")
+	runner.check(first and once and not_in and later and not_cab, "§14 the cold-night hint at dusk (\"%s\"), once a night; indoors or in a running cab at dusk not then (%s, %s), out later that night it shows (%s)" % [Survival.COLD_NIGHT_TEXT, not_in, not_cab, later])
+	# From the forecast model only: the truth ahead scrambled, the decision is the same.
+	var issued := Weather.issued_hour()
+	var d4 := day + 4
+	var lo0 := Weather.forecast_low(int(Survival.dusk_at(d4) / 60.0), int(Clock.at(d4 + 1, 7.0) / 60.0), issued)
+	var keep: Array = []
+	for h in range(issued + 1, mini(issued + 200, Weather.HOURS)):
+		keep.append([h, Weather.temp[h], Weather.wind[h]])
+		Weather.temp[h] = 40.0
+		Weather.wind[h] = 90.0
+	var lo1 := Weather.forecast_low(int(Survival.dusk_at(d4) / 60.0), int(Clock.at(d4 + 1, 7.0) / 60.0), issued)
+	for k in keep:
+		Weather.temp[k[0]] = k[1]
+		Weather.wind[k[0]] = k[2]
+	runner.check(lo0 == lo1 and lo0 < 40.0, "§14 the low it reads is the forecast's (%.1f °C), the same with the truth ahead scrambled" % lo0)
+	# Hints off: a notification instead.
+	Settings.set_value("gameplay", "show_hints", false)
+	Clock.reset(Survival.dusk_at(day + 5) - 2.0)
+	var n0 := Notify.history.size()
+	Clock.advance(4.0)
+	await _frames(3)
+	var noted := false
+	for k in range(n0, Notify.history.size()):
+		noted = noted or str(Notify.history[k].get("text", "")) == Survival.COLD_NIGHT_TEXT
+	runner.check(noted and not hp.is_open(), "§14 with hints off it comes as a notification")
+	b.cold_night_low_c = thr
+	_restore(saved)
+	await _unload()
+
+
+## The first cold warning of a game opens the warming-up hint, once.
+func test_s14_warm_up_hint_once() -> void:
+	await _world("survival", 12.0)
+	var hp = world.hint_panel
+	var pl: Player = world.player
+	pl.teleport(Vector3(60.0, 0.05, 88.0))
+	await _frames(2)
+	var times := 0
+	for k in range(2):
+		Survival.warmth = 45.3
+		Survival._state = Survival.state()
+		Clock.running = true
+		for f in range(2400):
+			await _tree().physics_frame
+			if Survival.warmth < 44.5:
+				break
+		Clock.running = false
+		await _frames(3)
+		if hp.is_open("warm_up"):
+			times += 1
+			runner.info("§14 warming up: %s" % hp.text_l.text)
+			hp.ok()
+		await _frames(2)
+	runner.check(times == 1 and Game.hint_seen("warm_up"), "§14 the first cold warning opens the warming-up hint, once (%d)" % times)
+	await _unload()
+
+
+## Minutes (real, at 1×) from full warmth to the first cold warning (45 %) and to freezing, on foot
+## outdoors in clear weather without the coat, at wind chills −2 … −40 °C, by day and at night: with
+## the colder player and the night (after) and without them (before). Printed for STATUS.md.
+func test_s14_time_to_danger() -> void:
+	var b: BalanceData = Catalog.balance
+	var rows := []
+	var ok := true
+	for wc in [-2.0, -8.0, -17.0, -25.0, -40.0]:
+		var e := Survival.exposure(wc)
+		var row := "%4d °C:" % int(wc)
+		for night in [false, true]:
+			var before := Survival.per_real_minute(e)
+			var after := Survival.per_real_minute((e + b.player_base_loss_per_hour) * b.player_cold_mult * (b.night_cold_mult if night else 1.0))
+			row += "  %s before %.1f / %.1f, after %.1f / %.1f" % ["night" if night else "day", 55.0 / before, 100.0 / before, 55.0 / after, 100.0 / after]
+			ok = ok and after >= before
+		rows.append(row)
+	runner.info("§14 time to danger (real minutes to the first warning / to freezing):\n      " + "\n      ".join(rows))
+	runner.check(ok and b.player_cold_mult > 1.0 and b.night_cold_mult > 1.0, "§14 time to danger: shorter at every temperature with the colder player (own loss %.1f, ×%.2f) and shorter at night (×%.2f)" % [b.player_base_loss_per_hour, b.player_cold_mult, b.night_cold_mult])
+
+
+## Still playable: a typical path job (contract_bench's, at a human pace) is finished in one
+## December day in Survival (Dec 6 after the first storm, seed 2024), the player going in to warm up
+## whenever the first cold warning comes. The job's figures are contract_bench's: 1.0 real minute of
+## work with the small shovel on 2.2 m³ (polish 6 report s8_2), walked to from home in a minute.
+func test_s14_path_job_survival() -> void:
+	Game.world = null
+	Game.player = null
+	Game.new_game("survival", 2024)
+	Clock.reset(Clock.at(5, 7.0))
+	Survival.warmth = 100.0
+	Survival.in_neighbor_house = false
+	Survival.in_cab = false
+	Survival.in_garage = false
+	Survival.vehicle_heat = 0.0
+	var step := Clock.GAME_MIN_PER_REAL_SEC / 6.0        # a tenth of a real second a step
+	var work_left := 60.0 * 6.0           # steps of work (1.0 real minute)
+	var walk := 60.0 * 6.0                # steps to walk there or back (a minute)
+	var breaks := 0
+	var froze := false
+	var phase := "walk_out"
+	var t := 0.0
+	var walked := 0.0
+	while work_left > 0.0 and Clock.minutes < Clock.at(5, 21.0):
+		match phase:
+			"walk_out", "work":
+				Survival.in_player_house = false
+				if phase == "walk_out":
+					walked += 1.0
+					if walked >= walk:
+						phase = "work"
+				else:
+					work_left -= 1.0
+				if Survival.warmth < 45.0 and work_left > 0.0:
+					phase = "walk_home"
+					walked = 0.0
+					breaks += 1
+			"walk_home":
+				Survival.in_player_house = false
+				walked += 1.0
+				if walked >= walk:
+					phase = "warm"
+			"warm":
+				Survival.in_player_house = true
+				Survival.house_heat = 1.0
+				if Survival.warmth >= 95.0:
+					phase = "walk_out"
+					walked = 0.0
+		Clock.advance(step)
+		t += 1.0
+		froze = froze or Survival.warmth <= 0.0
+	var done := work_left <= 0.0
+	runner.check(done and not froze and Clock.minutes < Clock.at(5, 21.0), "§14 a typical path job (1.0 real min of work) is finished on Dec 6 in Survival by %s with %d warm-up breaks indoors, never frozen" % [Clock.format_time(Clock.minutes), breaks])
+	Survival.in_player_house = false
+
+
+## Fun Mode: no warmth change anywhere (outdoors at night, the garage, a cab). Sleeping through a cold
+## night at home (powered, and in a power cut) ends the same as with the new multipliers at 1.
+func test_s14_fun_and_sleep_unchanged() -> void:
+	Game.world = null
+	Game.player = null
+	Game.new_game("fun", 2024)
+	Clock.reset(Clock.at(30, 22.0))
+	Survival.in_player_house = false
+	for k in range(600):
+		Clock.advance(0.5)
+	Survival.in_garage = true
+	for k in range(120):
+		Clock.advance(0.5)
+	Survival.in_garage = false
+	runner.check(Survival.warmth == 100.0 and not Survival.enabled(), "§14 Fun Mode: no cold (outdoors at night, in the garage)")
+	var b: BalanceData = Catalog.balance
+	var keep := [b.player_cold_mult, b.night_cold_mult, b.player_base_loss_per_hour]
+	var res := []
+	for mults in [[1.0, 1.0, 0.0], keep]:
+		for power in [true, false]:
+			b.player_cold_mult = mults[0]
+			b.night_cold_mult = mults[1]
+			b.player_base_loss_per_hour = mults[2]
+			Game.new_game("survival", 2024)
+			Clock.reset(Clock.at(40, 22.0))
+			if not power:
+				Survival.cut_power()
+				Clock.advance(600.0)
+				Clock.reset(Clock.at(41, 22.0))
+			Survival.warmth = 100.0
+			Survival.in_player_house = true
+			var skipped := Clock.skip(Clock.at(42, 7.0) - Clock.minutes)
+			res.append([snappedf(Survival.warmth, 0.001), snappedf(skipped, 0.01), Clock.interrupt_reason])
+			Clock.interrupt_reason = ""
+	b.player_cold_mult = keep[0]
+	b.night_cold_mult = keep[1]
+	b.player_base_loss_per_hour = keep[2]
+	runner.check(res[0] == res[2] and res[1] == res[3], "§14 sleeping through a cold night at home is as before (powered %s, power cut %s)" % [str(res[2]), str(res[3])])
+	Survival.in_player_house = false
+
+
+## On the clock: the night multiplier, the garage's shelter and a running cab's warmth give the same
+## warmth at 1×, 2× and 10× (the same steps, in fewer frames; the location held).
+func test_s14_fast_forward_equal() -> void:
+	Game.world = null
+	Game.player = null
+	var caps := Clock.caps_on
+	Clock.caps_on = false
+	var bad := []
+	for where in ["night", "garage", "cab"]:
+		var got := []
+		for sp in [1, 2, 10]:
+			Game.new_game("survival", 4242)
+			Clock.reset(Clock.at(2, 21.0))
+			Survival.warmth = 100.0
+			Survival.in_player_house = false
+			Survival.in_garage = where == "garage"
+			Survival.in_cab = where == "cab"
+			Survival.vehicle_heat = 1.0 if where == "cab" else 0.0
+			if where == "cab":
+				Survival.warmth = 40.0
+			Survival._state = Survival.state()     # no cold warning from the setup (it drops to 1×)
+			Clock.running = true
+			Clock.speed = sp
+			for f in range(1200 / sp):
+				Clock._process(1.0 / 60.0)
+			Clock.running = false
+			Clock.speed = 1
+			got.append(Survival.warmth)
+		runner.info("§14 %s: warmth at 1× / 2× / 10×: %s" % [where, str(got)])
+		if not (got[0] == got[1] and got[0] == got[2]):
+			bad.append(where)
+	Survival.in_garage = false
+	Survival.in_cab = false
+	Survival.vehicle_heat = 0.0
+	Clock.caps_on = caps
+	runner.check(bad.is_empty(), "§14 the night, the garage and a running cab: the same warmth at 1×, 2× and 10× %s" % str(bad))

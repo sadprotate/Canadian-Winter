@@ -49,6 +49,11 @@ const GERRY_SNOW := {"title": "Two ways to move snow", "pages": [
 	"Or hold [{secondary}] and walk to push it ahead of you. Quick on a long flat walk, but it piles up in front of you.",
 	"Clear my walk inside the blue line, from the sidewalk up to my door."]}
 
+## Polish 8 §14: the cold-night warning (each cold night, at dusk) and the first cold warning's tip.
+const COLD_NIGHT := {"title": "Cold night ahead", "pages": ["Cold night ahead. Sleep, or work from a heated cab."]}
+const WARM_UP := {"title": "Warming up", "pages": [
+	"You're getting cold. Warm up indoors by the heat, in a heated cab with the engine running, or with a heating pouch ({use_pouch})."]}
+
 ## Polish 8 §15: the first time in the garage — the door's button and the rack.
 const GARAGE := {"title": "Your garage", "pages": [
 	"The button beside the big door opens and closes it: look at it and press {interact}.",
@@ -73,6 +78,7 @@ static func vehicle_hint(display_name: String, has_plow: bool, has_blower: bool,
 		"{veh_brake}  handbrake",
 		"Mouse  look around   ·   {camera_toggle}  camera",
 		"{veh_horn}  horn   ·   {veh_radio}  radio forecast",
+		"{veh_engine}  engine on / off",
 		"{interact}  get out"])]
 	if has_plow:
 		pages.append("\n".join(["{veh_tool}  lower / raise the blade",
@@ -112,6 +118,10 @@ static func hint(id: String, data: Resource = null) -> Dictionary:
 		return GERRY_SNOW.duplicate(true)
 	if id == "garage":
 		return GARAGE.duplicate(true)
+	if id == "cold_night":
+		return COLD_NIGHT.duplicate(true)
+	if id == "warm_up":
+		return WARM_UP.duplicate(true)
 	if id.begins_with("vehicle_"):
 		var vd := data as VehicleData
 		if vd == null:
@@ -144,6 +154,8 @@ static func hint_help() -> Array:
 		out.append([Settings.with_keys(str(h["title"])), "\n".join(pages)])
 	add.call(GERRY_SNOW)
 	add.call(GARAGE)
+	add.call(COLD_NIGHT)
+	add.call(WARM_UP)
 	add.call(vehicle_hint("Vehicles", true, true, true))
 	var kinds := {}
 	for t in Catalog.tools.values():

@@ -175,6 +175,28 @@ extends Resource
 ## Polish 5 §9: the pouch's warmth per game hour while it lasts (was a fixed +20 in survival.gd,
 ## halved like every warmth rate).
 @export var pouch_warmth_per_hour: float = 10.0
+## Polish 8 §14: a colder player (Survival): every warmth loss outdoors and in shelter is multiplied
+## by this (the coat still multiplies on top; the house is unchanged, so sleeping is as before).
+## Tuned so the opening (Gerry's trail done at a human pace, outside throughout) ends just above
+## freezing. A felt rate (round 5 s9: per game hour, so per real minute it is what you feel at 1×).
+@export var player_cold_mult: float = 2.2
+## Polish 8 §14: the colder player's own loss on foot outdoors whatever the weather (warmth % per game
+## hour, added to the exposure curve's before the coat, the pouch, player_cold_mult and the night
+## multiply it), so a mild first day costs about as much as a cold one. Not in shelter or indoors. A
+## felt rate (per game hour; per real minute at 1× it is × 0.8).
+@export var player_base_loss_per_hour: float = 5.0
+## Polish 8 §14: on foot outdoors (an open machine too) from dusk (sunset) to 7:00 a.m., warmth loss
+## is multiplied by this. A felt rate.
+@export var night_cold_mult: float = 1.5
+## Polish 8 §14: warmth regained per game hour in an enclosed cab with the engine running (fully
+## warmed up; slower than indoors, warmth_recover_per_hour). A felt rate.
+@export var cab_warmth_per_hour: float = 50.0
+## Polish 8 §14: the cold-night warning shows at dusk when the forecast's low (air temperature,
+## dusk to 7:00 a.m., the TV's forecast model) is under this (°C).
+@export var cold_night_low_c: float = -15.0
+## Polish 8 §14: the warmth the opening is tuned to end at (the brief's target; the test's band is
+## around it).
+@export var opening_target_warmth: float = 20.0
 
 @export_group("Player")
 @export var walk_speed: float = 4.2

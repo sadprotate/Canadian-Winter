@@ -472,6 +472,14 @@ func test_warmth_rates() -> void:
 	Weather.force(Weather.C.BLIZZARD, 100.0)
 	var bliz := Survival.outdoor_loss_per_hour()
 	Weather.override_cond = -1
+	# Polish 8 §14: the colder player adds its own loss (player_base_loss_per_hour, × the coat) and
+	# it and, at night, the night multiply every outdoor loss: the weather's share is checked through
+	# them.
+	var k: float = Catalog.balance.player_cold_mult * (Catalog.balance.night_cold_mult if Survival.night_at(Clock.minutes) else 1.0)
+	var own: float = Catalog.balance.player_base_loss_per_hour * Survival._Equipment.cold_mult()
+	mild = mild / k - own
+	normal = normal / k - own
+	bliz = bliz / k - own
 	# Polish 5 §9: warmth is felt in real time — the targets are per real minute at 1× (what they
 	# were in game time at 2.5 real minutes a game hour), read through the clock's rate.
 	var rmin := func(game_h: float) -> float: return game_h * 60.0 / Clock.GAME_MIN_PER_REAL_SEC / 60.0
@@ -481,7 +489,7 @@ func test_warmth_rates() -> void:
 	Weather.temp[h] = -26.0
 	Weather.temp[h + 1] = -26.0
 	Weather.wind[h] = 30.0
-	var vcold := Survival.outdoor_loss_per_hour()
+	var vcold := Survival.outdoor_loss_per_hour() / k - own
 	runner.check(rmin.call(70.0 / vcold) > 2.5 and rmin.call(70.0 / vcold) < 6.5, "Very cold & windy: ~4–5 real minutes (%.1f)" % rmin.call(70.0 / vcold))
 	runner.check(rmin.call(70.0 / bliz) < 2.75 and rmin.call(70.0 / bliz) > 0.75, "Blizzard: 1–2.5 real minutes before dangerous (%.1f)" % rmin.call(70.0 / bliz))
 	runner.check(mild < normal and normal < vcold, "Colder and windier weather costs more warmth")

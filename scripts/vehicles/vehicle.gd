@@ -277,6 +277,7 @@ func exit_vehicle() -> void:
 	tool_on = false
 	engine_on = false
 	Survival.vehicle_heat = 0.0
+	Survival.in_cab = false      # polish 8 §14
 	engine_snd.stop()
 	work_snd.stop()
 	tire_snd.stop()
@@ -331,6 +332,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("veh_tool"):
 		if Settings.accept_press("veh_tool"):   # polish 5 §2: capped per second
 			_toggle_tool()
+	elif event.is_action_pressed("veh_engine") and not Game.typing():
+		if Settings.accept_press("veh_engine"):   # polish 8 §14
+			set_engine(not engine_on)
 	elif event.is_action_pressed("veh_horn"):
 		AudioMgr.play_at("horn", global_position, 0.0)
 	elif event.is_action_pressed("veh_radio"):
@@ -362,7 +366,33 @@ func set_blade(down: bool) -> void:
 		_toggle_tool()
 
 
+## Polish 8 §14: the engine on or off (getting in starts it). Off, the vehicle doesn't move, a running
+## blower stops, the blade stays where it is (its keys do nothing), and an enclosed cab keeps the wind
+## out but gives no heat.
+func set_engine(on: bool) -> void:
+	if engine_on == on or not occupied:
+		return
+	engine_on = on
+	if on:
+		AudioMgr.play_at("engine_start", global_position, -3.0)
+		engine_snd.play()
+		work_snd.play()
+		set_status("Engine on", 2.0)
+	else:
+		if tool_on and data.has_blower:
+			_toggle_tool_now()
+		engine_snd.stop()
+		work_snd.stop()
+		set_status("Engine off (%s to start it)" % Settings.action_label("veh_engine"), 3.0)
+
+
 func _toggle_tool() -> void:
+	if not engine_on:
+		return            # polish 8 §14: nothing works with the engine off
+	_toggle_tool_now()
+
+
+func _toggle_tool_now() -> void:
 	if data.dump_capacity > 0.0:
 		_dump()
 		return
@@ -403,7 +433,7 @@ func _physics_process(delta: float) -> void:
 	var steer_in := 0.0
 	var handbrake := false
 	if occupied and Game.input_captured():
-		throttle = Input.get_axis("veh_reverse", "veh_accelerate")
+		throttle = Input.get_axis("veh_reverse", "veh_accelerate") if engine_on else 0.0   # polish 8 §14
 		steer_in = Input.get_axis("veh_right", "veh_left")
 		handbrake = Input.is_action_pressed("veh_brake")
 		if Input.is_action_pressed("veh_aim_left"):
@@ -576,8 +606,16 @@ func _physics_process(delta: float) -> void:
 		engine_snd.pitch_scale = data.engine_pitch * (0.75 + 0.7 * clampf(absf(speed) / data.max_speed, 0, 1) + (0.15 if stuck and absf(throttle) > 0 else 0.0))
 		tire_snd.volume_db = lerpf(-40.0, -6.0, clampf(absf(speed) / 6.0 * clampf(d_wheels * 8.0, 0.2, 1.0), 0, 1))
 		# Polish 5 §13 → §14: a cab bought for a vehicle without one is ItemUpgrades.has_heated_cab(id).
-		heat = minf(1.0, heat + delta / Catalog.balance.vehicle_heat_warmup_s) if data.heated_cabin else 0.0
-		Survival.vehicle_heat = heat
+		# Polish 8 §14: the cab (heated_cabin: an enclosed cab) warms up only with the engine running;
+		# off, it cools as when parked and only keeps the wind out.
+		if data.heated_cabin and engine_on:
+			heat = minf(1.0, heat + delta / Catalog.balance.vehicle_heat_warmup_s)
+		elif data.heated_cabin:
+			heat = maxf(0.0, heat - delta / 60.0)
+		else:
+			heat = 0.0
+		Survival.vehicle_heat = heat if engine_on else 0.0
+		Survival.in_cab = data.heated_cabin
 		Game.player_pos = global_position
 		_update_camera(delta)
 		if driver:
@@ -944,5 +982,7 @@ func hud_text() -> String:
 		s += "  |  Bed %.1f / %.0f m³" % [bed_load, data.dump_capacity]
 	if stuck:
 		s += "  |  STUCK"
+	if not engine_on:
+		s += "  |  Engine off"     # polish 8 §14
 	s += "  |  %d km/h" % int(absf(speed) * 3.6)
 	return s

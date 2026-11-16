@@ -36,7 +36,7 @@
   - Extra presses are ignored, never queued. Callers ask once, on the press edge.
   - The capped actions are listed in `RATE_LIMITED`: primary, secondary, interact, drop, store,
     use_pouch, tool_angle, veh_tool, fast_forward, veh_blade_up, veh_blade_down, hint_back,
-    hint_next, hint_ok.
+    hint_next, hint_ok, veh_engine.
   - Movement, the camera, the map, Tab, slots, horn, radio, F1 and UI clicks aren't capped.
 - **Saved bindings and migration** (`controls_from`, `load_controls`), with `CONTROLS_VERSION` 2:
   - A stored binding is kept. From version 2, `[]` means unbound.
@@ -101,6 +101,8 @@
   players get them through the migration, with no version bump.
 - Round 8 §17: `hint_back` / `hint_next` / `hint_ok` on Left / Right / X in the new "hint" context
   ("Hint panel" group in Settings), capped. No version bump.
+- Round 8 §14: `veh_engine` "Engine on / off" on I (vehicle context, capped), read in
+  `Vehicle._unhandled_input`. No version bump.
 
 ## Known issues
 

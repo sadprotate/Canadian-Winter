@@ -17,6 +17,12 @@
   line ("Too big for the garage."). Inside, no roof snow gathers and what was carried in melts off.
 - **Driving** (all keys rebindable): drive forward and brake/reverse, steer, handbrake, the camera,
   the horn, the radio forecast, and get out.
+- **The engine** (round 8 §14; I by default, `veh_engine`): it starts when you get in. Off, the
+  vehicle doesn't drive, a running blower stops, the blade stays where it is and its keys do nothing
+  (the status line: "Engine off (I to start it)"; the HUD line: "Engine off").
+- **The cab** (Survival): every vehicle but the ATV has an enclosed cab (`VehicleData.heated_cabin`).
+  With the engine running it warms you, slower than indoors; with it off it keeps the wind out. The
+  ATV gives no shelter. See [survival.md](survival.md).
 - **In deep snow, blade up,** the truck handles like a pickup:
   - It drives through storm snow, slower the deeper it is.
   - It shoves deeper snow ahead and out to the sides.
@@ -217,7 +223,9 @@
 
 ## Where it lives
 
-- `scripts/vehicles/vehicle.gd`: driving, snow handling, plow, blower, dump, status and HUD line; the
+- `scripts/vehicles/vehicle.gd`: driving, the engine (`set_engine`, `veh_engine` in `_unhandled_input`),
+  the cab's heat (`heat` → `Survival.vehicle_heat`, `Survival.in_cab`), snow handling, plow, blower,
+  dump, status and HUD line; the
   solid blade (`blade_cs`, `_fit_blade_shape`), the upgraded blade (`_on_upgrades_changed`, the lamps),
   `park_at`.
 - `scripts/vehicles/vehicle_models.gd`: models, wheels, `blade_pivot`, `blade_z`, `blade_box`, the
@@ -325,6 +333,9 @@
     either way. Before this, it used the generic path: stuck from 39 cm and walled from 65 cm.
   - The shove's cast scales with the truck's width.
   - No balance value changed.
+- Round 8 §14: an engine switch (`veh_engine`, I); an enclosed cab (`heated_cabin`, reused as the
+  owner chose, no new field) warms at `cab_warmth_per_hour` with the engine on (was as fast as
+  indoors) and only shelters with it off. The ATV's heated-cab upgrade stays unwired.
 - Round 7 §11: Up and Down raise and lower the blade.
   - Back-drag uses the existing blade op, with the face turned toward the vehicle.
   - Standing still, the blade holds the side it last worked. Otherwise a stopped truck's push would

@@ -51,6 +51,8 @@ const ACTIONS := {
 	"veh_aim_right": ["Blade angle / chute right", "vehicle", ["key:%d" % KEY_C]],
 	"veh_horn": ["Horn", "vehicle", ["key:%d" % KEY_H]],
 	"veh_radio": ["Vehicle radio forecast", "vehicle", ["key:%d" % KEY_T]],
+	# Polish 8 §14: the engine (off, a cab keeps the wind out but doesn't heat).
+	"veh_engine": ["Engine on / off", "vehicle", ["key:%d" % KEY_I]],
 	# Polish 8 §17: the hint panel (Back / Next — OK on the last page — and OK from any page).
 	"hint_back": ["Hint: back", "hint", ["key:%d" % KEY_LEFT]],
 	"hint_next": ["Hint: next", "hint", ["key:%d" % KEY_RIGHT]],
@@ -88,9 +90,9 @@ const PLACES := ["foot", "vehicle", "machine", "computer", "menu"]
 ## Polish 5 §2: world-changing presses, capped per action at Catalog.balance.input_max_presses_per_s
 ## (accept_press). UI clicks, F1, movement, the camera, map, Tab, slots, horn and radio aren't.
 ## Polish 5 §9: the fast-forward key (it changes the clock's speed) is capped too.
-## Polish 8 §17: the hint panel's keys too.
+## Polish 8 §17: the hint panel's keys too. Polish 8 §14: the engine switch.
 const RATE_LIMITED := ["primary", "secondary", "interact", "drop", "store", "use_pouch", "tool_angle", "veh_tool", "fast_forward",
-	"veh_blade_up", "veh_blade_down", "hint_back", "hint_next", "hint_ok"]
+	"veh_blade_up", "veh_blade_down", "hint_back", "hint_next", "hint_ok", "veh_engine"]
 
 var cfg := ConfigFile.new()
 var bindings: Dictionary = {}   # action -> Array of encoded events

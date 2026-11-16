@@ -63,6 +63,14 @@ func set_shadow_quality(level: int) -> void:
 	sun.directional_shadow_max_distance = [30.0, 45.0, 60.0, 90.0][clampi(level, 0, 3)]
 
 
+## Polish 8 §14: the hour the sun sets on a day of winter (sun_angles' elevation 0 going down): dusk
+## for the cold nights. The same day length as sun_angles.
+static func sunset_hour(day: float) -> float:
+	var t := clampf((day - 20.0) / 100.0, -0.2, 1.0)
+	var length := lerpf(8.8, 12.4, maxf(t, 0.0)) + (0.2 if t < 0.0 else 0.0)
+	return 12.1 + length * 0.5
+
+
 ## Day of winter (0 = Dec 1) and hour (0-24) -> sun elevation/azimuth in degrees.
 static func sun_angles(day: float, hour: float) -> Vector2:
 	# Day length for ~45°N: 8.8 h at the solstice (day 20) up to ~12.4 h at the end of March.
