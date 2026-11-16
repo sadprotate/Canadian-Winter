@@ -60,6 +60,45 @@ Branch `cw-polish8-pg` from `main` (`b81e79e`, the Polish 7 merge). Brief: `POLI
   `test_s4_gerry_snow_tips`, gameplay `test_settings_rebinding`, polish7 `test_s11_`, polish8
   `test_s17_`, polish6 `test_s3_menu_starts_once…`. 2 shots (`report/s12.md`).
 
+## Final check (2026-11-16)
+
+On a fresh worktree of `993dc07` (the last section's commit), one Godot process at a time:
+
+- **Clean import** (no `.godot`): exit 0, no errors or warnings. **Parse check:** 95 scripts, 0 errors.
+- **Full suite, once:** 310 passed, 1 failed (73 min). The failure is the known flaky polish3
+  `test_menu_fixture_load_is_the_same_as_direct` (survival_4_midwinter: Continue from the menu vs a
+  direct load); run alone it passes. Not changed (the brief).
+- **`weather_truth`:** byte for byte the same as `main` and as the round 6 baseline
+  (`docs/polish6/baseline/weather_truth.json`).
+- **`depth_report`** (`--years=1,5`): the same as `main`.
+- **Check at the end:** every item's tests (the key lists and conflicts, save round trips and
+  state equality, the fixtures, fast-forward equality, the global-generator tests, the menu, the
+  garage, survival) ran in the full suite and pass; the truth and depth reports are identical; perf
+  below.
+- **Perf** (`perf.tscn`, headless, back to back with `main`; `main` ran this round's `perf.gd`, so
+  both run the same 49 scenarios):
+  - Four pairs. In the first three, the later scenarios (the board, the jobs, the pass, the pickup,
+    the heated storm, the weather) swung by up to 17 ms p95 from run to run, sometimes against head
+    and sometimes against `main`. The unchanged snow code's own timers moved with them, and both
+    builds ran 30–50 % slower than in the fourth pair: the PC was busy. No leak on either build: the
+    object and node counts stay flat through the run (head has about 165 more objects: the garage,
+    the hint panel, the weather layers), no orphans. A code read found nothing of this round inside
+    the snow's timed loops and nothing that grows over the run.
+  - **The clean pair** (the PC idle): every scenario within ±0.8 ms p95 of `main`, except 10× snow
+    settling (+1.7). Over 16.7 ms p95: head 10 of 49, `main` 11, the same scenarios (the 4 m map,
+    10× storm and major peaks, snow settling at 10×, the grader pass at 10×, the heated storm at
+    fast-forward, the blizzard peak + drift at 18.8–19.9 ms on both).
+  - Relaxation p95 is over its 2.5 ms budget in 27 scenarios on both builds (2.6–3.9 ms: the budget
+    is checked between tiles), chunk rebuilds over 3.5 ms in 36 on both. Same as `main`.
+  - **WeatherFX alone:** 0.8–0.9 ms p95 (max 1.5–4.1) in the weather scenarios. Switched off in the
+    same run and the same late state, the weather scenarios are 0.2 ms faster on average and
+    0.3–0.45 ms at p95, about `main`'s own spread between passes.
+  - World load 2.24 s (`main` 2.02), menu background 1.88 s (1.79); save, load and the 3-day skip
+    unchanged.
+  - Windowed (the GPU too): measured at §7 (`report/s7.md`), WeatherFX unchanged since: `main`
+    20.8–21.8 ms p95 everywhere, this build 20.5–20.9 in light and heavy snow and 21.9–27.3 at the
+    blizzard's peak (up to 9,500 particles).
+
 ## Audits (the brief's "look at first")
 
 ### §17: every place that teaches how to do something
@@ -384,8 +423,9 @@ Asked at §7 (2026-11-16):
   the game's wading pace): the bot can't thread the yard's sharp banks there.
 - §7: the blizzard's peak (a major event's 109.6 cm/h) is at the 16.7 ms line headless on both
   builds (this build 16.3–17.6 ms p95, `main` 16.7–22.7): the snow's meshing (about 550 chunk updates);
-  WeatherFX's own work is about 1 ms. Windowed, this PC is over 16.7 ms p95 even idle (about 21 ms on
-  both builds).
+  WeatherFX's own work is about 1 ms. In the final check's late world it is 18.8–19.9 ms on both.
+  Windowed, this PC is over 16.7 ms p95 even idle (about 21 ms on both builds), and the blizzard's
+  peak is 21.9–27.3 ms on this build (the GPU drawing up to 9,500 particles).
 - §7: falling snow isn't cut inside a vehicle's cab: in the cab view flakes can pass through the
   roof (as before §7; the brief covers buildings).
 - §7: `preprocess` on `GPUParticles3D` does nothing on this renderer (GL Compatibility); the air is
@@ -400,3 +440,10 @@ Asked at §7 (2026-11-16):
   stage then advances when Gerry is met); while a binding waits in Settings, the wheel or a click is
   taken as the new binding; `interact` at Gerry's lines and the photo isn't capped; the slot keys are
   read in a vehicle (now covered by the conflict check).
+- Final check: polish3's known flaky `test_menu_fixture_load_is_the_same_as_direct` failed in the
+  full suite and passed alone (the brief: noted, not fixed).
+- Perf on this PC: a back-to-back pair can be compared only on an idle machine. Busy runs swung by up to
+  17 ms p95 on either build, and the time-budgeted snow loops make it look like the snow got slower
+  (fewer, bigger chunk rebuilds). In the clean pair head and `main` match.
+- Perf, not this round: 10–11 of the 49 scenarios are over 16.7 ms p95 headless on both builds, and
+  relaxation and chunk rebuilds are over their budgets whenever their queues are full.
